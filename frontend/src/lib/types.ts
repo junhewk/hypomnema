@@ -1,0 +1,103 @@
+export type SourceType = "scribble" | "file" | "feed";
+export type FeedType = "rss" | "scrape" | "youtube";
+export type Predicate =
+  | "contradicts"
+  | "supports"
+  | "extends"
+  | "provides_methodology_for"
+  | "is_example_of"
+  | "is_prerequisite_for"
+  | "generalizes"
+  | "specializes"
+  | "is_analogous_to"
+  | "critiques"
+  | "applies_to"
+  | "derives_from";
+
+export interface Document {
+  id: string;
+  source_type: SourceType;
+  title: string | null;
+  text: string;
+  mime_type: string | null;
+  source_uri: string | null;
+  metadata: Record<string, unknown> | null;
+  triaged: number;
+  processed: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Engram {
+  id: string;
+  canonical_name: string;
+  concept_hash: string;
+  description: string | null;
+  created_at: string;
+}
+
+export interface Edge {
+  id: string;
+  source_engram_id: string;
+  target_engram_id: string;
+  predicate: Predicate;
+  confidence: number;
+  source_document_id: string | null;
+  created_at: string;
+}
+
+export interface FeedSource {
+  id: string;
+  name: string;
+  feed_type: FeedType;
+  url: string;
+  schedule: string;
+  active: boolean;
+  last_fetched: string | null;
+  created_at: string;
+}
+
+export interface Projection {
+  engram_id: string;
+  x: number;
+  y: number;
+  cluster_id: number | null;
+  updated_at: string;
+}
+
+export interface DocumentDetail extends Document {
+  engrams: Engram[];
+}
+export interface EngramDetail extends Engram {
+  edges: Edge[];
+  documents: Document[];
+}
+export interface ScoredDocument extends Document {
+  score: number;
+}
+export interface PaginatedList<T> {
+  items: T[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+export interface ProjectionPoint {
+  engram_id: string;
+  canonical_name: string;
+  x: number;
+  y: number;
+  cluster_id: number | null;
+}
+export interface Cluster {
+  cluster_id: number;
+  label: string | null;
+  engram_count: number;
+  centroid_x: number;
+  centroid_y: number;
+}
+export interface GapRegion {
+  x: number;
+  y: number;
+  radius: number;
+  neighboring_clusters: number[];
+}
