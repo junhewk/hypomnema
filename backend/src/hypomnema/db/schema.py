@@ -160,5 +160,6 @@ async def _table_exists(db: aiosqlite.Connection, table_name: str) -> bool:
         "SELECT count(*) FROM sqlite_master WHERE name = ?", (table_name,)
     )
     row = await cursor.fetchone()
-    assert row is not None
+    if row is None:
+        return False
     return bool(row[0] > 0)

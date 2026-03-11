@@ -1,10 +1,30 @@
 """Pydantic models for database entities."""
 
 import json
+import sqlite3
 from datetime import datetime
 from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
+
+
+def _parse_iso_datetime(v: Any) -> datetime:
+    """Parse SQLite ISO timestamp (with trailing Z) to datetime."""
+    if isinstance(v, str):
+        return datetime.fromisoformat(v.replace("Z", "+00:00"))
+    return cast("datetime", v)
+
+
+def _parse_optional_iso_datetime(v: Any) -> datetime | None:
+    """Parse nullable SQLite ISO timestamp."""
+    if v is None:
+        return None
+    return _parse_iso_datetime(v)
+
+
+def _from_row(cls: type["BaseModel"], row: sqlite3.Row) -> "BaseModel":
+    """Construct a model from a sqlite3.Row using dict unpacking."""
+    return cls(**dict(row))
 
 
 class Document(BaseModel):
@@ -40,25 +60,11 @@ class Document(BaseModel):
     @field_validator("created_at", "updated_at", mode="before")
     @classmethod
     def parse_datetime(cls, v: Any) -> datetime:
-        if isinstance(v, str):
-            return datetime.fromisoformat(v.replace("Z", "+00:00"))
-        return cast("datetime", v)
+        return _parse_iso_datetime(v)
 
     @classmethod
-    def from_row(cls, row: Any) -> "Document":
-        return cls(
-            id=row["id"],
-            source_type=row["source_type"],
-            title=row["title"],
-            text=row["text"],
-            mime_type=row["mime_type"],
-            source_uri=row["source_uri"],
-            metadata=row["metadata"],
-            triaged=row["triaged"],
-            processed=row["processed"],
-            created_at=row["created_at"],
-            updated_at=row["updated_at"],
-        )
+    def from_row(cls, row: sqlite3.Row) -> "Document":
+        return cast("Document", _from_row(cls, row))
 
 
 class Engram(BaseModel):
@@ -73,19 +79,11 @@ class Engram(BaseModel):
     @field_validator("created_at", mode="before")
     @classmethod
     def parse_datetime(cls, v: Any) -> datetime:
-        if isinstance(v, str):
-            return datetime.fromisoformat(v.replace("Z", "+00:00"))
-        return cast("datetime", v)
+        return _parse_iso_datetime(v)
 
     @classmethod
-    def from_row(cls, row: Any) -> "Engram":
-        return cls(
-            id=row["id"],
-            canonical_name=row["canonical_name"],
-            concept_hash=row["concept_hash"],
-            description=row["description"],
-            created_at=row["created_at"],
-        )
+    def from_row(cls, row: sqlite3.Row) -> "Engram":
+        return cast("Engram", _from_row(cls, row))
 
 
 class Edge(BaseModel):
@@ -102,21 +100,11 @@ class Edge(BaseModel):
     @field_validator("created_at", mode="before")
     @classmethod
     def parse_datetime(cls, v: Any) -> datetime:
-        if isinstance(v, str):
-            return datetime.fromisoformat(v.replace("Z", "+00:00"))
-        return cast("datetime", v)
+        return _parse_iso_datetime(v)
 
     @classmethod
-    def from_row(cls, row: Any) -> "Edge":
-        return cls(
-            id=row["id"],
-            source_engram_id=row["source_engram_id"],
-            target_engram_id=row["target_engram_id"],
-            predicate=row["predicate"],
-            confidence=row["confidence"],
-            source_document_id=row["source_document_id"],
-            created_at=row["created_at"],
-        )
+    def from_row(cls, row: sqlite3.Row) -> "Edge":
+        return cast("Edge", _from_row(cls, row))
 
 
 class FeedSource(BaseModel):
@@ -131,34 +119,14 @@ class FeedSource(BaseModel):
     last_fetched: datetime | None = None
     created_at: datetime
 
-    @field_validator("active", mode="before")
-    @classmethod
-    def parse_active_bool(cls, v: Any) -> bool:
-        if isinstance(v, int):
-            return bool(v)
-        return cast("bool", v)
-
     @field_validator("created_at", "last_fetched", mode="before")
     @classmethod
     def parse_datetime(cls, v: Any) -> datetime | None:
-        if v is None:
-            return None
-        if isinstance(v, str):
-            return datetime.fromisoformat(v.replace("Z", "+00:00"))
-        return cast("datetime", v)
+        return _parse_optional_iso_datetime(v)
 
     @classmethod
-    def from_row(cls, row: Any) -> "FeedSource":
-        return cls(
-            id=row["id"],
-            name=row["name"],
-            feed_type=row["feed_type"],
-            url=row["url"],
-            schedule=row["schedule"],
-            active=row["active"],
-            last_fetched=row["last_fetched"],
-            created_at=row["created_at"],
-        )
+    def from_row(cls, row: sqlite3.Row) -> "FeedSource":
+        return cast("FeedSource", _from_row(cls, row))
 
 
 class Projection(BaseModel):
@@ -173,16 +141,8 @@ class Projection(BaseModel):
     @field_validator("updated_at", mode="before")
     @classmethod
     def parse_datetime(cls, v: Any) -> datetime:
-        if isinstance(v, str):
-            return datetime.fromisoformat(v.replace("Z", "+00:00"))
-        return cast("datetime", v)
+        return _parse_iso_datetime(v)
 
     @classmethod
-    def from_row(cls, row: Any) -> "Projection":
-        return cls(
-            engram_id=row["engram_id"],
-            x=row["x"],
-            y=row["y"],
-            cluster_id=row["cluster_id"],
-            updated_at=row["updated_at"],
-        )
+    def from_row(cls, row: sqlite3.Row) -> "Projection":
+        return cast("Projection", _from_row(cls, row))

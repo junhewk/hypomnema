@@ -41,8 +41,9 @@ export class ApiClient {
     options: RequestInit = {},
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
+    const isFormData = options.body instanceof FormData;
     const headers: HeadersInit = {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...options.headers,
     };
     const response = await fetch(url, { ...options, headers });
@@ -67,7 +68,6 @@ export class ApiClient {
     return this.request("/api/documents/files", {
       method: "POST",
       body: formData,
-      headers: {},
     });
   }
 
