@@ -3,10 +3,13 @@
 from pathlib import Path
 
 import aiosqlite
+import pytest
 import pytest_asyncio
 
 from hypomnema.db.engine import get_connection
 from hypomnema.db.schema import create_tables
+from hypomnema.embeddings.mock import MockEmbeddingModel
+from hypomnema.llm.mock import MockLLMClient
 
 
 @pytest_asyncio.fixture
@@ -23,3 +26,13 @@ async def tmp_db(tmp_path: Path) -> aiosqlite.Connection:
     await create_tables(db)
     yield db
     await db.close()
+
+
+@pytest.fixture
+def mock_llm() -> MockLLMClient:
+    return MockLLMClient()
+
+
+@pytest.fixture
+def mock_embeddings() -> MockEmbeddingModel:
+    return MockEmbeddingModel(dimension=384)

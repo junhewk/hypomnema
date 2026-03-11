@@ -6,6 +6,36 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 
 **Stack:** Python/FastAPI backend, SQLite (WAL + sqlite-vec) database, Next.js PWA frontend.
 
+## Progress
+
+| Phase | Status | Tests | Notes |
+|-------|--------|-------|-------|
+| P0 — Scaffold | Done | 23 backend + 8 frontend | ruff, mypy strict, eslint, tsc all clean |
+| P1 — Database | Done | 50 backend | WAL, sqlite-vec, FTS5, all triggers verified |
+| P2 — LLM + Embeddings | Done | 29 backend (28 pass, 1 skip) | Protocol-based LLM + embedding abstractions, mock + real clients |
+| P3 — Manual Ingestion | Not started | — | |
+| P4 — Entity Extraction | Not started | — | |
+| P5 — Edge Generation | Not started | — | |
+| P6 — Triage | Not started | — | |
+| P7 — Feeds + Scheduler | Not started | — | |
+| P8 — Search | Not started | — | |
+| P9 — API Layer | Not started | — | |
+| P10 — Viz Pipeline | Not started | — | |
+| P11–14 — Frontend | Not started | — | |
+| P15 — Deployment | Not started | — | |
+
+### Implementation Notes (P0+P1+P2)
+
+- **Dev tooling added beyond plan:** `ruff` (lint), `mypy` strict with pydantic plugin (typecheck), `tsc --noEmit` (frontend typecheck). Dev deps use `[dependency-groups]` not `[project.optional-dependencies]`.
+- **FTS5 trigger pattern:** Plan specified `DELETE FROM documents_fts` in update/delete triggers. This causes "database disk image is malformed" with external content FTS5. Fixed to use the correct `INSERT INTO fts(fts, ...) VALUES('delete', ...)` pattern.
+- **vec0 idempotency:** `CREATE VIRTUAL TABLE ... USING vec0` does not support `IF NOT EXISTS`. Schema uses `_table_exists()` helper querying `sqlite_master`.
+- **Models simplified:** Shared `_parse_iso_datetime()` helper and generic `_from_row(cls, row)` using `dict(row)` unpacking instead of per-model field-by-field constructors.
+- **Frontend:** Next.js 16.1.6 (latest stable), vitest 4, `ApiClient.request()` detects `FormData` body to skip `Content-Type: application/json` header.
+- **Line length:** 120 (not 100) — practical for SQL strings in tests.
+- **LLM async, embeddings sync:** LLM methods are async (network I/O); embedding methods are sync (CPU-bound local compute). `complete_json()` parses text output as JSON — no provider-specific structured output modes.
+- **mypy strict compliance:** `json.loads()` returns `Any`, so `complete_json()` uses `dict(json.loads(text))` to satisfy `no-any-return`. Runtime validation uses proper exceptions (not `assert`) since asserts are stripped with `-O`.
+- **GPU test gated:** `LocalEmbeddingModel` test requires `HYPOMNEMA_TEST_GPU=1` env var; skipped otherwise.
+
 ---
 
 ## Project Structure
@@ -60,7 +90,7 @@ hypomnema/
 │       ├── fixtures/                     # sample.pdf, sample.docx, sample.md
 │       └── test_*/                       # Mirror of src/ structure
 ├── frontend/
-│   ├── package.json                      # Next.js 14+, vitest, playwright, tailwind
+│   ├── package.json                      # Next.js 16+, vitest, playwright, tailwind
 │   ├── src/
 │   │   ├── app/                          # App Router pages
 │   │   ├── components/                   # ScribbleInput, DocumentCard, NetworkPanel, VizCanvas, etc.
@@ -197,7 +227,7 @@ P0 (Scaffold)
 **Build:**
 - `backend/pyproject.toml` (uv) with all deps: `fastapi`, `uvicorn`, `aiosqlite`, `sqlite-vec`, `anthropic`, `google-genai`, `sentence-transformers`, `apscheduler`, `pydantic-settings`, `python-multipart`, `pypdf`, `python-docx`, `feedparser`, `youtube-transcript-api`, `umap-learn`, `scikit-learn`, `httpx`; dev: `pytest`, `pytest-asyncio`
 - `backend/src/hypomnema/config.py` — Pydantic `Settings`
-- `frontend/package.json` — Next.js 14+, TS, vitest, playwright, tailwind
+- `frontend/package.json` — Next.js 16+, TS, vitest, playwright, tailwind
 - `frontend/src/lib/api.ts` — skeleton typed fetch wrapper
 
 **Acceptance:** `uv run pytest` and `npm test` both green, zero import errors.
