@@ -14,7 +14,7 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P1 — Database | Done | 50 backend | WAL, sqlite-vec, FTS5, all triggers verified |
 | P2 — LLM + Embeddings | Done | 29 backend (28 pass, 1 skip) | Protocol-based LLM + embedding abstractions, mock + real clients |
 | P3 — Manual Ingestion | Done | 25 backend (125 pass, 1 skip total) | Scribble + file parsing (PDF/DOCX/MD), RETURNING * pattern |
-| P4 — Entity Extraction | Not started | — | |
+| P4 — Entity Extraction | Done | 46 backend (172 pass, 1 skip total) | Multi-tier engram dedup, LLM extraction, atomic pipeline |
 | P5 — Edge Generation | Not started | — | |
 | P6 — Triage | Not started | — | |
 | P7 — Feeds + Scheduler | Not started | — | |
@@ -24,7 +24,7 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P11–14 — Frontend | Not started | — | |
 | P15 — Deployment | Not started | — | |
 
-### Implementation Notes (P0+P1+P2+P3)
+### Implementation Notes (P0+P1+P2+P3+P4)
 
 - **Dev tooling added beyond plan:** `ruff` (lint), `mypy` strict with pydantic plugin (typecheck), `tsc --noEmit` (frontend typecheck). Dev deps use `[dependency-groups]` not `[project.optional-dependencies]`.
 - **FTS5 trigger pattern:** Plan specified `DELETE FROM documents_fts` in update/delete triggers. This causes "database disk image is malformed" with external content FTS5. Fixed to use the correct `INSERT INTO fts(fts, ...) VALUES('delete', ...)` pattern.
@@ -39,6 +39,13 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **RETURNING * for row retrieval:** Confirmed working with aiosqlite + SQLite 3.41+. Avoids separate SELECT after INSERT.
 - **Test fixtures programmatic:** PDF fixtures created via `pypdf.PdfWriter` with raw content streams (no `fpdf2` dep). DOCX via `python-docx`. MD is plaintext. All in `tests/test_ingestion/conftest.py`.
 - **No TOCTOU in file parsing:** `parse_file()` lets underlying libraries raise `FileNotFoundError` naturally rather than pre-checking `path.exists()`.
+- **Multi-tier engram dedup:** 3-tier approach inspired by `email-bot/kgengram.py`: (1) exact canonical_name match, (2) cosine similarity via sqlite-vec KNN (threshold 0.92, auto-merge), (3) concept hash as belt-and-suspenders UNIQUE safeguard. LLM verification for ambiguous range (0.80–0.92) deferred to future phase.
+- **Cosine from L2 distance:** sqlite-vec returns L2 distance; unit-normalized embeddings allow conversion via `cosine_sim = 1 - (l2² / 2)`. Threshold 0.92 corresponds to L2 ≈ 0.40.
+- **Cursor lifecycle with aiosqlite:** `RETURNING *` and `SELECT` cursors must be explicitly closed (`await cursor.close()`) before `db.commit()` to avoid `OperationalError: cannot commit transaction - SQL statements in progress`. Existing ingestion code (scribble.py, file_parser.py) avoids this by fetching before committing without intermediate queries; ontology code requires explicit closes due to multi-query-then-commit patterns.
+- **Embedding binary serialization:** `np.asarray(embedding, dtype="<f4").tobytes()` — explicit little-endian float32, direct memory copy (no intermediate Python list). Same binary format as `struct.pack("<Nf", ...)` but faster.
+- **Atomic per-document processing:** Single `db.commit()` after all engrams created + document marked `processed=1`. If LLM fails mid-extraction, document stays `processed=0` for retry. Empty documents (no extractable entities) still get `processed=1`.
+- **Synonym resolution:** Two-step normalization: sync `normalize()` (lowercase, strip, collapse whitespace, strip trailing punctuation) always applied; async `resolve_synonyms()` uses LLM to merge synonyms within a single extraction batch. Cross-document dedup handled by embedding cosine similarity in `get_or_create_engram`.
+- **Text truncation:** Extractor truncates input to 12000 chars (configurable) to protect against context window overflow.
 
 ---
 
