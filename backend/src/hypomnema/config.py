@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # Server
     host: str = "127.0.0.1"
     port: int = 8000
+    frontend_port: int = 3000
 
     # Triage
     triage_threshold: float = 0.3
@@ -49,6 +50,16 @@ class Settings(BaseSettings):
         if not (0.0 <= v <= 1.0):
             raise ValueError("triage_threshold must be between 0.0 and 1.0")
         return v
+
+    @property
+    def cors_origins(self) -> list[str]:
+        origins = [
+            f"http://localhost:{self.frontend_port}",
+            f"http://127.0.0.1:{self.frontend_port}",
+        ]
+        if self.host not in ("127.0.0.1", "localhost"):
+            origins.append(f"http://{self.host}:{self.frontend_port}")
+        return origins
 
     @model_validator(mode="after")
     def set_host_for_mode(self) -> "Settings":
