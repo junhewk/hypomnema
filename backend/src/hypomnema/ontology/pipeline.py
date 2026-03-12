@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -10,10 +11,25 @@ if TYPE_CHECKING:
     from hypomnema.embeddings.base import EmbeddingModel
     from hypomnema.llm.base import LLMClient
 
-from hypomnema.db.models import Document, Engram
+from hypomnema.db.models import Document, Edge, Engram
 from hypomnema.ontology.engram import get_or_create_engram, link_document_engram
 from hypomnema.ontology.extractor import extract_entities
+from hypomnema.ontology.linker import (
+    assign_predicates,
+    create_edge,
+    find_neighbors,
+)
 from hypomnema.ontology.normalizer import normalize, resolve_synonyms
+
+
+async def _fetch_document(db: aiosqlite.Connection, document_id: str) -> Document:
+    """Fetch a document by ID, raise ValueError if not found."""
+    cursor = await db.execute("SELECT * FROM documents WHERE id = ?", (document_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        raise ValueError(f"Document {document_id} not found")
+    return Document.from_row(row)
 
 
 async def process_document(
@@ -34,13 +50,7 @@ async def process_document(
     Raises:
         ValueError: If document_id not found.
     """
-    # Fetch document
-    cursor = await db.execute("SELECT * FROM documents WHERE id = ?", (document_id,))
-    row = await cursor.fetchone()
-    await cursor.close()
-    if row is None:
-        raise ValueError(f"Document {document_id} not found")
-    doc = Document.from_row(row)
+    doc = await _fetch_document(db, document_id)
 
     if doc.processed >= 1:
         return []
@@ -108,4 +118,83 @@ async def process_pending_documents(
     results: dict[str, list[Engram]] = {}
     for row in rows:
         results[row["id"]] = await process_document(db, row["id"], llm, embeddings)
+    return results
+
+
+async def link_document(
+    db: aiosqlite.Connection,
+    document_id: str,
+    llm: LLMClient,
+) -> list[Edge]:
+    """Generate edges for engrams in a processed document.
+
+    Only processes documents with processed=1 (engrams extracted, not yet linked).
+    Sets processed=2 after edge generation.
+
+    Raises:
+        ValueError: If document_id not found.
+    """
+    doc = await _fetch_document(db, document_id)
+
+    if doc.processed != 1:
+        return []
+
+    # Get engrams linked to this document
+    cursor = await db.execute(
+        "SELECT e.* FROM engrams e "
+        "JOIN document_engrams de ON e.id = de.engram_id "
+        "WHERE de.document_id = ?",
+        (document_id,),
+    )
+    engram_rows = await cursor.fetchall()
+    await cursor.close()
+    engrams = [Engram.from_row(r) for r in engram_rows]
+
+    if not engrams:
+        await db.execute(
+            "UPDATE documents SET processed = 2 WHERE id = ?", (document_id,)
+        )
+        await db.commit()
+        return []
+
+    # For each engram, find neighbors and assign predicates
+    all_edges: list[Edge] = []
+    for engram in engrams:
+        neighbor_pairs = await find_neighbors(db, engram.id)
+        if not neighbor_pairs:
+            continue
+        neighbors = [n for n, _sim in neighbor_pairs]
+        proposed = await assign_predicates(
+            llm, engram, neighbors, document_text=doc.text
+        )
+        for p in proposed:
+            p_with_doc = dataclasses.replace(p, source_document_id=document_id)
+            edge = await create_edge(db, p_with_doc)
+            if edge is not None:
+                all_edges.append(edge)
+
+    # Mark processed=2
+    await db.execute(
+        "UPDATE documents SET processed = 2 WHERE id = ?", (document_id,)
+    )
+    await db.commit()
+    return all_edges
+
+
+async def link_pending_documents(
+    db: aiosqlite.Connection,
+    llm: LLMClient,
+    *,
+    limit: int = 50,
+) -> dict[str, list[Edge]]:
+    """Generate edges for all documents with processed=1, up to limit."""
+    cursor = await db.execute(
+        "SELECT id FROM documents WHERE processed = 1 ORDER BY created_at LIMIT ?",
+        (limit,),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    results: dict[str, list[Edge]] = {}
+    for row in rows:
+        results[row["id"]] = await link_document(db, row["id"], llm)
     return results

@@ -5,9 +5,9 @@ import pytest
 from hypomnema.db.models import Engram
 from hypomnema.embeddings.mock import MockEmbeddingModel
 from hypomnema.ontology.engram import (
-    _l2_to_cosine,
     compute_concept_hash,
     get_or_create_engram,
+    l2_to_cosine,
     link_document_engram,
 )
 
@@ -42,10 +42,10 @@ class TestConceptHash:
 
 class TestL2ToCosine:
     def test_zero_distance_is_identical(self) -> None:
-        assert _l2_to_cosine(0.0) == pytest.approx(1.0)
+        assert l2_to_cosine(0.0) == pytest.approx(1.0)
 
     def test_known_conversion(self) -> None:
-        assert _l2_to_cosine(0.4) == pytest.approx(0.92)
+        assert l2_to_cosine(0.4) == pytest.approx(0.92)
 
 
 class TestGetOrCreateEngram:

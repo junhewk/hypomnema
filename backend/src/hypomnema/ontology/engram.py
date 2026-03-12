@@ -28,12 +28,12 @@ def compute_concept_hash(embedding: NDArray[np.float32]) -> str:
     return hashlib.sha256(packed).hexdigest()
 
 
-def _embedding_to_bytes(embedding: NDArray[np.float32]) -> bytes:
+def embedding_to_bytes(embedding: NDArray[np.float32]) -> bytes:
     """Pack float32 array into little-endian binary for sqlite-vec."""
     return np.asarray(embedding, dtype="<f4").tobytes()
 
 
-def _l2_to_cosine(l2_distance: float) -> float:
+def l2_to_cosine(l2_distance: float) -> float:
     """Convert L2 distance to cosine similarity for unit-normalized vectors."""
     return 1.0 - (l2_distance**2 / 2.0)
 
@@ -67,7 +67,7 @@ async def get_or_create_engram(
         return Engram.from_row(row), False
 
     # Tier 2: cosine similarity via sqlite-vec KNN
-    emb_bytes = _embedding_to_bytes(embedding)
+    emb_bytes = embedding_to_bytes(embedding)
     cursor = await db.execute(
         "SELECT engram_id, distance FROM engram_embeddings "
         "WHERE embedding MATCH ? AND k = 5 ORDER BY distance",
@@ -76,7 +76,7 @@ async def get_or_create_engram(
     knn_matches = await cursor.fetchall()
     await cursor.close()
     for match_row in knn_matches:
-        cosine_sim = _l2_to_cosine(match_row["distance"])
+        cosine_sim = l2_to_cosine(match_row["distance"])
         if cosine_sim >= similarity_threshold:
             cursor2 = await db.execute(
                 "SELECT * FROM engrams WHERE id = ?", (match_row["engram_id"],)
