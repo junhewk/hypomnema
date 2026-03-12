@@ -79,4 +79,10 @@ describe("DocumentCard", () => {
     );
     expect(screen.getByText("application/pdf")).toBeInTheDocument();
   });
+
+  it("card links to /documents/{id}", () => {
+    render(<DocumentCard document={makeDoc({ id: "doc-42" })} />);
+    const link = screen.getByTestId("document-link");
+    expect(link).toHaveAttribute("href", "/documents/doc-42");
+  });
 });
