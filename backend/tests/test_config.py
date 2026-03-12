@@ -53,7 +53,11 @@ class TestSettingsEnvOverride:
 
     def test_host_from_env_in_server_mode(self, monkeypatch):
         monkeypatch.setenv("HYPOMNEMA_MODE", "server")
-        monkeypatch.setenv("HYPOMNEMA_HOST", "0.0.0.0")
+        monkeypatch.setenv("HYPOMNEMA_HOST", "10.0.0.5")
+        assert Settings().host == "10.0.0.5"
+
+    def test_server_mode_defaults_to_all_interfaces(self, monkeypatch):
+        monkeypatch.setenv("HYPOMNEMA_MODE", "server")
         assert Settings().host == "0.0.0.0"
 
     def test_host_forced_localhost_in_local_mode(self, monkeypatch):

@@ -52,16 +52,35 @@ def _open_when_ready(url: str, port: int, timeout: int = 30) -> None:
             sleep(0.5)
 
 
+def _resolve_host(settings: "Settings") -> str:
+    """Resolve the host for URLs that browsers will use.
+
+    0.0.0.0 binds all interfaces but isn't a valid browser URL — resolve to
+    the machine's hostname so remote clients can reach the backend.
+    """
+    import socket
+
+    host = settings.host
+    if host == "0.0.0.0":  # noqa: S104
+        host = socket.gethostname()
+        try:
+            host = socket.getaddrinfo(host, None, socket.AF_INET)[0][4][0]
+        except OSError:
+            pass
+    return host
+
+
 def _frontend_env(settings: "Settings") -> dict[str, str]:
     """Build environment for the frontend process."""
+    public_host = _resolve_host(settings)
     env = {
         **os.environ,
         "PORT": str(settings.frontend_port),
-        "NEXT_PUBLIC_API_URL": f"http://{settings.host}:{settings.port}",
+        "NEXT_PUBLIC_API_URL": f"http://{public_host}:{settings.port}",
     }
-    # In server mode, bind Next.js to the same host so it's reachable remotely
+    # In server mode, bind Next.js to all interfaces so it's reachable remotely
     if settings.is_remote:
-        env["HOSTNAME"] = settings.host
+        env["HOSTNAME"] = "0.0.0.0"
     return env
 
 

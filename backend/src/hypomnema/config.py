@@ -75,7 +75,19 @@ class Settings(BaseSettings):
             f"http://127.0.0.1:{self.frontend_port}",
         ]
         if self.is_remote:
-            origins.append(f"http://{self.host}:{self.frontend_port}")
+            if self.host == "0.0.0.0":  # noqa: S104
+                # 0.0.0.0 binds all interfaces — allow any origin on the frontend port
+                import socket
+
+                hostname = socket.gethostname()
+                try:
+                    ip = socket.getaddrinfo(hostname, None, socket.AF_INET)[0][4][0]
+                    origins.append(f"http://{ip}:{self.frontend_port}")
+                except OSError:
+                    pass
+                origins.append(f"http://{hostname}:{self.frontend_port}")
+            else:
+                origins.append(f"http://{self.host}:{self.frontend_port}")
         return origins
 
     @classmethod
@@ -94,4 +106,6 @@ class Settings(BaseSettings):
     def set_host_for_mode(self) -> "Settings":
         if self.mode == "local":
             self.host = "127.0.0.1"
+        elif self.mode == "server" and self.host == "127.0.0.1":
+            self.host = "0.0.0.0"  # noqa: S104
         return self
