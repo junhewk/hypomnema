@@ -11,6 +11,10 @@ import threading
 import urllib.request
 from pathlib import Path
 from time import sleep
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from hypomnema.config import Settings
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _FRONTEND_DIR = _REPO_ROOT / "frontend"
@@ -48,8 +52,22 @@ def _open_when_ready(url: str, port: int, timeout: int = 30) -> None:
             sleep(0.5)
 
 
+def _frontend_env(settings: "Settings") -> dict[str, str]:
+    """Build environment for the frontend process."""
+    env = {
+        **os.environ,
+        "PORT": str(settings.frontend_port),
+        "NEXT_PUBLIC_API_URL": f"http://{settings.host}:{settings.port}",
+    }
+    # In server mode, bind Next.js to the same host so it's reachable remotely
+    if settings.is_remote:
+        env["HOSTNAME"] = settings.host
+    return env
+
+
 def _run(
     *,
+    settings: "Settings",
     npm: str,
     reload: bool,
     frontend_cmd: list[str],
@@ -57,17 +75,13 @@ def _run(
 ) -> None:
     import uvicorn
 
-    from hypomnema.config import Settings
-
-    settings = Settings()
     _ensure_frontend()
     _ensure_node_modules(npm)
 
-    frontend_env = {**os.environ, "PORT": str(settings.frontend_port)}
     frontend_proc = subprocess.Popen(
         frontend_cmd,
         cwd=_FRONTEND_DIR,
-        env=frontend_env,
+        env=_frontend_env(settings),
     )
 
     if open_browser:
@@ -97,8 +111,12 @@ def _run(
 
 
 def cmd_dev(args: argparse.Namespace) -> None:
+    from hypomnema.config import Settings
+
     npm = _find_npm()
+    settings = Settings()
     _run(
+        settings=settings,
         npm=npm,
         reload=True,
         frontend_cmd=[npm, "run", "dev"],
@@ -107,16 +125,26 @@ def cmd_dev(args: argparse.Namespace) -> None:
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
-    npm = _find_npm()
-    _ensure_frontend()
-    _ensure_node_modules(npm)
+    from hypomnema.config import Settings
 
+    npm = _find_npm()
+    settings = Settings()
+
+    # Build with NEXT_PUBLIC_API_URL so Next.js inlines the correct backend URL
     next_dir = _FRONTEND_DIR / ".next"
     if args.build or not next_dir.exists():
+        _ensure_frontend()
+        _ensure_node_modules(npm)
         print("Building frontend for production...")
-        subprocess.run([npm, "run", "build"], cwd=_FRONTEND_DIR, check=True)
+        subprocess.run(
+            [npm, "run", "build"],
+            cwd=_FRONTEND_DIR,
+            env=_frontend_env(settings),
+            check=True,
+        )
 
     _run(
+        settings=settings,
         npm=npm,
         reload=False,
         frontend_cmd=[npm, "run", "start"],

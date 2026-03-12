@@ -28,8 +28,40 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 
 ### Deployment Modes
 
-- **Local mode** (`start-web.sh`) — binds to localhost, opens in browser, cronjobs run only while active
-- **Server mode** (`start-server.sh`) — binds to Tailscale VPN interface, runs 24/7, continuous ingestion
+- **Local mode** (`uv run hypomnema dev`) — binds to localhost, opens browser, hot-reload enabled
+- **Server mode** (`HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<ip> uv run hypomnema serve`) — binds to specified host (e.g. Tailscale IP), runs production frontend, 24/7 continuous ingestion
+
+### Running
+
+All commands run from `backend/`:
+
+```bash
+# Development (localhost, hot-reload, auto-opens browser)
+uv run hypomnema dev
+uv run hypomnema dev --no-browser
+
+# Production / server mode (Tailscale / remote access)
+HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<tailscale-ip> uv run hypomnema serve
+HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<tailscale-ip> uv run hypomnema serve --build  # force frontend rebuild
+
+# Tests
+cd backend && uv run pytest                    # all backend tests
+cd frontend && npm test                        # vitest
+cd frontend && npx playwright test             # e2e
+```
+
+### Configuration
+
+All settings use `HYPOMNEMA_` env prefix. Key env vars:
+
+- `HYPOMNEMA_MODE` — `local` (default) or `server`
+- `HYPOMNEMA_HOST` — bind address (default `127.0.0.1`, set to Tailscale IP for server mode)
+- `HYPOMNEMA_LLM_PROVIDER` — `claude`, `google`, `openai`, `ollama`, or `mock` (default `mock`)
+- `HYPOMNEMA_EMBEDDING_PROVIDER` — `local`, `openai`, or `google` (default `local`, fixed at startup)
+- `HYPOMNEMA_ANTHROPIC_API_KEY`, `HYPOMNEMA_GOOGLE_API_KEY`, `HYPOMNEMA_OPENAI_API_KEY` — provider API keys
+- `HYPOMNEMA_DB_PATH` — SQLite database path (default `data/hypomnema.db`)
+
+LLM provider and API keys can also be configured at runtime via the Settings UI (`/settings`). DB settings override env vars for LLM-related fields. Embedding provider is fixed at startup — changing it requires a fresh database.
 
 ## Key Design Constraints
 
@@ -38,3 +70,6 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 - Frontend does no heavy compute — pure rendering client
 - Entity deduplication uses embedding-based concept hashes for O(1) lookup
 - Edge generation uses Top-K retrieval to bound LLM API costs
+- Embedding provider fixed at install time — different models produce incompatible vectors
+- LLM provider hot-swappable at runtime via Settings API (no restart needed)
+- API keys encrypted at rest via Fernet with auto-generated local keyfile

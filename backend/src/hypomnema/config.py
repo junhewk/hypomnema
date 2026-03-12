@@ -65,12 +65,16 @@ class Settings(BaseSettings):
         return v
 
     @property
+    def is_remote(self) -> bool:
+        return self.host not in ("127.0.0.1", "localhost")
+
+    @property
     def cors_origins(self) -> list[str]:
         origins = [
             f"http://localhost:{self.frontend_port}",
             f"http://127.0.0.1:{self.frontend_port}",
         ]
-        if self.host not in ("127.0.0.1", "localhost"):
+        if self.is_remote:
             origins.append(f"http://{self.host}:{self.frontend_port}")
         return origins
 
