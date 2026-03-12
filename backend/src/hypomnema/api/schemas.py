@@ -42,6 +42,7 @@ class ProjectionPoint(BaseModel):
     canonical_name: str
     x: float
     y: float
+    z: float
     cluster_id: int | None = None
 
 
@@ -51,11 +52,13 @@ class Cluster(BaseModel):
     engram_count: int
     centroid_x: float
     centroid_y: float
+    centroid_z: float
 
 
 class GapRegion(BaseModel):
     x: float
     y: float
+    z: float
     radius: float
     neighboring_clusters: list[int]
 

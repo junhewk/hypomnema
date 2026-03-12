@@ -135,6 +135,7 @@ class Projection(BaseModel):
     engram_id: str
     x: float
     y: float
+    z: float
     cluster_id: int | None = None
     updated_at: datetime
 

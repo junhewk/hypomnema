@@ -73,6 +73,7 @@ async def create_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> N
             engram_id TEXT PRIMARY KEY REFERENCES engrams(id),
             x REAL NOT NULL,
             y REAL NOT NULL,
+            z REAL NOT NULL,
             cluster_id INTEGER,
             updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
         )

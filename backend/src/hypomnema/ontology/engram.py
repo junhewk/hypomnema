@@ -33,6 +33,11 @@ def embedding_to_bytes(embedding: NDArray[np.float32]) -> bytes:
     return np.asarray(embedding, dtype="<f4").tobytes()
 
 
+def bytes_to_embedding(data: bytes) -> NDArray[np.float32]:
+    """Unpack little-endian float32 binary from sqlite-vec back to numpy array."""
+    return np.frombuffer(data, dtype="<f4").copy()
+
+
 def l2_to_cosine(l2_distance: float) -> float:
     """Convert L2 distance to cosine similarity for unit-normalized vectors."""
     return 1.0 - (l2_distance**2 / 2.0)

@@ -61,6 +61,7 @@ export interface Projection {
   engram_id: string;
   x: number;
   y: number;
+  z: number;
   cluster_id: number | null;
   updated_at: string;
 }
@@ -86,6 +87,7 @@ export interface ProjectionPoint {
   canonical_name: string;
   x: number;
   y: number;
+  z: number;
   cluster_id: number | null;
 }
 export interface Cluster {
@@ -94,10 +96,12 @@ export interface Cluster {
   engram_count: number;
   centroid_x: number;
   centroid_y: number;
+  centroid_z: number;
 }
 export interface GapRegion {
   x: number;
   y: number;
+  z: number;
   radius: number;
   neighboring_clusters: number[];
 }

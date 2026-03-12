@@ -359,8 +359,8 @@ class TestProjections:
     async def test_insert_projection(self, tmp_db):
         await tmp_db.execute("INSERT INTO engrams (id, canonical_name, concept_hash) VALUES (?, ?, ?)",
                              ("ep", "projected", "hp"))
-        await tmp_db.execute("INSERT INTO projections (engram_id, x, y, cluster_id) VALUES (?, ?, ?, ?)",
-                             ("ep", 1.5, -2.3, 0))
+        await tmp_db.execute("INSERT INTO projections (engram_id, x, y, z, cluster_id) VALUES (?, ?, ?, ?, ?)",
+                             ("ep", 1.5, -2.3, 0.7, 0))
         await tmp_db.commit()
         cursor = await tmp_db.execute("SELECT * FROM projections WHERE engram_id = 'ep'")
         row = await cursor.fetchone()
@@ -369,15 +369,15 @@ class TestProjections:
 
     async def test_fk_enforcement(self, tmp_db):
         with pytest.raises(Exception):
-            await tmp_db.execute("INSERT INTO projections (engram_id, x, y) VALUES (?, ?, ?)",
-                                 ("nonexistent", 0.0, 0.0))
+            await tmp_db.execute("INSERT INTO projections (engram_id, x, y, z) VALUES (?, ?, ?, ?)",
+                                 ("nonexistent", 0.0, 0.0, 0.0))
             await tmp_db.commit()
 
     async def test_from_row_model(self, tmp_db):
         await tmp_db.execute("INSERT INTO engrams (id, canonical_name, concept_hash) VALUES (?, ?, ?)",
                              ("epm", "proj model", "hpm"))
-        await tmp_db.execute("INSERT INTO projections (engram_id, x, y) VALUES (?, ?, ?)",
-                             ("epm", 3.14, 2.72))
+        await tmp_db.execute("INSERT INTO projections (engram_id, x, y, z) VALUES (?, ?, ?, ?)",
+                             ("epm", 3.14, 2.72, 1.41))
         await tmp_db.commit()
         cursor = await tmp_db.execute("SELECT * FROM projections WHERE engram_id = 'epm'")
         proj = Projection.from_row(await cursor.fetchone())
