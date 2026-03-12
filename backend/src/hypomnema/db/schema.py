@@ -89,6 +89,7 @@ async def create_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> N
     await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_triaged ON documents(triaged)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_uri ON documents(source_uri)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_projections_cluster ON projections(cluster_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_engram ON document_engrams(engram_id)")
 
     # ── Virtual tables (vec0 does NOT support IF NOT EXISTS) ─
 

@@ -84,3 +84,5 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "TCH"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["B017"]
+"src/hypomnema/api/**" = ["TC001"]
+"src/hypomnema/main.py" = ["TC003"]

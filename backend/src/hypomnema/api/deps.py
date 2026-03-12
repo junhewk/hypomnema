@@ -1,0 +1,42 @@
+"""FastAPI dependency injection — pull resources from app.state."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Annotated
+
+from fastapi import Depends, Request
+
+if TYPE_CHECKING:
+    import aiosqlite
+
+    from hypomnema.config import Settings
+    from hypomnema.embeddings.base import EmbeddingModel
+    from hypomnema.llm.base import LLMClient
+    from hypomnema.scheduler.cron import FeedScheduler
+
+
+def get_db(request: Request) -> aiosqlite.Connection:
+    return request.app.state.db  # type: ignore[no-any-return]
+
+
+def get_llm(request: Request) -> LLMClient:
+    return request.app.state.llm  # type: ignore[no-any-return]
+
+
+def get_embeddings(request: Request) -> EmbeddingModel:
+    return request.app.state.embeddings  # type: ignore[no-any-return]
+
+
+def get_scheduler(request: Request) -> FeedScheduler:
+    return request.app.state.scheduler  # type: ignore[no-any-return]
+
+
+def get_settings(request: Request) -> Settings:
+    return request.app.state.settings  # type: ignore[no-any-return]
+
+
+DB = Annotated["aiosqlite.Connection", Depends(get_db)]
+LLM = Annotated["LLMClient", Depends(get_llm)]
+Embeddings = Annotated["EmbeddingModel", Depends(get_embeddings)]
+Scheduler = Annotated["FeedScheduler", Depends(get_scheduler)]
+AppSettings = Annotated["Settings", Depends(get_settings)]

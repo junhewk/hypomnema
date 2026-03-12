@@ -19,7 +19,7 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P6 — Triage | Done | 20 backend (220 pass, 1 skip total) | Embedding-based bouncer, bootstrap auto-accept, document_embeddings storage, pipeline triaged!=-1 filter |
 | P7 — Feeds + Scheduler | Done | 52 backend (272 pass, 1 skip total) | RSS/scrape/YouTube fetchers, FetchedItem dataclass, feed source CRUD, APScheduler 3.x cron, batched source_uri dedup |
 | P8 — Search | Done | 40 backend (312 pass, 1 skip total) | Hybrid doc search (FTS5 + semantic + RRF fusion), knowledge graph BFS neighborhood, edge queries by engram/predicate/pair |
-| P9 — API Layer | Not started | — | |
+| P9 — API Layer | Done | 36 backend (348 pass, 1 skip total) | FastAPI app factory, lifespan DI, CORS, all routers, background ontology pipeline, batch edge query for knowledge search |
 | P10 — Viz Pipeline | Not started | — | |
 | P11–14 — Frontend | Not started | — | |
 | P15 — Deployment | Not started | — | |
@@ -77,6 +77,15 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **BFS edge dedup via dict accumulation:** `get_neighborhood()` stores edges in `dict[str, Edge]` keyed by edge ID during traversal, deduplicating inline rather than post-hoc.
 - **SQL operator precedence in BFS:** Edge query wraps `OR` clause in parens: `(source IN (...) OR target IN (...)) AND predicate = ?` — without parens, `AND` binds tighter than `OR`.
 - **Edges are undirected for traversal:** `get_edges_for_engram()` and `get_neighborhood()` follow edges in both directions. `get_edges_between()` checks both `(A→B)` and `(B→A)`.
+- **`DocumentOut` overrides metadata serializer:** `Document.serialize_metadata` returns JSON string for DB storage; `DocumentOut` overrides to return dict as-is for API responses. Uses `# type: ignore[override]` since return type intentionally differs.
+- **`ScoredDocumentOut` flattening:** Backend `ScoredDocument` dataclass nests `document: Document`. Route handler flattens via `{**result.document.model_dump(mode="python"), "score": result.score}`.
+- **Background ontology pipeline:** `_run_ontology_pipeline()` opens its own DB connection via `connect()` to avoid sharing the request-path aiosqlite connection. LLM/embeddings objects are stateless, safe to share.
+- **`create_app` factory with `use_lifespan` flag:** Tests pass `use_lifespan=False` and manually set `app.state.*` to avoid starting the real scheduler or loading GPU models.
+- **Knowledge search batch query:** `search_knowledge_endpoint` fetches matching engram IDs with `SELECT id` then retrieves all edges in a single `IN (...)` query (avoids N+1). Results capped at 100 edges, matching the predicate fallback path.
+- **Feed update 404 detection:** Explicit existence check before `update_feed_source()` rather than string-matching on ValueError messages. Avoids fragile coupling to error message text.
+- **`document_engrams` index:** Added `idx_document_engrams_engram` on `document_engrams(engram_id)` — the composite PK `(document_id, engram_id)` cannot serve queries filtering by `engram_id` first.
+- **Viz endpoints are stubs:** Return empty lists; Phase 10 fills in the UMAP/clustering pipeline.
+- **CORS:** Allows `localhost:3000` and `127.0.0.1:3000` for frontend dev.
 
 ---
 
