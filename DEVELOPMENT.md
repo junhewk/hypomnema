@@ -20,8 +20,9 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P7 — Feeds + Scheduler | Done | 52 backend (272 pass, 1 skip total) | RSS/scrape/YouTube fetchers, FetchedItem dataclass, feed source CRUD, APScheduler 3.x cron, batched source_uri dedup |
 | P8 — Search | Done | 40 backend (312 pass, 1 skip total) | Hybrid doc search (FTS5 + semantic + RRF fusion), knowledge graph BFS neighborhood, edge queries by engram/predicate/pair |
 | P9 — API Layer | Done | 36 backend (348 pass, 1 skip total) | FastAPI app factory, lifespan DI, CORS, all routers, background ontology pipeline, batch edge query for knowledge search |
-| P10 — Viz Pipeline | Not started | — | |
-| P11–14 — Frontend | Not started | — | |
+| P10 — Viz Pipeline | Done | 23 backend (371 pass, 1 skip total) | 3D UMAP projection, HDBSCAN clustering, gap detection |
+| P11 — Frontend: Stream | Done | 37 frontend (45 total) + 3 e2e | ScribbleInput, FileDropZone, DocumentCard, useDocuments hook, StreamPage, Playwright e2e |
+| P12–14 — Frontend | Not started | — | |
 | P15 — Deployment | Not started | — | |
 
 ### Implementation Notes (P0+P1+P2+P3+P4)
@@ -86,6 +87,17 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **`document_engrams` index:** Added `idx_document_engrams_engram` on `document_engrams(engram_id)` — the composite PK `(document_id, engram_id)` cannot serve queries filtering by `engram_id` first.
 - **Viz endpoints are stubs:** Return empty lists; Phase 10 fills in the UMAP/clustering pipeline.
 - **CORS:** Allows `localhost:3000` and `127.0.0.1:3000` for frontend dev.
+- **Single client boundary:** `app/page.tsx` is a server component rendering `<StreamPage />` (client). All interactive pieces live under this one `"use client"` boundary — no benefit to server-rendering when data comes from the local backend via client-side fetch.
+- **No state library:** React 19 hooks suffice. `useDocuments` is ~100 lines with polling. A library can be introduced if patterns repeat.
+- **Dark mode via `prefers-color-scheme`:** CSS custom properties (`--surface`, `--border`, `--muted`, `--accent`, source-type colors) in `globals.css` respond to the media query. No class-based toggle.
+- **Dot-grid background:** Faint `radial-gradient` pattern evokes the knowledge graph. Uses `color-mix()` for theme-adaptive opacity.
+- **DocumentCard memoized:** `React.memo()` prevents re-renders during polling when document data hasn't changed.
+- **Polling change detection:** `useDocuments` compares IDs and `processed` status before replacing state — returns same reference on no-op polls to avoid cascading re-renders.
+- **Textarea auto-resize via rAF:** `requestAnimationFrame` batches the height read/write to avoid forced reflow on every keystroke.
+- **Processing status as dot:** Documents have `processed: 0|1|2`. Small colored dot (amber/blue/green) with CSS pulse animation for in-progress states.
+- **Source-type left border:** DocumentCard uses a colored left border (blue=scribble, purple=file, amber=feed) via CSS variables instead of inline Tailwind color classes.
+- **Shared test factory:** `__tests__/helpers/makeDocument.ts` exports `makeDoc()` and `makeDocs()` used across all component/hook test files.
+- **`SOURCE_STYLES` typed with `SourceType`:** Record key uses the union type from `types.ts` for compile-time exhaustiveness.
 
 ---
 

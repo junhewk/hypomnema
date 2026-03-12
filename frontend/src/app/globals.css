@@ -1,26 +1,111 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafaf9;
+  --foreground: #1c1917;
+  --surface: #f5f5f4;
+  --surface-raised: #ffffff;
+  --border: #e7e5e4;
+  --border-focus: #a8a29e;
+  --muted: #78716c;
+  --accent: #b45309;
+  --accent-soft: #fef3c7;
+  --processing: #d97706;
+  --indexing: #2563eb;
+  --complete: #16a34a;
+  --source-scribble: #1d4ed8;
+  --source-file: #7c3aed;
+  --source-feed: #b45309;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-border: var(--border);
+  --color-border-focus: var(--border-focus);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #0a0a0b;
+    --foreground: #e7e5e4;
+    --surface: #141415;
+    --surface-raised: #1c1c1e;
+    --border: #262627;
+    --border-focus: #525253;
+    --muted: #78716c;
+    --accent: #f59e0b;
+    --accent-soft: #451a0320;
+    --source-scribble: #60a5fa;
+    --source-file: #a78bfa;
+    --source-feed: #fbbf24;
   }
 }
 
+/* dot-grid — faint graph-paper / constellation map feel */
 body {
-  background: var(--background);
+  background-color: var(--background);
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 4%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+/* smooth focus rings everywhere */
+*:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* warm text selection */
+::selection {
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/* subtle scrollbar (webkit) */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+/* keyframes */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.3s ease-out both;
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
 }
