@@ -18,7 +18,7 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P5 — Edge Generation | Done | 28 backend (200 pass, 1 skip total) | Top-K neighbor retrieval, 12-predicate vocabulary, batched KNN, idempotent edges |
 | P6 — Triage | Done | 20 backend (220 pass, 1 skip total) | Embedding-based bouncer, bootstrap auto-accept, document_embeddings storage, pipeline triaged!=-1 filter |
 | P7 — Feeds + Scheduler | Done | 52 backend (272 pass, 1 skip total) | RSS/scrape/YouTube fetchers, FetchedItem dataclass, feed source CRUD, APScheduler 3.x cron, batched source_uri dedup |
-| P8 — Search | Not started | — | |
+| P8 — Search | Done | 40 backend (312 pass, 1 skip total) | Hybrid doc search (FTS5 + semantic + RRF fusion), knowledge graph BFS neighborhood, edge queries by engram/predicate/pair |
 | P9 — API Layer | Not started | — | |
 | P10 — Viz Pipeline | Not started | — | |
 | P11–14 — Frontend | Not started | — | |
@@ -70,6 +70,13 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **HTML parsing:** Simple regex `_strip_html()` and `_extract_html_title()`. `fetch_scrape()` extracts title before stripping to avoid double-parsing the HTML.
 - **YouTube URL handling:** `extract_video_id()` supports `youtu.be/ID`, `youtube.com/watch?v=ID`, `youtube.com/embed/ID`. Channel feeds parse RSS then fetch transcripts per video, with individual failures logged and skipped.
 - **mypy overrides:** `feedparser` (no py.typed, `follow_imports = "skip"`) and `apscheduler.*` (no stubs) added to pyproject.toml.
+- **`ScoredDocument` is a frozen dataclass, not Pydantic:** Internal search result container — API serialization deferred to Phase 9.
+- **FTS5 query sanitization:** Strips metacharacters (`"*():^`) and boolean operators (`AND/OR/NOT/NEAR`) then wraps each token in quotes to prevent FTS5 syntax errors from user input.
+- **Hybrid search via RRF:** Reciprocal Rank Fusion with k=60. `list_count` dict tracks how many result lists each doc appears in during the scoring pass for O(1) match_type detection (avoids O(n*m) re-scan).
+- **Sequential async search:** `keyword_search` and `semantic_search` run sequentially despite both being async — aiosqlite connections are not concurrency-safe.
+- **BFS edge dedup via dict accumulation:** `get_neighborhood()` stores edges in `dict[str, Edge]` keyed by edge ID during traversal, deduplicating inline rather than post-hoc.
+- **SQL operator precedence in BFS:** Edge query wraps `OR` clause in parens: `(source IN (...) OR target IN (...)) AND predicate = ?` — without parens, `AND` binds tighter than `OR`.
+- **Edges are undirected for traversal:** `get_edges_for_engram()` and `get_neighborhood()` follow edges in both directions. `get_edges_between()` checks both `(A→B)` and `(B→A)`.
 
 ---
 
