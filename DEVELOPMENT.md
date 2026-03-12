@@ -25,7 +25,8 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P12 — Frontend: Doc Detail | Done | 33 frontend (78 total) + 6 e2e | DocumentDetailPage, NetworkPanel, EngramBadge, useDocument, useEngrams hooks |
 | P13 — Frontend: Search + Engrams | Done | 29 frontend (107 total) + 12 e2e | SearchPage, SearchBar, EngramDetailPage, useSearch, useEngram hooks, shared resolveEngram + mockResponse helpers |
 | P14 — Frontend: Viz Canvas | Done | 19 frontend (127 total) + 16 e2e + 1 backend (349 total) | R3F + drei, GL points/lines, orbit controls, fog, cluster labels, hover tooltip |
-| P15 — Deployment | Not started | — | |
+| P15 — CLI + Integration | Done | 7 backend (377 pass, 1 skip total) | CLI entry point, dynamic CORS, integration tests |
+| P16 — Multi-Provider + Settings | Done | 36 backend (413 pass, 1 skip total) | OpenAI + Ollama LLM, OpenAI + Google embeddings, settings API, hot-swap, Fernet encryption, settings UI |
 
 ### Implementation Notes (P0+P1+P2+P3+P4)
 
@@ -120,6 +121,23 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **Glass morphism overlays:** Nav pills, tooltip, and cluster labels use `backdrop-filter: blur()` with semi-transparent backgrounds via `color-mix()` — bridges HTML overlays into the 3D space visually.
 - **Raycaster threshold:** `Points: { threshold: 0.3 }` provides reasonable hit detection for point sprites. Cast as `unknown as RaycasterParameters` due to R3F typing gap — only `RaycasterParameters` type imported (not `import * as THREE`).
 
+### Implementation Notes (P16)
+
+- **Fernet key auto-generation:** `crypto.get_or_create_key()` creates `{data_dir}/.hypomnema_key` with `0o600` permissions on first run. Key persists across restarts; API keys encrypted at rest in the `settings` table.
+- **Settings table is key-value:** `settings(key TEXT PK, value TEXT, encrypted INTEGER, updated_at TEXT)`. Encrypted values stored as Fernet ciphertext; `get_all_settings_masked()` returns masked values (last 4 chars) without needing the Fernet key.
+- **Embedding provider fixed at startup:** `HYPOMNEMA_EMBEDDING_PROVIDER` env var selects `local`/`openai`/`google`. Settings UI displays as read-only. Different embedding models produce incompatible vectors — changing requires a fresh database.
+- **LLM hot-swap:** `PUT /api/settings` acquires `app.state.llm_lock` (asyncio.Lock), calls `build_llm()` factory, replaces `app.state.llm` in-place. No restart needed. The lock prevents mid-request replacement.
+- **DB settings override env vars for LLM fields only:** `Settings.with_db_overrides()` merges DB settings into env-based Settings, but only for `_LLM_OVERRIDABLE` fields (provider, model, API keys, base URLs). Embedding, host, port, db_path stay from env.
+- **`_LLM_OVERRIDABLE` is module-level:** Pydantic treats `_`-prefixed class attributes as `ModelPrivateAttr`, breaking `in` operator. Moved to module scope.
+- **`model_construct()` skips validation:** `with_db_overrides` uses `model_construct()` to avoid re-running validators (e.g., `set_host_for_mode`) on reconstructed Settings. Safe because values come from validated env + user DB input.
+- **Ollama uses httpx directly:** `POST /api/generate` with `stream: false`. No `ollama` Python package dependency. httpx already a project dependency.
+- **OpenAI `base_url` exposed:** Allows pointing at Together, Groq, vLLM, or any OpenAI-compatible API. Empty string = default OpenAI endpoint.
+- **Mock providers excluded from `/api/settings/providers`:** Mock LLM/embeddings remain for testing only — not user-facing in the settings UI or provider lists.
+- **Dirty-field tracking in settings UI:** Frontend tracks which fields the user actually modified. Untouched API key fields (showing masked values) are not sent in PUT, preventing overwrite of stored keys with masked strings.
+- **Provider cards instead of dropdown:** Settings UI uses stacked `border-l-2` cards matching the DocumentCard pattern, with active provider indicated by amber accent border + green status dot.
+- **New dependencies:** `cryptography>=44,<45` (Fernet), `openai>=1.60,<2` (OpenAI LLM + embeddings). Both added to pyproject.toml with mypy overrides for missing stubs.
+- **Existing test updated:** `test_config.py::test_invalid_llm_provider_rejected` was using `"openai"` as invalid provider — updated to `"nonexistent"` since OpenAI is now valid.
+
 ---
 
 ## Project Structure
@@ -131,18 +149,25 @@ hypomnema/
 │   ├── src/hypomnema/
 │   │   ├── main.py                       # FastAPI app factory + lifespan
 │   │   ├── config.py                     # Pydantic Settings
+│   │   ├── crypto.py                     # Fernet encryption for API keys at rest
 │   │   ├── db/
 │   │   │   ├── engine.py                 # get_db(), PRAGMAs, sqlite-vec loading
 │   │   │   ├── schema.py                 # CREATE TABLE/VIRTUAL TABLE, FTS5
-│   │   │   └── models.py                 # Pydantic models
+│   │   │   ├── models.py                 # Pydantic models
+│   │   │   └── settings_store.py         # Key-value settings CRUD with encryption
 │   │   ├── llm/
 │   │   │   ├── base.py                   # LLMClient Protocol
 │   │   │   ├── claude.py                 # Anthropic implementation
 │   │   │   ├── google.py                 # Gemini implementation
+│   │   │   ├── openai.py                 # OpenAI implementation (supports base_url)
+│   │   │   ├── ollama.py                 # Ollama REST API implementation
+│   │   │   ├── factory.py                # build_llm() factory for lifespan + hot-swap
 │   │   │   └── mock.py                   # Deterministic mock for tests
 │   │   ├── embeddings/
 │   │   │   ├── base.py                   # EmbeddingModel Protocol
 │   │   │   ├── local_gpu.py              # sentence-transformers
+│   │   │   ├── openai.py                 # OpenAI embeddings
+│   │   │   ├── google.py                 # Google embeddings
 │   │   │   └── mock.py                   # Hash-seeded PRNG vectors
 │   │   ├── ingestion/
 │   │   │   ├── scribble.py               # Text input handler
@@ -168,7 +193,8 @@ hypomnema/
 │   │       ├── engrams.py
 │   │       ├── search.py
 │   │       ├── visualization.py
-│   │       └── feeds.py
+│   │       ├── feeds.py
+│   │       └── settings.py              # Settings API + LLM hot-swap
 │   └── tests/
 │       ├── conftest.py                   # Shared fixtures: tmp_db, mock_llm, mock_embeddings
 │       ├── fixtures/                     # sample.pdf, sample.docx, sample.md
@@ -177,10 +203,10 @@ hypomnema/
 │   ├── package.json                      # Next.js 16+, vitest, playwright, tailwind
 │   ├── src/
 │   │   ├── app/                          # App Router pages
-│   │   ├── components/                   # ScribbleInput, DocumentCard, NetworkPanel, VizCanvas, etc.
+│   │   ├── components/                   # ScribbleInput, DocumentCard, NetworkPanel, VizCanvas, SettingsPage, etc.
 │   │   ├── lib/api.ts                    # Typed fetch wrapper
 │   │   ├── lib/types.ts                  # TS types matching backend models
-│   │   └── hooks/                        # useDocuments, useEngrams, useSearch
+│   │   └── hooks/                        # useDocuments, useEngrams, useSearch, useSettings
 │   ├── __tests__/
 │   └── e2e/
 ├── start-web.sh                          # Local mode: localhost, auto-open browser
@@ -252,15 +278,26 @@ CREATE TABLE projections (
     x REAL NOT NULL, y REAL NOT NULL, cluster_id INTEGER,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
+
+CREATE TABLE settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    encrypted INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
 ```
 
 ---
 
 ## Key Architectural Decisions
 
-**LLM Abstraction:** `Protocol`-based — `LLMClient` with `complete()` and `complete_json()`. Implementations: Claude (anthropic SDK), Google (google-genai SDK), Mock (deterministic, canned responses keyed by input substring).
+**LLM Abstraction:** `Protocol`-based — `LLMClient` with `complete()` and `complete_json()`. Implementations: Claude (anthropic SDK), Google (google-genai SDK), OpenAI (openai SDK, supports custom base_url), Ollama (httpx REST client), Mock (deterministic, canned responses keyed by input substring). `build_llm()` factory in `llm/factory.py` used by both lifespan and settings hot-swap.
 
-**Embedding Abstraction:** `EmbeddingModel` Protocol with `dimension` property and `embed(texts)`. Mock uses hash-seeded PRNG for deterministic, unit-normalized vectors.
+**Embedding Abstraction:** `EmbeddingModel` Protocol with `dimension` property and `embed(texts)`. Implementations: Local (sentence-transformers), OpenAI (openai SDK), Google (google-genai SDK), Mock (hash-seeded PRNG). Embedding provider is fixed at startup via env var — different models produce incompatible vectors.
+
+**API Key Encryption:** Fernet symmetric encryption with auto-generated keyfile at `{data_dir}/.hypomnema_key`. API keys encrypted before DB storage, decrypted on read, masked in API responses. Settings stored in `settings` key-value table.
+
+**LLM Hot-Swap:** Settings API acquires `asyncio.Lock`, builds new LLM client via factory, replaces `app.state.llm` in-place. No restart needed. DB settings override env vars for LLM-related fields only.
 
 **Concept Hash (O(1) dedup):** Binarize embedding by sign → SHA-256 hash the bit-string. Similar embeddings collide = dedup.
 
@@ -490,6 +527,28 @@ Build: `app/viz/page.tsx`, `VizCanvas` (d3 or canvas2d — start 2D, not Three.j
 - Scribble → engrams → edges; two related docs create edges; file upload → engrams; search returns results after ingestion; projections computed
 
 **Build:** `start-web.sh` (uvicorn localhost + next dev + browser open), `start-server.sh` (bind 0.0.0.0/Tailscale + next start)
+
+### Phase 16 — Multi-Provider Support + Settings UI
+
+**Goal:** OpenAI and Ollama LLM providers, OpenAI and Google embedding providers, settings API with encrypted API key storage, frontend settings page with LLM hot-swap.
+
+**Tests first:**
+- `test_crypto.py` — key creation, roundtrip encrypt/decrypt, wrong key raises, masking
+- `test_db/test_settings_store.py` — plaintext/encrypted CRUD, upsert, masked retrieval
+- `test_llm/test_openai.py` — protocol compliance, API call mocking, JSON parsing
+- `test_llm/test_ollama.py` — protocol compliance, REST call mocking, JSON parsing
+- `test_embeddings/test_openai_embed.py` — protocol, dimension, normalized output
+- `test_embeddings/test_google_embed.py` — protocol, dimension, normalized output
+- `test_api/test_settings.py` — masked GET, provider update, key encryption, embedding rejection, providers list, hot-swap
+
+**Build:** `crypto.py`, `db/settings_store.py`, `llm/openai.py`, `llm/ollama.py`, `llm/factory.py`, `embeddings/openai.py`, `embeddings/google.py`, `api/settings.py`, expanded `config.py`, updated `main.py` lifespan. Frontend: `SettingsPage`, `useSettings` hook, settings API methods, provider types.
+
+**API additions:**
+```
+GET    /api/settings                → SettingsResponse (masked keys)
+PUT    /api/settings                → SettingsResponse (hot-swaps LLM)
+GET    /api/settings/providers      → ProvidersResponse (available providers)
+```
 
 ---
 

@@ -85,7 +85,7 @@ class TestSettingsValidation:
 
     def test_invalid_llm_provider_rejected(self):
         with pytest.raises(ValidationError, match="llm_provider"):
-            Settings(llm_provider="openai")
+            Settings(llm_provider="nonexistent")
 
     def test_triage_threshold_above_one_rejected(self):
         with pytest.raises(ValidationError, match="triage_threshold"):

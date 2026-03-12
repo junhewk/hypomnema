@@ -11,6 +11,9 @@ import type {
   Cluster,
   GapRegion,
   VizEdge,
+  AppSettings,
+  SettingsUpdatePayload,
+  ProvidersResponse,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:8000";
@@ -151,6 +154,21 @@ export class ApiClient {
 
   async deleteFeed(id: string): Promise<void> {
     return this.request(`/api/feeds/${id}`, { method: "DELETE" });
+  }
+
+  async getSettings(): Promise<AppSettings> {
+    return this.request("/api/settings");
+  }
+
+  async updateSettings(updates: SettingsUpdatePayload): Promise<AppSettings> {
+    return this.request("/api/settings", {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    });
+  }
+
+  async getProviders(): Promise<ProvidersResponse> {
+    return this.request("/api/settings/providers");
   }
 }
 

@@ -79,6 +79,15 @@ async def create_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> N
         )
     """)
 
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            encrypted INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+
     # ── Indexes ──────────────────────────────────────────────
 
     await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_type ON documents(source_type)")

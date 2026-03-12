@@ -107,3 +107,45 @@ export interface GapRegion {
   neighboring_clusters: number[];
 }
 export type VizEdge = Pick<Edge, "source_engram_id" | "target_engram_id" | "predicate" | "confidence">;
+
+export interface AppSettings {
+  llm_provider: string;
+  llm_model: string;
+  anthropic_api_key: string;
+  google_api_key: string;
+  openai_api_key: string;
+  ollama_base_url: string;
+  openai_base_url: string;
+  embedding_provider: string;
+  embedding_model: string;
+  embedding_dim: number;
+}
+
+export interface SettingsUpdatePayload {
+  llm_provider?: string;
+  llm_model?: string;
+  anthropic_api_key?: string;
+  google_api_key?: string;
+  openai_api_key?: string;
+  ollama_base_url?: string;
+  openai_base_url?: string;
+}
+
+export interface ProviderInfo {
+  id: string;
+  name: string;
+  requires_key: boolean;
+  default_model: string;
+}
+
+export interface EmbeddingProviderInfo {
+  id: string;
+  name: string;
+  default_dimension: number;
+  requires_key: boolean;
+}
+
+export interface ProvidersResponse {
+  llm: ProviderInfo[];
+  embedding: EmbeddingProviderInfo[];
+}

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import Depends, Request
 
 if TYPE_CHECKING:
+    import asyncio
+
     import aiosqlite
 
     from hypomnema.config import Settings
@@ -35,8 +37,18 @@ def get_settings(request: Request) -> Settings:
     return request.app.state.settings  # type: ignore[no-any-return]
 
 
+def get_fernet_key(request: Request) -> bytes:
+    return request.app.state.fernet_key  # type: ignore[no-any-return]
+
+
+def get_llm_lock(request: Request) -> "asyncio.Lock":
+    return request.app.state.llm_lock  # type: ignore[no-any-return]
+
+
 DB = Annotated["aiosqlite.Connection", Depends(get_db)]
 LLM = Annotated["LLMClient", Depends(get_llm)]
 Embeddings = Annotated["EmbeddingModel", Depends(get_embeddings)]
 Scheduler = Annotated["FeedScheduler", Depends(get_scheduler)]
 AppSettings = Annotated["Settings", Depends(get_settings)]
+FernetKey = Annotated[bytes, Depends(get_fernet_key)]
+LLMLock = Annotated["asyncio.Lock", Depends(get_llm_lock)]

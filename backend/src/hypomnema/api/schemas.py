@@ -91,3 +91,49 @@ class FeedUpdate(BaseModel):
     url: str | None = None
     schedule: str | None = None
     active: bool | None = None
+
+
+# ── Settings ──────────────────────────────────────────────
+
+
+class SettingsResponse(BaseModel):
+    llm_provider: str
+    llm_model: str
+    anthropic_api_key: str
+    google_api_key: str
+    openai_api_key: str
+    ollama_base_url: str
+    openai_base_url: str
+    # Read-only embedding info
+    embedding_provider: str
+    embedding_model: str
+    embedding_dim: int
+
+
+class SettingsUpdate(BaseModel):
+    llm_provider: str | None = None
+    llm_model: str | None = None
+    anthropic_api_key: str | None = None
+    google_api_key: str | None = None
+    openai_api_key: str | None = None
+    ollama_base_url: str | None = None
+    openai_base_url: str | None = None
+
+
+class ProviderInfo(BaseModel):
+    id: str
+    name: str
+    requires_key: bool
+    default_model: str
+
+
+class EmbeddingProviderInfo(BaseModel):
+    id: str
+    name: str
+    default_dimension: int
+    requires_key: bool
+
+
+class ProvidersResponse(BaseModel):
+    llm: list[ProviderInfo]
+    embedding: list[EmbeddingProviderInfo]

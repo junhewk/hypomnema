@@ -22,6 +22,8 @@ dependencies = [
     "umap-learn>=0.5,<1",
     "scikit-learn>=1.6,<2",
     "httpx>=0.28,<1",
+    "cryptography>=44,<45",
+    "openai>=1.60,<2",
 ]
 
 [dependency-groups]
@@ -61,6 +63,14 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["google.genai", "google.genai.types"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["openai"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["cryptography.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

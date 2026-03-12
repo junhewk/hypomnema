@@ -5,6 +5,12 @@ from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
+_LLM_OVERRIDABLE = {
+    "llm_provider", "llm_model", "anthropic_api_key", "google_api_key",
+    "openai_api_key", "ollama_base_url", "openai_base_url",
+}
+
+
 class Settings(BaseSettings):
     model_config = {"env_prefix": "HYPOMNEMA_"}
 
@@ -19,9 +25,16 @@ class Settings(BaseSettings):
     embedding_model: str = "all-MiniLM-L6-v2"
 
     # LLM
-    llm_provider: Literal["claude", "google", "mock"] = "mock"
+    llm_provider: Literal["claude", "google", "openai", "ollama", "mock"] = "mock"
+    llm_model: str = ""
     anthropic_api_key: str = ""
     google_api_key: str = ""
+    openai_api_key: str = ""
+    ollama_base_url: str = "http://localhost:11434"
+    openai_base_url: str = ""
+
+    # Embedding provider (fixed at install time — not changeable at runtime)
+    embedding_provider: Literal["local", "openai", "google"] = "local"
 
     # Server
     host: str = "127.0.0.1"
@@ -60,6 +73,18 @@ class Settings(BaseSettings):
         if self.host not in ("127.0.0.1", "localhost"):
             origins.append(f"http://{self.host}:{self.frontend_port}")
         return origins
+
+    @classmethod
+    def with_db_overrides(cls, base: "Settings", db_settings: dict[str, str]) -> "Settings":
+        """Create a new Settings with LLM-related fields overridden from DB values."""
+        overrides: dict[str, str] = {
+            k: v for k, v in db_settings.items() if k in _LLM_OVERRIDABLE and v
+        }
+        if not overrides:
+            return base
+        data = {k: getattr(base, k) for k in cls.model_fields}
+        data.update(overrides)
+        return cls.model_construct(**data)
 
     @model_validator(mode="after")
     def set_host_for_mode(self) -> "Settings":
