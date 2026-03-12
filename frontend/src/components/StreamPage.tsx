@@ -26,6 +26,13 @@ export function StreamPage() {
           >
             search →
           </Link>
+          <Link
+            href="/viz"
+            className="rounded-full border border-border px-3 py-0.5 font-mono text-[10px] text-muted no-underline transition-colors hover:border-border-focus hover:text-foreground"
+            data-testid="viz-link"
+          >
+            viz →
+          </Link>
         </div>
       </header>
 

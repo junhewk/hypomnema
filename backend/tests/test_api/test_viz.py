@@ -58,6 +58,15 @@ class TestVizGaps:
 
 
 @pytest.mark.asyncio
+class TestVizEdges:
+    async def test_get_edges(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/viz/edges")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
+
+
+@pytest.mark.asyncio
 class TestRecompute:
     async def test_returns_projections(self, client: AsyncClient, app: object) -> None:
         await _seed_engrams(app, 20)

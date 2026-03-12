@@ -24,7 +24,7 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P11 — Frontend: Stream | Done | 37 frontend (45 total) + 3 e2e | ScribbleInput, FileDropZone, DocumentCard, useDocuments hook, StreamPage, Playwright e2e |
 | P12 — Frontend: Doc Detail | Done | 33 frontend (78 total) + 6 e2e | DocumentDetailPage, NetworkPanel, EngramBadge, useDocument, useEngrams hooks |
 | P13 — Frontend: Search + Engrams | Done | 29 frontend (107 total) + 12 e2e | SearchPage, SearchBar, EngramDetailPage, useSearch, useEngram hooks, shared resolveEngram + mockResponse helpers |
-| P14 — Frontend: Viz Canvas | Not started | — | |
+| P14 — Frontend: Viz Canvas | Done | 19 frontend (127 total) + 16 e2e + 1 backend (349 total) | R3F + drei, GL points/lines, orbit controls, fog, cluster labels, hover tooltip |
 | P15 — Deployment | Not started | — | |
 
 ### Implementation Notes (P0+P1+P2+P3+P4)
@@ -109,6 +109,16 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **Score badge uses accent color:** `DocumentCard` detects `ScoredDocument` via `"score" in doc` and renders an amber accent pill (`var(--accent)`) to distinguish relevance scores from timestamps.
 - **Shared test helpers:** `__tests__/helpers/mockResponse.ts` exports `mockJsonResponse()` and `mockErrorResponse()` used across all hook/component tests. `makeEngram.ts` exports factories for `Engram`, `Edge`, `EngramDetail`, `DocumentDetail`.
 - **Next.js 16 async params:** `app/engrams/[id]/page.tsx` uses `params: Promise<{ id: string }>` with `await params` — required pattern for dynamic route params in Next.js 16.
+- **React Three Fiber + drei for 3D viz:** R3F v9 gives declarative React API over Three.js. `drei` provides `OrbitControls` (camera) and `Html` (tooltip/label overlays). `next/dynamic` with `ssr: false` on a `"use client"` page avoids SSR issues with WebGL — Next.js 16 disallows `ssr: false` in Server Components.
+- **GL primitives, not meshes:** Engrams rendered as `THREE.Points` (GPU point sprites), edges as `THREE.LineSegments`. Two draw calls total. `sizeAttenuation={false}` keeps points constant screen-size regardless of zoom.
+- **`VizEdge` as `Pick<Edge, ...>`:** Lightweight projection of the full `Edge` type — avoids duplicate interface while selecting only the 4 fields needed for visualization.
+- **`load_edges()` in projection module:** Backend edge query extracted to `visualization/projection.py` alongside `load_projections`/`load_clusters`/`load_gaps`. Selects only needed columns (`source_engram_id`, `target_engram_id`, `predicate`, `confidence`) with `VizEdge` response schema. Limit 5000 prevents unbounded queries.
+- **Pre-allocated edge buffer:** `buildEdgeBuffer` two-pass approach: count valid edges first, then fill a pre-allocated `Float32Array` directly — avoids dynamic `number[]` growth + conversion copy.
+- **Cluster lookup via Map:** `clusterMap` built once via `useMemo` when clusters change. Tooltip `clusterLabel` derivation uses O(1) Map lookup instead of O(N) `clusters.find()` — important since `handlePointerMove` fires on every mouse movement.
+- **Golden-angle HSL cluster palette:** `clusterColor(id)` uses `hue = (id * 137.508) % 360` with `s=70%, l=60%` for luminous colors on the dark viewport. Noise points (`cluster_id` null or -1) get muted gray matching `--muted`.
+- **Atmospheric dark viewport:** Viz page uses dedicated `#08080a` background with faint teal/amber radial gradients, scene fog for depth perception, and `depthWrite: false` on transparent primitives to prevent z-fighting.
+- **Glass morphism overlays:** Nav pills, tooltip, and cluster labels use `backdrop-filter: blur()` with semi-transparent backgrounds via `color-mix()` — bridges HTML overlays into the 3D space visually.
+- **Raycaster threshold:** `Points: { threshold: 0.3 }` provides reasonable hit detection for point sprites. Cast as `unknown as RaycasterParameters` due to R3F typing gap — only `RaycasterParameters` type imported (not `import * as THREE`).
 
 ---
 

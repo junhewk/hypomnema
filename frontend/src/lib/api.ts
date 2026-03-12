@@ -10,6 +10,7 @@ import type {
   ProjectionPoint,
   Cluster,
   GapRegion,
+  VizEdge,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:8000";
@@ -119,6 +120,10 @@ export class ApiClient {
 
   async getGaps(): Promise<GapRegion[]> {
     return this.request("/api/viz/gaps");
+  }
+
+  async getVizEdges(): Promise<VizEdge[]> {
+    return this.request("/api/viz/edges");
   }
 
   async createFeed(

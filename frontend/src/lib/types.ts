@@ -106,3 +106,4 @@ export interface GapRegion {
   radius: number;
   neighboring_clusters: number[];
 }
+export type VizEdge = Pick<Edge, "source_engram_id" | "target_engram_id" | "predicate" | "confidence">;

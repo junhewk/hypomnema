@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     import aiosqlite
     from numpy.typing import NDArray
 
-from hypomnema.api.schemas import Cluster, GapRegion, ProjectionPoint
+from hypomnema.api.schemas import Cluster, GapRegion, ProjectionPoint, VizEdge
 from hypomnema.ontology.engram import bytes_to_embedding
 
 logger = logging.getLogger(__name__)
@@ -278,3 +278,25 @@ async def load_gaps(db: aiosqlite.Connection) -> list[GapRegion]:
         )
 
     return _detect_gaps(coords, clusters)
+
+
+async def load_edges(
+    db: aiosqlite.Connection, *, limit: int = 5000
+) -> list[VizEdge]:
+    """Load edges for visualization (lightweight projection)."""
+    cursor = await db.execute(
+        "SELECT source_engram_id, target_engram_id, predicate, confidence "
+        "FROM edges ORDER BY confidence DESC LIMIT ?",
+        (limit,),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [
+        VizEdge(
+            source_engram_id=r[0],
+            target_engram_id=r[1],
+            predicate=r[2],
+            confidence=r[3],
+        )
+        for r in rows
+    ]

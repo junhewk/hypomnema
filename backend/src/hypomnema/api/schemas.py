@@ -63,6 +63,13 @@ class GapRegion(BaseModel):
     neighboring_clusters: list[int]
 
 
+class VizEdge(BaseModel):
+    source_engram_id: str
+    target_engram_id: str
+    predicate: str
+    confidence: float
+
+
 # ── Request bodies ──────────────────────────────────────────
 
 
