@@ -152,6 +152,26 @@ class TestProcessPendingDocuments:
         assert len(results) == 1
         assert "skip2" in results
 
+    @pytest.mark.asyncio
+    async def test_skips_rejected_documents(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+        doc1 = await insert_test_doc(
+            tmp_db, "Actor-Network Theory discussion.", doc_id="rejected1"
+        )
+        await insert_test_doc(
+            tmp_db, "Actor-Network Theory discussion.", doc_id="accepted1"
+        )
+        # Reject doc1 via triage
+        await tmp_db.execute(
+            "UPDATE documents SET triaged = -1 WHERE id = ?", (doc1,)
+        )
+        await tmp_db.commit()
+        results = await process_pending_documents(
+            tmp_db, _make_llm(), mock_embeddings
+        )
+        assert len(results) == 1
+        assert "accepted1" in results
+        assert "rejected1" not in results
+
 
 def _make_linker_llm() -> MockLLMClient:
     return MockLLMClient(responses={

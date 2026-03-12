@@ -15,9 +15,9 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P2 — LLM + Embeddings | Done | 29 backend (28 pass, 1 skip) | Protocol-based LLM + embedding abstractions, mock + real clients |
 | P3 — Manual Ingestion | Done | 25 backend (125 pass, 1 skip total) | Scribble + file parsing (PDF/DOCX/MD), RETURNING * pattern |
 | P4 — Entity Extraction | Done | 46 backend (172 pass, 1 skip total) | Multi-tier engram dedup, LLM extraction, atomic pipeline |
-| P5 — Edge Generation | Not started | — | |
-| P6 — Triage | Not started | — | |
-| P7 — Feeds + Scheduler | Not started | — | |
+| P5 — Edge Generation | Done | 28 backend (200 pass, 1 skip total) | Top-K neighbor retrieval, 12-predicate vocabulary, batched KNN, idempotent edges |
+| P6 — Triage | Done | 20 backend (220 pass, 1 skip total) | Embedding-based bouncer, bootstrap auto-accept, document_embeddings storage, pipeline triaged!=-1 filter |
+| P7 — Feeds + Scheduler | Done | 52 backend (272 pass, 1 skip total) | RSS/scrape/YouTube fetchers, FetchedItem dataclass, feed source CRUD, APScheduler 3.x cron, batched source_uri dedup |
 | P8 — Search | Not started | — | |
 | P9 — API Layer | Not started | — | |
 | P10 — Viz Pipeline | Not started | — | |
@@ -46,6 +46,30 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **Atomic per-document processing:** Single `db.commit()` after all engrams created + document marked `processed=1`. If LLM fails mid-extraction, document stays `processed=0` for retry. Empty documents (no extractable entities) still get `processed=1`.
 - **Synonym resolution:** Two-step normalization: sync `normalize()` (lowercase, strip, collapse whitespace, strip trailing punctuation) always applied; async `resolve_synonyms()` uses LLM to merge synonyms within a single extraction batch. Cross-document dedup handled by embedding cosine similarity in `get_or_create_engram`.
 - **Text truncation:** Extractor truncates input to 12000 chars (configurable) to protect against context window overflow.
+- **Edge generation separated from extraction:** `ontology/linker.py` owns neighbor retrieval, predicate assignment, and edge creation. Pipeline orchestrates. This keeps phases testable and allows re-running edge generation independently.
+- **Controlled predicate vocabulary:** 12 predicates in `VALID_PREDICATES` frozenset. LLM system prompt generated from the constant to avoid drift. Invalid predicates silently dropped.
+- **Top-K neighbor retrieval:** `find_neighbors()` uses sqlite-vec KNN with batched engram fetch (single `SELECT ... WHERE id IN (...)` instead of N+1). Returns `(Engram, cosine_similarity)` tuples.
+- **`ProposedEdge` dataclass:** Frozen intermediate representation between LLM output and DB insert. Pipeline attaches `source_document_id` via `dataclasses.replace()`.
+- **`processed=1→2` transition:** `link_document()` only processes `processed=1` docs. Sets `processed=2` after edge generation. No `EmbeddingModel` needed — embeddings already stored from Phase 4.
+- **Document fetch helper:** `_fetch_document()` shared by `process_document()` and `link_document()` to avoid duplicated fetch-or-raise logic.
+- **Triage compares against engram embeddings:** `triage_document()` embeds the document text and queries Top-1 KNN against `engram_embeddings` (not `document_embeddings`). Checks relevance to *concepts we already know about*.
+- **Bootstrap auto-accept:** If `SELECT COUNT(*) FROM engrams` returns 0, all documents are accepted to seed the knowledge graph.
+- **Document embeddings stored regardless of outcome:** Both accepted and rejected documents get their embedding stored in `document_embeddings` via `INSERT OR IGNORE`. Supports future document-level semantic search (Phase 8).
+- **Manual docs bypass triage:** Scribbles and file uploads keep `triaged=0` (default). Pipeline filter uses `triaged != -1`, so `triaged=0` passes through. Only feed documents (Phase 7) will call `triage_document()`.
+- **`triage_pending_documents` source_type filter:** Defaults to `source_type="feed"` to only triage automated feed docs. Pass `None` to triage everything (useful in tests). Query built with conditional clause appending.
+- **Triage is embeddings-only, no LLM:** The whole point is a cheap filter — embedding similarity avoids expensive LLM calls on irrelevant content.
+- **Silent skip on re-triage:** Returns existing decision if `triaged != 0`, matching the pattern of `process_document()` which returns `[]` if already processed.
+- **Three sync fetchers, one async orchestrator:** `fetch_rss()`, `fetch_scrape()`, `fetch_youtube()` are sync (feedparser/httpx.Client/youtube-transcript-api are sync libraries). `poll_feed()` wraps fetcher calls in `asyncio.to_thread()` to avoid blocking the event loop.
+- **`FetchedItem` dataclass:** Frozen intermediate representation between fetcher output and DB insert. Mirrors `ParsedFile` from file_parser.py.
+- **Batched source_uri dedup:** `ingest_feed_items()` fetches all existing `source_uri` values in a single `SELECT ... WHERE source_uri IN (...)` query, then filters in-memory before inserting. Avoids N+1 pattern.
+- **Fetcher dispatch via `_FETCHERS` dict:** Direct function references (matching `file_parser.py`'s `_PARSERS` pattern). Tests use `monkeypatch.setitem()` on the dict.
+- **Feed source CRUD in feeds.py:** `create_feed_source()`, `list_feed_sources()`, `update_feed_source()`, `delete_feed_source()` — all use `RETURNING *` pattern. Tight coupling with feed domain, small surface area.
+- **Separation: feeds.py creates documents, scheduler orchestrates triage:** `poll_feed()` only fetches + inserts documents with `source_type='feed'`, `triaged=0`. The scheduler job calls `poll_feed()` then `triage_pending_documents()`.
+- **`FeedScheduler` wraps APScheduler 3.x `AsyncIOScheduler`:** Each job opens its own DB connection via `connect()` to avoid sharing aiosqlite connections. Re-fetches feed source on each run to check if deactivated since scheduling.
+- **APScheduler 3.x async quirk:** `AsyncIOScheduler.shutdown()` defers state transition to the event loop. Tests use `await asyncio.sleep(0)` after shutdown to let the state update propagate.
+- **HTML parsing:** Simple regex `_strip_html()` and `_extract_html_title()`. `fetch_scrape()` extracts title before stripping to avoid double-parsing the HTML.
+- **YouTube URL handling:** `extract_video_id()` supports `youtu.be/ID`, `youtube.com/watch?v=ID`, `youtube.com/embed/ID`. Channel feeds parse RSS then fetch transcripts per video, with individual failures logged and skipped.
+- **mypy overrides:** `feedparser` (no py.typed, `follow_imports = "skip"`) and `apscheduler.*` (no stubs) added to pyproject.toml.
 
 ---
 

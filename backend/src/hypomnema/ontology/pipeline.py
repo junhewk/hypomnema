@@ -110,7 +110,7 @@ async def process_pending_documents(
 ) -> dict[str, list[Engram]]:
     """Process all documents with processed=0, up to limit."""
     cursor = await db.execute(
-        "SELECT id FROM documents WHERE processed = 0 ORDER BY created_at LIMIT ?",
+        "SELECT id FROM documents WHERE processed = 0 AND triaged != -1 ORDER BY created_at LIMIT ?",
         (limit,),
     )
     rows = await cursor.fetchall()

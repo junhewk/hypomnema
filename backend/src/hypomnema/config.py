@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     # Triage
     triage_threshold: float = 0.3
 
+    # Feeds
+    feed_fetch_timeout: float = 30.0
+
     # sqlite-vec extension path (empty = auto-detect via sqlite_vec.loadable_path())
     sqlite_vec_path: str = ""
 
