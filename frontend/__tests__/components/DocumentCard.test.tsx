@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DocumentCard } from "@/components/DocumentCard";
-import { makeDoc } from "../helpers/makeDocument";
+import { makeDoc, makeScoredDoc } from "../helpers/makeDocument";
 
 describe("DocumentCard", () => {
   afterEach(() => {
@@ -84,5 +84,10 @@ describe("DocumentCard", () => {
     render(<DocumentCard document={makeDoc({ id: "doc-42" })} />);
     const link = screen.getByTestId("document-link");
     expect(link).toHaveAttribute("href", "/documents/doc-42");
+  });
+
+  it("shows score badge when document has score", () => {
+    render(<DocumentCard document={makeScoredDoc({ score: 0.92 })} />);
+    expect(screen.getByTestId("score-badge")).toHaveTextContent("92% match");
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useDocuments } from "@/hooks/useDocuments";
 import { ScribbleInput } from "./ScribbleInput";
 import { FileDropZone } from "./FileDropZone";
@@ -14,9 +15,18 @@ export function StreamPage() {
         <h1 className="font-mono text-lg font-bold tracking-[0.2em] uppercase">
           hypomnema
         </h1>
-        <p className="mt-1 font-mono text-xs text-muted tracking-wide">
-          notes &rarr; knowledge graph
-        </p>
+        <div className="mt-1 flex items-center gap-4">
+          <p className="font-mono text-xs text-muted tracking-wide">
+            notes &rarr; knowledge graph
+          </p>
+          <Link
+            href="/search"
+            className="rounded-full border border-border px-3 py-0.5 font-mono text-[10px] text-muted no-underline transition-colors hover:border-border-focus hover:text-foreground"
+            data-testid="search-link"
+          >
+            search →
+          </Link>
+        </div>
       </header>
 
       <ScribbleInput onSubmit={refresh} />

@@ -2,12 +2,12 @@
 
 import { memo, type CSSProperties } from "react";
 import Link from "next/link";
-import type { Document } from "@/lib/types";
+import type { Document, ScoredDocument } from "@/lib/types";
 import { timeAgo } from "@/lib/timeAgo";
 import { SOURCE_STYLES, STATUS_COLOR, STATUS_ANIM } from "@/lib/documentStyles";
 
 interface DocumentCardProps {
-  document: Document;
+  document: Document | ScoredDocument;
   style?: CSSProperties;
 }
 
@@ -15,6 +15,7 @@ export const DocumentCard = memo(function DocumentCard({
   document: doc,
   style,
 }: DocumentCardProps) {
+  const score = "score" in doc ? doc.score : undefined;
   const source = SOURCE_STYLES[doc.source_type];
   const preview =
     doc.text.length > 280 ? doc.text.slice(0, 280) + "\u2026" : doc.text;
@@ -64,13 +65,23 @@ export const DocumentCard = memo(function DocumentCard({
         {/* text preview */}
         <p className="font-mono text-xs leading-relaxed text-muted">{preview}</p>
 
-        {/* timestamp */}
-        <time
-          className="mt-2 block font-mono text-[10px] text-muted/60"
-          dateTime={doc.created_at}
-        >
-          {timeAgo(doc.created_at)}
-        </time>
+        {/* timestamp + score */}
+        <div className="mt-2 flex items-center gap-2">
+          <time
+            className="font-mono text-[10px] text-muted/60"
+            dateTime={doc.created_at}
+          >
+            {timeAgo(doc.created_at)}
+          </time>
+          {score !== undefined && (
+            <span
+              className="rounded-sm px-1.5 py-0.5 font-mono text-[10px] text-[var(--accent)] bg-[var(--accent)]/10"
+              data-testid="score-badge"
+            >
+              {(score * 100).toFixed(0)}% match
+            </span>
+          )}
+        </div>
       </article>
     </Link>
   );

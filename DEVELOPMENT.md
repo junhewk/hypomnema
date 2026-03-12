@@ -22,7 +22,9 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P9 — API Layer | Done | 36 backend (348 pass, 1 skip total) | FastAPI app factory, lifespan DI, CORS, all routers, background ontology pipeline, batch edge query for knowledge search |
 | P10 — Viz Pipeline | Done | 23 backend (371 pass, 1 skip total) | 3D UMAP projection, HDBSCAN clustering, gap detection |
 | P11 — Frontend: Stream | Done | 37 frontend (45 total) + 3 e2e | ScribbleInput, FileDropZone, DocumentCard, useDocuments hook, StreamPage, Playwright e2e |
-| P12–14 — Frontend | Not started | — | |
+| P12 — Frontend: Doc Detail | Done | 33 frontend (78 total) + 6 e2e | DocumentDetailPage, NetworkPanel, EngramBadge, useDocument, useEngrams hooks |
+| P13 — Frontend: Search + Engrams | Done | 29 frontend (107 total) + 12 e2e | SearchPage, SearchBar, EngramDetailPage, useSearch, useEngram hooks, shared resolveEngram + mockResponse helpers |
+| P14 — Frontend: Viz Canvas | Not started | — | |
 | P15 — Deployment | Not started | — | |
 
 ### Implementation Notes (P0+P1+P2+P3+P4)
@@ -98,6 +100,15 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **Source-type left border:** DocumentCard uses a colored left border (blue=scribble, purple=file, amber=feed) via CSS variables instead of inline Tailwind color classes.
 - **Shared test factory:** `__tests__/helpers/makeDocument.ts` exports `makeDoc()` and `makeDocs()` used across all component/hook test files.
 - **`SOURCE_STYLES` typed with `SourceType`:** Record key uses the union type from `types.ts` for compile-time exhaustiveness.
+- **NetworkPanel reused across pages:** `DocumentDetailPage` and `EngramDetailPage` both render `NetworkPanel` with the same props interface (`documentEngramIds`, `engramDetails`, `isLoading`). The singleton Set trick highlights "this page's engrams" at full opacity while dimming neighbors.
+- **`resolveEngram` shared utility:** Extracted to `lib/resolveEngram.ts` — both `NetworkPanel` and `SearchPage` need the same fallback logic (truncated ID when engram details aren't loaded yet). Avoids copy-paste.
+- **Search hook debounce:** `useSearch` uses a 300ms `setTimeout` debounce with `useRef` timer + `activeRequestRef` race guard. Sets `isLoading=true` immediately (before debounce fires) for responsive "Searching…" feedback.
+- **URL sync via `replaceState`:** SearchPage syncs `q` and `mode` to URL params on every change. No debounce needed — `replaceState` is near-free and ensures shareable URLs.
+- **`useSearchParams` requires Suspense:** Next.js App Router mandates a `<Suspense>` boundary around components using `useSearchParams()`. Search route wraps `<SearchPage>` accordingly.
+- **Engram detail page structure:** `EngramDetailPage` fetches engram + cluster docs via `useEngram`, then neighbor details via `useEngrams`. Teal left border (`var(--engram)`) provides visual continuity with `EngramBadge`.
+- **Score badge uses accent color:** `DocumentCard` detects `ScoredDocument` via `"score" in doc` and renders an amber accent pill (`var(--accent)`) to distinguish relevance scores from timestamps.
+- **Shared test helpers:** `__tests__/helpers/mockResponse.ts` exports `mockJsonResponse()` and `mockErrorResponse()` used across all hook/component tests. `makeEngram.ts` exports factories for `Engram`, `Edge`, `EngramDetail`, `DocumentDetail`.
+- **Next.js 16 async params:** `app/engrams/[id]/page.tsx` uses `params: Promise<{ id: string }>` with `await params` — required pattern for dynamic route params in Next.js 16.
 
 ---
 

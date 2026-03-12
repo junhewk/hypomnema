@@ -4,17 +4,12 @@ import { useMemo } from "react";
 import type { EngramDetail, Edge, Predicate } from "@/lib/types";
 import { EngramBadge } from "./EngramBadge";
 import { formatPredicate } from "@/lib/predicates";
+import { resolveEngram } from "@/lib/resolveEngram";
 
 interface NetworkPanelProps {
   documentEngramIds: Set<string>;
   engramDetails: Map<string, EngramDetail>;
   isLoading: boolean;
-}
-
-function resolveEngram(id: string, engramDetails: Map<string, EngramDetail>) {
-  const detail = engramDetails.get(id);
-  if (detail) return detail;
-  return { id, canonical_name: id.slice(0, 8) + "\u2026" };
 }
 
 export function NetworkPanel({

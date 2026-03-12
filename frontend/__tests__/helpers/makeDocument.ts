@@ -1,4 +1,4 @@
-import type { Document } from "@/lib/types";
+import type { Document, ScoredDocument } from "@/lib/types";
 
 export function makeDoc(overrides: Partial<Document> = {}): Document {
   return {
@@ -19,4 +19,12 @@ export function makeDoc(overrides: Partial<Document> = {}): Document {
 
 export function makeDocs(ids: string[]): Document[] {
   return ids.map((id) => makeDoc({ id }));
+}
+
+export function makeScoredDoc(overrides: Partial<ScoredDocument> = {}): ScoredDocument {
+  return {
+    ...makeDoc(),
+    score: 0.75,
+    ...overrides,
+  };
 }

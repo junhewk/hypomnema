@@ -1,4 +1,5 @@
 export type SourceType = "scribble" | "file" | "feed";
+export type SearchMode = "documents" | "knowledge";
 export type FeedType = "rss" | "scrape" | "youtube";
 export type Predicate =
   | "contradicts"
