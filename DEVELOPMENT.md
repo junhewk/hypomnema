@@ -13,7 +13,7 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P0 — Scaffold | Done | 23 backend + 8 frontend | ruff, mypy strict, eslint, tsc all clean |
 | P1 — Database | Done | 50 backend | WAL, sqlite-vec, FTS5, all triggers verified |
 | P2 — LLM + Embeddings | Done | 29 backend (28 pass, 1 skip) | Protocol-based LLM + embedding abstractions, mock + real clients |
-| P3 — Manual Ingestion | Not started | — | |
+| P3 — Manual Ingestion | Done | 25 backend (125 pass, 1 skip total) | Scribble + file parsing (PDF/DOCX/MD), RETURNING * pattern |
 | P4 — Entity Extraction | Not started | — | |
 | P5 — Edge Generation | Not started | — | |
 | P6 — Triage | Not started | — | |
@@ -24,7 +24,7 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P11–14 — Frontend | Not started | — | |
 | P15 — Deployment | Not started | — | |
 
-### Implementation Notes (P0+P1+P2)
+### Implementation Notes (P0+P1+P2+P3)
 
 - **Dev tooling added beyond plan:** `ruff` (lint), `mypy` strict with pydantic plugin (typecheck), `tsc --noEmit` (frontend typecheck). Dev deps use `[dependency-groups]` not `[project.optional-dependencies]`.
 - **FTS5 trigger pattern:** Plan specified `DELETE FROM documents_fts` in update/delete triggers. This causes "database disk image is malformed" with external content FTS5. Fixed to use the correct `INSERT INTO fts(fts, ...) VALUES('delete', ...)` pattern.
@@ -35,6 +35,10 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **LLM async, embeddings sync:** LLM methods are async (network I/O); embedding methods are sync (CPU-bound local compute). `complete_json()` parses text output as JSON — no provider-specific structured output modes.
 - **mypy strict compliance:** `json.loads()` returns `Any`, so `complete_json()` uses `dict(json.loads(text))` to satisfy `no-any-return`. Runtime validation uses proper exceptions (not `assert`) since asserts are stripped with `-O`.
 - **GPU test gated:** `LocalEmbeddingModel` test requires `HYPOMNEMA_TEST_GPU=1` env var; skipped otherwise.
+- **Ingestion separation of concerns:** `scribble.py` handles text-only input; `file_parser.py` handles file text extraction (sync, CPU-bound) and file ingestion (async, DB insert). Parsing is pure sync; storage is async.
+- **RETURNING * for row retrieval:** Confirmed working with aiosqlite + SQLite 3.41+. Avoids separate SELECT after INSERT.
+- **Test fixtures programmatic:** PDF fixtures created via `pypdf.PdfWriter` with raw content streams (no `fpdf2` dep). DOCX via `python-docx`. MD is plaintext. All in `tests/test_ingestion/conftest.py`.
+- **No TOCTOU in file parsing:** `parse_file()` lets underlying libraries raise `FileNotFoundError` naturally rather than pre-checking `path.exists()`.
 
 ---
 
