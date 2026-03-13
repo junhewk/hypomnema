@@ -198,16 +198,38 @@ async def get_vec_table_embedding_dim(
     return int(match.group(1))
 
 
+async def _get_vec_table_dims(
+    db: aiosqlite.Connection,
+    table_names: list[str],
+) -> dict[str, int | None]:
+    """Return the configured vector dimensions for multiple vec tables in one query."""
+    placeholders = ",".join("?" for _ in table_names)
+    cursor = await db.execute(
+        f"SELECT name, sql FROM sqlite_master WHERE name IN ({placeholders})",  # noqa: S608
+        table_names,
+    )
+    rows = {row["name"]: row["sql"] for row in await cursor.fetchall()}
+    await cursor.close()
+    result: dict[str, int | None] = {}
+    for name in table_names:
+        sql = rows.get(name)
+        if sql is None:
+            result[name] = None
+            continue
+        match = _VEC_DIM_RE.search(str(sql))
+        result[name] = int(match.group(1)) if match else None
+    return result
+
+
 async def ensure_vec_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> bool:
     """Ensure vec tables exist and match the configured embedding dimension.
 
     Returns True if an incompatible existing vec schema was rebuilt, which
     implies the knowledge graph was reset and documents need reprocessing.
     """
-    existing_dims = {
-        "engram_embeddings": await get_vec_table_embedding_dim(db, "engram_embeddings"),
-        "document_embeddings": await get_vec_table_embedding_dim(db, "document_embeddings"),
-    }
+    existing_dims = await _get_vec_table_dims(
+        db, ["engram_embeddings", "document_embeddings"]
+    )
     needs_rebuild = any(
         dim is not None and dim != embedding_dim
         for dim in existing_dims.values()
