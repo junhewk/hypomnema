@@ -47,6 +47,8 @@ async def fetch_engram_embeddings(
 
 def _run_umap(embeddings: NDArray[np.float32]) -> NDArray[np.float32]:
     """Fit UMAP to reduce embeddings to 3D. Sync (CPU-bound)."""
+    import warnings
+
     from umap import UMAP
 
     n_samples = embeddings.shape[0]
@@ -59,19 +61,25 @@ def _run_umap(embeddings: NDArray[np.float32]) -> NDArray[np.float32]:
         metric="cosine",
         random_state=42,
     )
-    result: NDArray[np.float32] = reducer.fit_transform(embeddings)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        result: NDArray[np.float32] = reducer.fit_transform(embeddings)
     return result
 
 
 def _run_hdbscan(coords_3d: NDArray[np.float32]) -> NDArray[np.int64]:
     """Cluster 3D coordinates with HDBSCAN. Returns label array (-1 = noise)."""
+    import warnings
+
     from sklearn.cluster import HDBSCAN
 
     n_samples = coords_3d.shape[0]
     min_cluster_size = min(_HDBSCAN_MIN_CLUSTER_SIZE, max(2, n_samples // 3))
 
-    clusterer = HDBSCAN(min_cluster_size=min_cluster_size)
-    labels: NDArray[np.int64] = clusterer.fit_predict(coords_3d)
+    clusterer = HDBSCAN(min_cluster_size=min_cluster_size, copy=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", FutureWarning)
+        labels: NDArray[np.int64] = clusterer.fit_predict(coords_3d)
     return labels
 
 
