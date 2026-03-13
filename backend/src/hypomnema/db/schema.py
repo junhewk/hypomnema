@@ -175,6 +175,28 @@ async def create_vec_tables(db: aiosqlite.Connection, embedding_dim: int = 384) 
     await db.commit()
 
 
+async def drop_vec_tables(db: aiosqlite.Connection) -> None:
+    """Drop vec0 virtual tables for embeddings."""
+    for table in ("engram_embeddings", "document_embeddings"):
+        if await _table_exists(db, table):
+            await db.execute(f"DROP TABLE {table}")  # noqa: S608
+    await db.commit()
+
+
+async def reset_knowledge_graph(db: aiosqlite.Connection) -> None:
+    """Delete all engrams, edges, projections, and document-engram links.
+
+    Preserves raw documents but resets their processed/triaged flags so they
+    will be re-ingested through the ontology pipeline.
+    """
+    await db.execute("DELETE FROM edges")
+    await db.execute("DELETE FROM document_engrams")
+    await db.execute("DELETE FROM projections")
+    await db.execute("DELETE FROM engrams")
+    await db.execute("UPDATE documents SET processed = 0, triaged = 0")
+    await db.commit()
+
+
 async def create_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> None:
     """Create all tables, virtual tables, indexes, and triggers. Idempotent."""
     await create_core_tables(db)

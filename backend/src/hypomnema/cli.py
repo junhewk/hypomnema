@@ -40,6 +40,11 @@ def _ensure_node_modules(npm: str) -> None:
         subprocess.run([npm, "install"], cwd=_FRONTEND_DIR, check=True)
 
 
+def _has_production_frontend_build(next_dir: Path) -> bool:
+    """Return whether `.next` contains a production build usable by `next start`."""
+    return next_dir.exists() and (next_dir / "BUILD_ID").is_file()
+
+
 def _open_when_ready(url: str, port: int, timeout: int = 30) -> None:
     import webbrowser
 
@@ -151,10 +156,13 @@ def cmd_serve(args: argparse.Namespace) -> None:
 
     # Build with NEXT_PUBLIC_API_URL so Next.js inlines the correct backend URL
     next_dir = _FRONTEND_DIR / ".next"
-    if args.build or not next_dir.exists():
+    if args.build or not _has_production_frontend_build(next_dir):
         _ensure_frontend()
         _ensure_node_modules(npm)
-        print("Building frontend for production...")
+        if args.build:
+            print("Building frontend for production...")
+        else:
+            print("Production frontend build missing or incomplete; rebuilding...")
         subprocess.run(
             [npm, "run", "build"],
             cwd=_FRONTEND_DIR,
@@ -185,7 +193,10 @@ def main() -> None:
     serve_p.add_argument("--build", action="store_true", help="Force frontend rebuild")
 
     args = parser.parse_args()
-    if args.command is None or args.command == "dev":
+    if args.command is None:
+        args.command = "dev"
+        args.no_browser = False
+    if args.command == "dev":
         cmd_dev(args)
     elif args.command == "serve":
         cmd_serve(args)

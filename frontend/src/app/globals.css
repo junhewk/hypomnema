@@ -88,7 +88,100 @@ body {
   border-radius: 3px;
 }
 
+/* ── Mobile nav ────────────────────────────────────── */
+.mobile-header {
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--accent) 3%, transparent) 0%,
+      transparent 50%,
+      color-mix(in srgb, var(--engram) 2%, transparent) 100%
+    );
+  border-bottom: 1px solid var(--border);
+}
+
+.mobile-hamburger {
+  color: var(--muted);
+  transition: color 0.2s ease;
+}
+.mobile-hamburger:hover,
+.mobile-hamburger[data-open="true"] {
+  color: var(--foreground);
+}
+
+/* Hamburger → X morph */
+.mobile-hamburger line {
+  transition: transform 0.25s ease, opacity 0.2s ease;
+  transform-origin: center;
+}
+.mobile-hamburger[data-open="true"] .hamburger-top {
+  transform: translateY(4.5px) rotate(45deg);
+}
+.mobile-hamburger[data-open="true"] .hamburger-mid {
+  opacity: 0;
+}
+.mobile-hamburger[data-open="true"] .hamburger-bot {
+  transform: translateY(-4.5px) rotate(-45deg);
+}
+
+.mobile-backdrop {
+  background: color-mix(in srgb, var(--background) 60%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.mobile-drawer {
+  box-shadow:
+    8px 0 32px rgba(0, 0, 0, 0.15),
+    1px 0 0 color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* ── Embedding rebuild ─────────────────────────────── */
+.rebuild-progress-track {
+  position: relative;
+  overflow: hidden;
+}
+.rebuild-progress-track::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--engram) 20%, transparent) 50%,
+    transparent 100%
+  );
+  animation: shimmer 2s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.reset-confirm-input {
+  font-variant-ligatures: none;
+  letter-spacing: 0.15em;
+}
+
 /* keyframes */
+@keyframes slide-in-left {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+@keyframes slide-out-left {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
+}
+@keyframes backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes backdrop-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 @keyframes fade-up {
   from {
     opacity: 0;

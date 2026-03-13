@@ -8,12 +8,12 @@ describe("ApiClient", () => {
   let client: ApiClient;
 
   beforeEach(() => {
-    client = new ApiClient("http://localhost:8000");
+    client = new ApiClient("http://localhost:8073");
     mockFetch.mockReset();
   });
 
   describe("constructor", () => {
-    it("defaults to localhost:8000", () => {
+    it("defaults to localhost:8073", () => {
       const c = new ApiClient();
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -22,7 +22,7 @@ describe("ApiClient", () => {
       });
       c.listDocuments();
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8000/api/documents?offset=0&limit=20",
+        "http://localhost:8073/api/documents?offset=0&limit=20",
         expect.any(Object),
       );
     });
@@ -64,7 +64,7 @@ describe("ApiClient", () => {
       });
       const result = await client.createScribble("Hello world", "Test");
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8000/api/documents/scribbles",
+        "http://localhost:8073/api/documents/scribbles",
         expect.objectContaining({
           method: "POST",
           body: JSON.stringify({ text: "Hello world", title: "Test" }),
@@ -83,7 +83,7 @@ describe("ApiClient", () => {
       });
       const result = await client.listDocuments();
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8000/api/documents?offset=0&limit=20",
+        "http://localhost:8073/api/documents?offset=0&limit=20",
         expect.any(Object),
       );
       expect(result.items).toEqual([]);
@@ -99,7 +99,7 @@ describe("ApiClient", () => {
       });
       await client.searchDocuments("AI ethics & bias");
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8000/api/search/documents?q=AI%20ethics%20%26%20bias",
+        "http://localhost:8073/api/search/documents?q=AI%20ethics%20%26%20bias",
         expect.any(Object),
       );
     });

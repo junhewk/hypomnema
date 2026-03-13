@@ -16,9 +16,11 @@ import type {
   ProvidersResponse,
   HealthStatus,
   SetupPayload,
+  ChangeEmbeddingPayload,
+  EmbeddingChangeStatus,
 } from "./types";
 
-const DEFAULT_BASE_URL = "http://localhost:8000";
+const DEFAULT_BASE_URL = "http://localhost:8073";
 
 export class ApiError extends Error {
   constructor(
@@ -35,11 +37,14 @@ export class ApiClient {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    this.baseUrl =
-      baseUrl ??
-      (typeof process !== "undefined"
-        ? (process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_BASE_URL)
-        : DEFAULT_BASE_URL);
+    if (baseUrl !== undefined) {
+      this.baseUrl = baseUrl;
+    } else if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL !== undefined) {
+      // Empty string means same-origin (static serving / Docker mode)
+      this.baseUrl = process.env.NEXT_PUBLIC_API_URL;
+    } else {
+      this.baseUrl = DEFAULT_BASE_URL;
+    }
   }
 
   private async request<T>(
@@ -192,6 +197,17 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify(payload),
     });
+  }
+
+  async changeEmbeddingProvider(payload: ChangeEmbeddingPayload): Promise<EmbeddingChangeStatus> {
+    return this.request("/api/settings/change-embedding", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getEmbeddingChangeStatus(): Promise<EmbeddingChangeStatus> {
+    return this.request("/api/settings/embedding-status");
   }
 }
 

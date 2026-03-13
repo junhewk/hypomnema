@@ -1,0 +1,15 @@
+node_modules
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/test-results
+backend/data
+backend/.venv
+__pycache__
+*.pyc
+.git
+.gitignore
+*.md
+.env
+.env.*
+data/

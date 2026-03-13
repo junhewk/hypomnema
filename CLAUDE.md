@@ -12,7 +12,7 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 
 ## Architecture
 
-**Three-layer stack, single codebase, no containers:**
+**Three-layer stack, single codebase:**
 
 - **Backend:** Python / FastAPI — orchestrates LLM calls, document parsing, embedding, cronjobs
 - **Database:** SQLite with WAL mode + `sqlite-vec` extension — single portable `.db` file for all data and vector search
@@ -28,8 +28,9 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 
 ### Deployment Modes
 
-- **Local mode** (`uv run hypomnema dev`) — binds to localhost, opens browser, hot-reload enabled
+- **Local mode** (`uv run hypomnema dev`) — binds to localhost:8073/3073, opens browser, hot-reload enabled
 - **Server mode** (`HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<ip> uv run hypomnema serve`) — binds to specified host (e.g. Tailscale IP), runs production frontend, 24/7 continuous ingestion
+- **Docker mode** (`docker compose up`) — single container, static frontend served by FastAPI, port 8073
 - **Desktop mode** (`HYPOMNEMA_MODE=desktop`) — Tauri v2 native app, PyInstaller'd backend as sidecar, static frontend served via FastAPI `StaticFiles`, cloud-only embeddings (no torch)
 
 ### Running
@@ -44,6 +45,9 @@ uv run hypomnema dev --no-browser
 # Production / server mode (Tailscale / remote access)
 HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<tailscale-ip> uv run hypomnema serve
 HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<tailscale-ip> uv run hypomnema serve --build  # force frontend rebuild
+
+# Docker
+docker compose up --build                      # single container, port 8073
 
 # Tests
 cd backend && uv run pytest                    # all backend tests
@@ -62,22 +66,22 @@ All settings use `HYPOMNEMA_` env prefix. Key env vars:
 - `HYPOMNEMA_ANTHROPIC_API_KEY`, `HYPOMNEMA_GOOGLE_API_KEY`, `HYPOMNEMA_OPENAI_API_KEY` — provider API keys
 - `HYPOMNEMA_DB_PATH` — SQLite database path (default `data/hypomnema.db`)
 
-LLM provider and API keys can also be configured at runtime via the Settings UI (`/settings`). DB settings override env vars for LLM-related fields. Embedding provider is fixed at startup — changing it requires a fresh database.
+LLM provider and API keys can also be configured at runtime via the Settings UI (`/settings`). DB settings override env vars for LLM-related fields. Embedding provider can be changed at runtime via Settings — this triggers a full knowledge graph rebuild (all engrams/edges deleted, documents reprocessed).
 
 ### Frontend Layout
 
-- **Persistent sidebar** (`Sidebar.tsx`) with nav items (Stream, Search, Settings), viz minimap, and full viz link
+- **Persistent sidebar** (`Sidebar.tsx`) with nav items (Stream, Search, Settings), viz minimap, and full viz link — hidden on mobile, replaced by `MobileNav` hamburger drawer
 - **LayoutShell** wraps all pages: sidebar layout for normal pages, full-screen passthrough for `/viz`
 - **VizDataProvider** context at root level shares viz data between minimap and full page (single fetch)
 - **Documents are editable** — "continue" button on scribble cards loads into edit mode with draft auto-save via localStorage
 
 ## Key Design Constraints
 
-- No Docker, no PostgreSQL — bare-metal, single `.db` file
+- Single `.db` file, no PostgreSQL — optional Docker for deployment
 - Flat database: no file/folder hierarchy, all structure is dynamic from graph edges
 - Frontend does no heavy compute — pure rendering client
 - Entity deduplication uses embedding-based concept hashes for O(1) lookup
 - Edge generation uses Top-K retrieval to bound LLM API costs
-- Embedding provider fixed at install time — different models produce incompatible vectors
+- Embedding provider changeable at runtime — triggers full knowledge graph rebuild (documents preserved)
 - LLM provider hot-swappable at runtime via Settings API (no restart needed)
 - API keys encrypted at rest via Fernet with auto-generated local keyfile

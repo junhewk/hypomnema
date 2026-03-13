@@ -152,3 +152,16 @@ class EmbeddingProviderInfo(BaseModel):
 class ProvidersResponse(BaseModel):
     llm: list[ProviderInfo]
     embedding: list[EmbeddingProviderInfo]
+
+
+class ChangeEmbeddingPayload(BaseModel):
+    embedding_provider: Literal["local", "openai", "google"]
+    openai_api_key: str | None = None
+    google_api_key: str | None = None
+
+
+class EmbeddingChangeStatus(BaseModel):
+    status: Literal["idle", "in_progress", "complete", "failed"] = "idle"
+    total: int = 0
+    processed: int = 0
+    error: str | None = None

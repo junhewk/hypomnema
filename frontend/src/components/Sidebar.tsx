@@ -4,11 +4,17 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { VizMinimap } from "./VizMinimap";
 
-const NAV_ITEMS = [
+export const NAV_ITEMS = [
   { href: "/", label: "Stream", key: "stream" },
   { href: "/search", label: "Search", key: "search" },
   { href: "/settings", label: "Settings", key: "settings" },
 ];
+
+export function isNavActive(href: string, pathname: string) {
+  return href === "/"
+    ? pathname === "/" || pathname.startsWith("/documents") || pathname.startsWith("/engrams")
+    : pathname.startsWith(href);
+}
 
 function NavItem({ href, label, active, testId }: {
   href: string;
@@ -35,11 +41,7 @@ function NavItem({ href, label, active, testId }: {
 export function Sidebar() {
   const pathname = usePathname();
 
-  function isActive(href: string) {
-    return href === "/"
-      ? pathname === "/" || pathname.startsWith("/documents") || pathname.startsWith("/engrams")
-      : pathname.startsWith(href);
-  }
+  const isActive = (href: string) => isNavActive(href, pathname);
 
   return (
     <aside className="sidebar flex w-56 shrink-0 flex-col border-r border-border">

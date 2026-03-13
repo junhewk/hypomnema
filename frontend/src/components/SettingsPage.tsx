@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { useSettings } from "@/hooks/useSettings";
-import type { SettingsUpdatePayload, ProviderInfo } from "@/lib/types";
+import type { SettingsUpdatePayload, ProviderInfo, EmbeddingChangeStatus } from "@/lib/types";
 
 const PROVIDER_ICONS: Record<string, string> = {
   claude: "A",
   google: "G",
   openai: "O",
   ollama: "~",
+  local: "L",
 };
 
 function ProviderCard({
@@ -304,57 +305,269 @@ export function SettingsPage() {
         </div>
       </section>
 
-      {/* Embedding — read-only "sealed reading" */}
-      <section className="mb-8">
-        <div className="mb-3 flex items-center gap-2">
-          <h2 className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted/60">
-            Embedding Model
-          </h2>
-          <span className="rounded-sm bg-[var(--engram)]/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-[var(--engram)]">
-            fixed
-          </span>
-          <div className="h-px flex-1 bg-border" />
+      {/* Embedding Model — changeable with rebuild */}
+      <EmbeddingSection
+        settings={settings}
+        providers={providers}
+        refresh={refresh}
+      />
+    </div>
+  );
+}
+
+function EmbeddingSection({
+  settings,
+  providers,
+  refresh,
+}: {
+  settings: ReturnType<typeof useSettings>["settings"];
+  providers: ReturnType<typeof useSettings>["providers"];
+  refresh: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [newProvider, setNewProvider] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [confirmText, setConfirmText] = useState("");
+  const [changing, setChanging] = useState(false);
+  const [changeError, setChangeError] = useState<string | null>(null);
+  const [status, setStatus] = useState<EmbeddingChangeStatus | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Poll for embedding change status
+  useEffect(() => {
+    if (status?.status !== "in_progress") return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const s = await api.getEmbeddingChangeStatus();
+        setStatus((prev) => {
+          if (prev && prev.status === s.status && prev.processed === s.processed) return prev;
+          return s;
+        });
+        if (s.status !== "in_progress") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          if (s.status === "complete") {
+            refresh();
+            setExpanded(false);
+            setConfirmText("");
+            setNewProvider("");
+            setApiKey("");
+          }
+        }
+      } catch {
+        // ignore polling errors
+      }
+    }, 2000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [status?.status, refresh]);
+
+  async function handleChange() {
+    if (!newProvider || confirmText !== "RESET") return;
+    setChanging(true);
+    setChangeError(null);
+    try {
+      const payload: { embedding_provider: "local" | "openai" | "google"; openai_api_key?: string; google_api_key?: string } = {
+        embedding_provider: newProvider as "local" | "openai" | "google",
+      };
+      if (newProvider === "openai" && apiKey) payload.openai_api_key = apiKey;
+      if (newProvider === "google" && apiKey) payload.google_api_key = apiKey;
+      const s = await api.changeEmbeddingProvider(payload);
+      setStatus(s);
+    } catch (e) {
+      setChangeError(e instanceof Error ? e.message : "Failed to change provider");
+    } finally {
+      setChanging(false);
+    }
+  }
+
+  const needsKey = newProvider === "openai" || newProvider === "google";
+  const isInProgress = status?.status === "in_progress";
+
+  const pct = status && status.total > 0 ? (status.processed / status.total) * 100 : 0;
+
+  return (
+    <section className="mb-8">
+      <div className="mb-3 flex items-center gap-2">
+        <h2 className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted/60">
+          Embedding Model
+        </h2>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
+      <div
+        className="animate-fade-up border-l-2 bg-surface-raised py-3 pr-4 pl-4"
+        style={{ borderLeftColor: "var(--engram)", animationDelay: "200ms" }}
+      >
+        {/* Current info */}
+        <div className="grid grid-cols-3 gap-4">
+          <div>
+            <span className="block font-mono text-[10px] uppercase tracking-wider text-muted/50">Provider</span>
+            <span className="font-mono text-xs">{settings?.embedding_provider}</span>
+          </div>
+          <div>
+            <span className="block font-mono text-[10px] uppercase tracking-wider text-muted/50">Model</span>
+            <span className="font-mono text-xs">{settings?.embedding_model}</span>
+          </div>
+          <div>
+            <span className="block font-mono text-[10px] uppercase tracking-wider text-muted/50">Dim</span>
+            <span className="font-mono text-xs tabular-nums">{settings?.embedding_dim}</span>
+          </div>
         </div>
 
-        <div
-          className="animate-fade-up border-l-2 bg-surface-raised py-3 pr-4 pl-4"
-          style={{
-            borderLeftColor: "var(--engram)",
-            animationDelay: "200ms",
-          }}
-        >
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <span className="block font-mono text-[10px] uppercase tracking-wider text-muted/50">
-                Provider
-              </span>
-              <span className="font-mono text-xs">
-                {settings?.embedding_provider}
-              </span>
+        {/* Progress bar when in progress */}
+        {isInProgress && status && (
+          <div className="mt-3 border-t border-border pt-3 animate-fade-up">
+            <div className="mb-1.5 flex justify-between font-mono text-[10px]">
+              <span className="text-[var(--engram)] animate-pulse-dot">Rebuilding knowledge graph...</span>
+              <span className="tabular-nums text-muted/60">{status.processed} / {status.total}</span>
             </div>
-            <div>
-              <span className="block font-mono text-[10px] uppercase tracking-wider text-muted/50">
-                Model
-              </span>
-              <span className="font-mono text-xs">
-                {settings?.embedding_model}
-              </span>
+            <div className="rebuild-progress-track h-1 w-full bg-border">
+              <div
+                className="h-full bg-[var(--engram)] transition-all duration-500 ease-out"
+                style={{ width: `${pct}%` }}
+              />
             </div>
-            <div>
-              <span className="block font-mono text-[10px] uppercase tracking-wider text-muted/50">
-                Dim
-              </span>
-              <span className="font-mono text-xs tabular-nums">
-                {settings?.embedding_dim}
-              </span>
-            </div>
+            <p className="mt-2 font-mono text-[9px] text-muted/30">
+              extracting entities, generating embeddings, linking edges
+            </p>
           </div>
-          <p className="mt-3 border-t border-border pt-2 font-mono text-[10px] text-muted/40">
-            Set via HYPOMNEMA_EMBEDDING_PROVIDER at startup. Changing embedding models
-            produces incompatible vectors — requires a fresh database.
-          </p>
-        </div>
-      </section>
-    </div>
+        )}
+
+        {/* Completion / error status */}
+        {status?.status === "complete" && (
+          <div className="mt-3 border-t border-border pt-2 animate-fade-up">
+            <p className="font-mono text-[10px] text-[var(--complete)]">
+              Knowledge graph rebuilt successfully.
+            </p>
+          </div>
+        )}
+        {status?.status === "failed" && (
+          <div className="mt-3 border-t border-border pt-2 animate-fade-up">
+            <p className="font-mono text-[10px] text-[var(--accent)]">
+              Rebuild failed: {status.error}
+            </p>
+          </div>
+        )}
+
+        {/* Change provider button / panel */}
+        {!isInProgress && (
+          <div className="mt-3 border-t border-border pt-3">
+            {!expanded ? (
+              <button
+                onClick={() => setExpanded(true)}
+                className="group flex items-center gap-2 font-mono text-[10px] text-[var(--engram)] transition-colors hover:text-foreground"
+              >
+                <span className="inline-block h-px w-3 bg-[var(--engram)] transition-all group-hover:w-5" />
+                Change Provider
+              </button>
+            ) : (
+              <div className="space-y-3 animate-fade-up">
+                {/* Provider selector — matches LLM card style */}
+                <div className="flex flex-col gap-px">
+                  {providers?.embedding.map((p, i) => (
+                    <button
+                      key={p.id}
+                      onClick={() => { setNewProvider(p.id); setApiKey(""); }}
+                      className="animate-fade-up group relative border-l-2 bg-surface py-2.5 pr-4 pl-4 text-left transition-colors hover:bg-surface-raised"
+                      style={{
+                        borderLeftColor: newProvider === p.id ? "var(--engram)" : "var(--border)",
+                        animationDelay: `${i * 50}ms`,
+                      }}
+                    >
+                      {newProvider === p.id && (
+                        <div className="absolute top-2.5 right-3 h-1.5 w-1.5 rounded-full bg-[var(--engram)]" />
+                      )}
+                      <div className="flex items-center gap-2.5">
+                        <span
+                          className="flex h-6 w-6 items-center justify-center rounded-sm font-mono text-[10px] font-bold"
+                          style={{
+                            background: newProvider === p.id
+                              ? "color-mix(in srgb, var(--engram) 15%, transparent)"
+                              : "color-mix(in srgb, var(--muted) 10%, transparent)",
+                            color: newProvider === p.id ? "var(--engram)" : "var(--muted)",
+                          }}
+                        >
+                          {PROVIDER_ICONS[p.id] ?? "?"}
+                        </span>
+                        <div>
+                          <span className="block font-mono text-xs font-medium">{p.name}</span>
+                          <span className="block font-mono text-[10px] text-muted/60">
+                            {p.requires_key ? "api key required" : "local"} · {p.default_dimension}d
+                          </span>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                {/* API key input */}
+                {needsKey && (
+                  <FieldInput
+                    label={`${newProvider === "openai" ? "OpenAI" : "Google"} API Key`}
+                    value={apiKey}
+                    onChange={setApiKey}
+                    type="password"
+                    placeholder={newProvider === "openai" ? "sk-..." : "AIza..."}
+                  />
+                )}
+
+                {/* Warning + confirmation — grouped in a danger zone */}
+                {newProvider && (
+                  <div
+                    className="animate-fade-up border-l-2 bg-surface py-3 pr-4 pl-4"
+                    style={{
+                      borderLeftColor: "var(--accent)",
+                      animationDelay: "150ms",
+                    }}
+                  >
+                    <p className="mb-3 font-mono text-[10px] leading-relaxed text-[var(--accent)]">
+                      This will delete all engrams, edges, and projections. Documents
+                      are preserved and will be reprocessed. This may take time and
+                      API credits.
+                    </p>
+
+                    <label className="block">
+                      <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-muted/60">
+                        Type RESET to confirm
+                      </span>
+                      <input
+                        type="text"
+                        value={confirmText}
+                        onChange={(e) => setConfirmText(e.target.value)}
+                        placeholder="RESET"
+                        className="reset-confirm-input w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors placeholder:text-muted/20 focus:border-[var(--accent)]"
+                        autoComplete="off"
+                        spellCheck={false}
+                      />
+                    </label>
+                  </div>
+                )}
+
+                {changeError && (
+                  <p className="font-mono text-[10px] text-[var(--accent)]">{changeError}</p>
+                )}
+
+                <div className="flex items-center gap-3 pt-1">
+                  <button
+                    onClick={() => { setExpanded(false); setNewProvider(""); setApiKey(""); setConfirmText(""); setChangeError(null); }}
+                    className="font-mono text-[10px] text-muted transition-colors hover:text-foreground"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleChange}
+                    disabled={changing || confirmText !== "RESET" || !newProvider || (needsKey && !apiKey)}
+                    className="rounded-sm bg-[var(--accent)] px-4 py-1.5 font-mono text-xs font-medium text-white transition-opacity disabled:opacity-20"
+                  >
+                    {changing ? "Rebuilding..." : "Reset & Rebuild"}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

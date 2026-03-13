@@ -41,6 +41,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # LLM lock for hot-swap
     app.state.llm_lock = asyncio.Lock()
 
+    # Embedding change status
+    from hypomnema.api.schemas import EmbeddingChangeStatus
+    app.state.embedding_change_status = EmbeddingChangeStatus()
+
     # Check if setup is complete
     db_settings = await get_all_settings(db, fernet_key=fernet_key)
     setup_complete = db_settings.get("setup_complete")

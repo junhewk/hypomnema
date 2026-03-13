@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { VizDataProvider } from "@/hooks/useVizDataContext";
 import { Sidebar } from "./Sidebar";
+import { MobileNav } from "./MobileNav";
 import { SetupWizard } from "./SetupWizard";
 import { api } from "@/lib/api";
 
@@ -32,8 +33,11 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
         children
       ) : (
         <div className="flex h-screen">
-          <Sidebar />
-          <main className="flex-1 overflow-y-auto">{children}</main>
+          <div className="hidden md:flex">
+            <Sidebar />
+          </div>
+          <MobileNav />
+          <main className="flex-1 overflow-y-auto pt-12 md:pt-0">{children}</main>
         </div>
       )}
     </VizDataProvider>

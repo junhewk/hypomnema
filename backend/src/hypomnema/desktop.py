@@ -27,7 +27,7 @@ def _resolve_paths() -> tuple[Path, Path | None, str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="hypomnema-server")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=8073)
     args = parser.parse_args()
 
     data_dir, static_dir, sqlite_vec_path = _resolve_paths()

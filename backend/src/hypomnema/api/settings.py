@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+import asyncio
+import logging
+
+from fastapi import APIRouter, FastAPI, HTTPException, Request
 
 from hypomnema.api.deps import AppSettings, DB, FernetKey, LLMLock
 from hypomnema.api.schemas import (
+    ChangeEmbeddingPayload,
+    EmbeddingChangeStatus,
     EmbeddingProviderInfo,
     ProviderInfo,
     ProvidersResponse,
@@ -17,6 +22,8 @@ from hypomnema.crypto import mask_key
 from hypomnema.db.settings_store import get_all_settings, set_setting
 from hypomnema.embeddings.factory import EMBEDDING_DEFAULTS, build_embeddings
 from hypomnema.llm.factory import api_key_for_provider, base_url_for_provider, build_llm
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -198,6 +205,147 @@ async def complete_setup(
         k: mask_key(v) for k, v in db_settings.items() if k in _ENCRYPTED_KEYS and v
     }
     return _build_response(new_settings, masked_keys)
+
+
+@router.post("/change-embedding", response_model=EmbeddingChangeStatus)
+async def change_embedding_provider(
+    body: ChangeEmbeddingPayload,
+    request: Request,
+    settings: AppSettings,
+    db: DB,
+    fernet_key: FernetKey,
+) -> EmbeddingChangeStatus:
+    """Change embedding provider — nuclear operation that rebuilds the knowledge graph."""
+    # Reject if a change is already in progress
+    if request.app.state.embedding_change_status.status == "in_progress":
+        raise HTTPException(status_code=409, detail="Embedding change already in progress")
+
+    # Validate API key for cloud providers
+    if body.embedding_provider == "openai" and not (body.openai_api_key or settings.openai_api_key):
+        raise HTTPException(status_code=400, detail="OpenAI API key required")
+    if body.embedding_provider == "google" and not (body.google_api_key or settings.google_api_key):
+        raise HTTPException(status_code=400, detail="Google API key required")
+
+    dim, model = EMBEDDING_DEFAULTS[body.embedding_provider]
+
+    # Store new API keys if provided
+    if body.openai_api_key:
+        await set_setting(db, "openai_api_key", body.openai_api_key, fernet_key=fernet_key, encrypt_value=True)
+    if body.google_api_key:
+        await set_setting(db, "google_api_key", body.google_api_key, fernet_key=fernet_key, encrypt_value=True)
+
+    # Reset knowledge graph + vec tables
+    from hypomnema.db.schema import create_vec_tables, drop_vec_tables, reset_knowledge_graph
+
+    await reset_knowledge_graph(db)
+    await drop_vec_tables(db)
+    await create_vec_tables(db, dim)
+
+    # Update embedding settings in DB
+    for key, value in [
+        ("embedding_provider", body.embedding_provider),
+        ("embedding_dim", str(dim)),
+        ("embedding_model", model),
+    ]:
+        await set_setting(db, key, value, fernet_key=fernet_key, encrypt_value=False)
+
+    # Reload settings
+    db_settings = await get_all_settings(db, fernet_key=fernet_key)
+    from hypomnema.config import Settings
+    new_settings = Settings.with_db_overrides(settings, db_settings)
+    request.app.state.settings = new_settings
+
+    # Reinitialize embeddings
+    request.app.state.embeddings = build_embeddings(new_settings)
+
+    # Count documents to reprocess
+    cursor = await db.execute("SELECT count(*) FROM documents")
+    row = await cursor.fetchone()
+    await cursor.close()
+    total = row[0] if row else 0
+
+    # Set initial status
+    change_status = EmbeddingChangeStatus(status="in_progress", total=total, processed=0)
+    request.app.state.embedding_change_status = change_status
+
+    # Kick off background reprocessing (store ref to prevent GC)
+    request.app.state.embedding_change_task = asyncio.create_task(
+        _reprocess_all_documents(request.app, total)
+    )
+
+    return change_status
+
+
+async def _reprocess_all_documents(app: FastAPI, total: int) -> None:
+    """Background task: reprocess all documents through the ontology pipeline."""
+    from hypomnema.db.engine import get_connection
+    from hypomnema.ontology.pipeline import (
+        link_document,
+        process_document,
+    )
+
+    settings = app.state.settings
+    try:
+        db = await get_connection(settings.db_path, settings.sqlite_vec_path)
+        try:
+            llm = app.state.llm
+            embeddings = app.state.embeddings
+
+            if llm is None or embeddings is None:
+                app.state.embedding_change_status = EmbeddingChangeStatus(
+                    status="failed", total=total, processed=0,
+                    error="LLM or embedding model not configured",
+                )
+                return
+
+            # Phase 1: extract engrams
+            cursor = await db.execute(
+                "SELECT id FROM documents WHERE processed = 0 ORDER BY created_at"
+            )
+            doc_ids = [row["id"] for row in await cursor.fetchall()]
+            await cursor.close()
+
+            processed = 0
+            for doc_id in doc_ids:
+                try:
+                    await process_document(db, doc_id, llm, embeddings)
+                except Exception:
+                    logger.exception("Error processing document %s", doc_id)
+                processed += 1
+                app.state.embedding_change_status = EmbeddingChangeStatus(
+                    status="in_progress", total=total, processed=processed,
+                )
+
+            # Phase 2: link edges
+            cursor = await db.execute(
+                "SELECT id FROM documents WHERE processed = 1 ORDER BY created_at"
+            )
+            link_ids = [row["id"] for row in await cursor.fetchall()]
+            await cursor.close()
+
+            for doc_id in link_ids:
+                try:
+                    await link_document(db, doc_id, llm)
+                except Exception:
+                    logger.exception("Error linking document %s", doc_id)
+
+            app.state.embedding_change_status = EmbeddingChangeStatus(
+                status="complete", total=total, processed=total,
+            )
+        finally:
+            await db.close()
+
+    except Exception as exc:
+        logger.exception("Embedding change reprocessing failed")
+        app.state.embedding_change_status = EmbeddingChangeStatus(
+            status="failed", total=total, processed=0, error=str(exc),
+        )
+
+
+@router.get("/embedding-status", response_model=EmbeddingChangeStatus)
+async def get_embedding_status(request: Request) -> EmbeddingChangeStatus:
+    """Return current embedding change status."""
+    return request.app.state.embedding_change_status
 
 
 @router.get("/providers", response_model=ProvidersResponse)

@@ -39,8 +39,8 @@ class Settings(BaseSettings):
 
     # Server
     host: str = "127.0.0.1"
-    port: int = 8000
-    frontend_port: int = 3000
+    port: int = 8073
+    frontend_port: int = 3073
 
     # Triage
     triage_threshold: float = 0.3

@@ -156,6 +156,19 @@ export interface HealthStatus {
   mode: "local" | "server" | "desktop";
 }
 
+export interface ChangeEmbeddingPayload {
+  embedding_provider: "local" | "openai" | "google";
+  openai_api_key?: string;
+  google_api_key?: string;
+}
+
+export interface EmbeddingChangeStatus {
+  status: "idle" | "in_progress" | "complete" | "failed";
+  total: number;
+  processed: number;
+  error?: string | null;
+}
+
 export interface SetupPayload {
   embedding_provider: "local" | "openai" | "google";
   llm_provider?: string;

@@ -1,0 +1,10 @@
+services:
+  hypomnema:
+    build: .
+    ports:
+      - "8073:8073"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - HYPOMNEMA_EMBEDDING_PROVIDER=local
+    restart: unless-stopped

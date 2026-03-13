@@ -23,7 +23,7 @@ class TestSettingsDefaults:
         assert Settings().host == "127.0.0.1"
 
     def test_default_port(self):
-        assert Settings().port == 8000
+        assert Settings().port == 8073
 
     def test_default_triage_threshold(self):
         assert Settings().triage_threshold == 0.3
