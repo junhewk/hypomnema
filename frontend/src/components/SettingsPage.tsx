@@ -10,14 +10,7 @@ import type {
   ModelOption,
   ConnectivityCheckPayload,
 } from "@/lib/types";
-
-const PROVIDER_ICONS: Record<string, string> = {
-  claude: "A",
-  google: "G",
-  openai: "O",
-  ollama: "~",
-  local: "L",
-};
+import { PROVIDER_ICONS } from "@/lib/constants";
 
 function ProviderCard({
   info,

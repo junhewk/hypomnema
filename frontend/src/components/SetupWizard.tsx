@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
+import { PROVIDER_ICONS } from "@/lib/constants";
 import type {
   SetupPayload,
   EmbeddingProviderInfo,
@@ -52,14 +53,6 @@ const LLM_PROVIDERS: ProviderInfo[] = [
   },
   { id: "ollama", name: "Ollama (local)", requires_key: false, default_model: "llama3.1", models: [] },
 ];
-
-const PROVIDER_ICONS: Record<string, string> = {
-  local: "L",
-  claude: "A",
-  google: "G",
-  openai: "O",
-  ollama: "~",
-};
 
 export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: () => void }) {
   const [step, setStep] = useState(1);
