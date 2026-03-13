@@ -1,49 +1,26 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
 import { useDocuments } from "@/hooks/useDocuments";
 import { ScribbleInput } from "./ScribbleInput";
 import { FileDropZone } from "./FileDropZone";
 import { DocumentCard } from "./DocumentCard";
+import type { Document } from "@/lib/types";
 
 export function StreamPage() {
   const { documents, isLoading, hasMore, loadMore, refresh } = useDocuments();
+  const [editing, setEditing] = useState<Document | null>(null);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12 sm:py-16">
-      <header className="mb-10">
-        <h1 className="font-mono text-lg font-bold tracking-[0.2em] uppercase">
-          hypomnema
-        </h1>
-        <div className="mt-1 flex items-center gap-4">
-          <p className="font-mono text-xs text-muted tracking-wide">
-            notes &rarr; knowledge graph
-          </p>
-          <Link
-            href="/search"
-            className="rounded-full border border-border px-3 py-0.5 font-mono text-[10px] text-muted no-underline transition-colors hover:border-border-focus hover:text-foreground"
-            data-testid="search-link"
-          >
-            search →
-          </Link>
-          <Link
-            href="/viz"
-            className="rounded-full border border-border px-3 py-0.5 font-mono text-[10px] text-muted no-underline transition-colors hover:border-border-focus hover:text-foreground"
-            data-testid="viz-link"
-          >
-            viz →
-          </Link>
-          <Link
-            href="/settings"
-            className="rounded-full border border-border px-3 py-0.5 font-mono text-[10px] text-muted no-underline transition-colors hover:border-border-focus hover:text-foreground"
-            data-testid="settings-link"
-          >
-            settings →
-          </Link>
-        </div>
-      </header>
-
-      <ScribbleInput onSubmit={refresh} />
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      <ScribbleInput
+        onSubmit={() => {
+          setEditing(null);
+          refresh();
+        }}
+        editingDocument={editing}
+        onCancelEdit={() => setEditing(null)}
+      />
       <FileDropZone onUpload={refresh} />
 
       <section>
@@ -51,6 +28,7 @@ export function StreamPage() {
           <DocumentCard
             key={doc.id}
             document={doc}
+            onEdit={setEditing}
             style={{ animationDelay: `${i * 50}ms` }}
           />
         ))}

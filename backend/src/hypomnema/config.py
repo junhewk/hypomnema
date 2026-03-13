@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     model_config = {"env_prefix": "HYPOMNEMA_"}
 
     # Deployment mode
-    mode: Literal["local", "server"] = "local"
+    mode: Literal["local", "server", "desktop"] = "local"
 
     # Database
     db_path: Path = Path("data/hypomnema.db")
@@ -49,6 +49,9 @@ class Settings(BaseSettings):
 
     # sqlite-vec extension path (empty = auto-detect via sqlite_vec.loadable_path())
     sqlite_vec_path: str = ""
+
+    # Static file serving (desktop mode)
+    static_dir: Path | None = None
 
     @field_validator("embedding_dim")
     @classmethod
@@ -104,7 +107,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def set_host_for_mode(self) -> "Settings":
-        if self.mode == "local":
+        if self.mode in ("local", "desktop"):
             self.host = "127.0.0.1"
         elif self.mode == "server" and self.host == "127.0.0.1":
             self.host = "0.0.0.0"  # noqa: S104

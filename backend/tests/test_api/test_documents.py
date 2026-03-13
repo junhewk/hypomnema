@@ -96,3 +96,64 @@ class TestGetDocument:
     async def test_not_found_returns_404(self, client: AsyncClient):
         resp = await client.get("/api/documents/nonexistent")
         assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+class TestUpdateDocument:
+    async def test_update_text(self, client: AsyncClient):
+        create_resp = await client.post("/api/documents/scribbles", json={"text": "Original text"})
+        doc_id = create_resp.json()["id"]
+
+        resp = await client.patch(f"/api/documents/{doc_id}", json={"text": "Updated text"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["text"] == "Updated text"
+        assert data["processed"] == 0
+
+    async def test_update_title(self, client: AsyncClient):
+        create_resp = await client.post(
+            "/api/documents/scribbles", json={"text": "Some text", "title": "Old"}
+        )
+        doc_id = create_resp.json()["id"]
+
+        resp = await client.patch(f"/api/documents/{doc_id}", json={"title": "New Title"})
+        assert resp.status_code == 200
+        assert resp.json()["title"] == "New Title"
+
+    async def test_update_not_found(self, client: AsyncClient):
+        resp = await client.patch("/api/documents/nonexistent", json={"text": "new"})
+        assert resp.status_code == 404
+
+    async def test_update_empty_body(self, client: AsyncClient):
+        create_resp = await client.post("/api/documents/scribbles", json={"text": "text"})
+        doc_id = create_resp.json()["id"]
+
+        resp = await client.patch(f"/api/documents/{doc_id}", json={})
+        assert resp.status_code == 400
+
+    async def test_update_clears_associations(self, client: AsyncClient, app):
+        """Verify document_engrams and document_embeddings are cleared on update."""
+        create_resp = await client.post("/api/documents/scribbles", json={"text": "Test"})
+        doc_id = create_resp.json()["id"]
+
+        # Insert fake associations
+        db = app.state.db
+        await db.execute(
+            "INSERT OR IGNORE INTO engrams (id, canonical_name, concept_hash) VALUES (?, ?, ?)",
+            ("fake-engram-id", "fake", "fakehash"),
+        )
+        await db.execute(
+            "INSERT OR IGNORE INTO document_engrams (document_id, engram_id) VALUES (?, ?)",
+            (doc_id, "fake-engram-id"),
+        )
+        await db.commit()
+
+        # Update should clear them
+        resp = await client.patch(f"/api/documents/{doc_id}", json={"text": "Updated"})
+        assert resp.status_code == 200
+
+        cursor = await db.execute(
+            "SELECT COUNT(*) FROM document_engrams WHERE document_id = ?", (doc_id,)
+        )
+        row = await cursor.fetchone()
+        assert row[0] == 0

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
 import { api } from "@/lib/api";
 import { useSettings } from "@/hooks/useSettings";
 import type { SettingsUpdatePayload, ProviderInfo } from "@/lib/types";
@@ -181,24 +180,10 @@ export function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12 sm:py-16">
-      {/* Header */}
-      <header className="mb-10">
-        <h1 className="font-mono text-lg font-bold tracking-[0.2em] uppercase">
-          hypomnema
-        </h1>
-        <div className="mt-1 flex items-center gap-4">
-          <p className="font-mono text-xs text-muted tracking-wide">
-            configuration
-          </p>
-          <Link
-            href="/"
-            className="rounded-full border border-border px-3 py-0.5 font-mono text-[10px] text-muted no-underline transition-colors hover:border-border-focus hover:text-foreground"
-          >
-            &larr; stream
-          </Link>
-        </div>
-      </header>
+    <div className="mx-auto max-w-2xl px-4 py-8">
+      <h1 className="mb-6 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-muted/40">
+        Configuration
+      </h1>
 
       {/* LLM Provider selector */}
       <section className="mb-8">

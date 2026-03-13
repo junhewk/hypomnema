@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
-import Link from "next/link";
 import type { SearchMode } from "@/lib/types";
 import { useSearch } from "@/hooks/useSearch";
 import { useEngrams } from "@/hooks/useEngrams";
@@ -42,15 +41,7 @@ export function SearchPage() {
   const { engrams: engramDetails } = useEngrams(edgeEngramIds);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12">
-      <Link
-        href="/"
-        className="mb-8 inline-block font-mono text-xs text-muted no-underline transition-colors hover:text-foreground"
-        data-testid="back-link"
-      >
-        ← back
-      </Link>
-
+    <div className="mx-auto max-w-2xl px-4 py-8">
       <SearchBar
         query={query}
         mode={mode}

@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import { useEngram } from "@/hooks/useEngram";
 import { useEngrams } from "@/hooks/useEngrams";
 import { NetworkPanel } from "./NetworkPanel";
@@ -38,15 +37,7 @@ export function EngramDetailPage({ id }: EngramDetailPageProps) {
   const engramIdSet = useMemo(() => new Set([id]), [id]);
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12">
-      <Link
-        href="/"
-        className="mb-8 inline-block font-mono text-xs text-muted no-underline transition-colors hover:text-foreground"
-        data-testid="back-link"
-      >
-        ← back
-      </Link>
-
+    <div className="mx-auto max-w-2xl px-4 py-8">
       {isLoading && (
         <p className="animate-pulse-dot font-mono text-sm text-muted">
           Loading…

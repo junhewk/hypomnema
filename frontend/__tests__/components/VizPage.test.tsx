@@ -8,10 +8,10 @@ vi.mock("@/components/VizScene", () => ({
   VizScene: () => <div data-testid="viz-scene-mock">VizScene</div>,
 }));
 
-// Mock useVizData
+// Mock useVizDataCtx
 const mockUseVizData = vi.fn();
-vi.mock("@/hooks/useVizData", () => ({
-  useVizData: () => mockUseVizData(),
+vi.mock("@/hooks/useVizDataContext", () => ({
+  useVizDataCtx: () => mockUseVizData(),
 }));
 
 beforeEach(() => {
@@ -57,7 +57,7 @@ describe("VizPage", () => {
     expect(screen.getByTestId("empty-state")).toBeInTheDocument();
   });
 
-  it("renders nav links", () => {
+  it("renders viz scene (nav provided by sidebar)", () => {
     mockUseVizData.mockReturnValue({
       points: [makeProjectionPoint()],
       clusters: [makeCluster()],
@@ -66,8 +66,6 @@ describe("VizPage", () => {
       error: null,
     });
     render(<VizPage />);
-    expect(screen.getByTestId("stream-link")).toHaveAttribute("href", "/");
-    expect(screen.getByTestId("search-link")).toHaveAttribute("href", "/search");
     expect(screen.getByTestId("viz-scene-mock")).toBeInTheDocument();
   });
 });

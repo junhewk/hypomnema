@@ -30,6 +30,7 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 
 - **Local mode** (`uv run hypomnema dev`) — binds to localhost, opens browser, hot-reload enabled
 - **Server mode** (`HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<ip> uv run hypomnema serve`) — binds to specified host (e.g. Tailscale IP), runs production frontend, 24/7 continuous ingestion
+- **Desktop mode** (`HYPOMNEMA_MODE=desktop`) — Tauri v2 native app, PyInstaller'd backend as sidecar, static frontend served via FastAPI `StaticFiles`, cloud-only embeddings (no torch)
 
 ### Running
 
@@ -54,7 +55,7 @@ cd frontend && npx playwright test             # e2e
 
 All settings use `HYPOMNEMA_` env prefix. Key env vars:
 
-- `HYPOMNEMA_MODE` — `local` (default) or `server`
+- `HYPOMNEMA_MODE` — `local` (default), `server`, or `desktop`
 - `HYPOMNEMA_HOST` — bind address (default `127.0.0.1`, set to Tailscale IP for server mode)
 - `HYPOMNEMA_LLM_PROVIDER` — `claude`, `google`, `openai`, `ollama`, or `mock` (default `mock`)
 - `HYPOMNEMA_EMBEDDING_PROVIDER` — `local`, `openai`, or `google` (default `local`, fixed at startup)
@@ -62,6 +63,13 @@ All settings use `HYPOMNEMA_` env prefix. Key env vars:
 - `HYPOMNEMA_DB_PATH` — SQLite database path (default `data/hypomnema.db`)
 
 LLM provider and API keys can also be configured at runtime via the Settings UI (`/settings`). DB settings override env vars for LLM-related fields. Embedding provider is fixed at startup — changing it requires a fresh database.
+
+### Frontend Layout
+
+- **Persistent sidebar** (`Sidebar.tsx`) with nav items (Stream, Search, Settings), viz minimap, and full viz link
+- **LayoutShell** wraps all pages: sidebar layout for normal pages, full-screen passthrough for `/viz`
+- **VizDataProvider** context at root level shares viz data between minimap and full page (single fetch)
+- **Documents are editable** — "continue" button on scribble cards loads into edit mode with draft auto-save via localStorage
 
 ## Key Design Constraints
 

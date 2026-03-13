@@ -78,6 +78,11 @@ class ScribbleCreate(BaseModel):
     title: str | None = None
 
 
+class DocumentUpdate(BaseModel):
+    text: str | None = None
+    title: str | None = None
+
+
 class FeedCreate(BaseModel):
     name: str
     feed_type: str

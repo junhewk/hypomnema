@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from hypomnema.llm.base import LLMClient
 
 from hypomnema.api.deps import DB, LLM, AppSettings, Embeddings
-from hypomnema.api.schemas import DocumentDetail, DocumentOut, PaginatedList, ScribbleCreate
+from hypomnema.api.schemas import DocumentDetail, DocumentOut, DocumentUpdate, PaginatedList, ScribbleCreate
 from hypomnema.db.engine import connect
 from hypomnema.db.models import Engram
 from hypomnema.ingestion.file_parser import UnsupportedFormatError, ingest_file
@@ -84,6 +84,57 @@ async def upload_file_endpoint(
         _run_ontology_pipeline, doc.id, settings.db_path, settings.sqlite_vec_path, llm, embeddings
     )
     return DocumentOut.model_validate(doc, from_attributes=True)
+
+
+@router.patch("/{document_id}", response_model=DocumentOut)
+async def update_document(
+    document_id: str,
+    body: DocumentUpdate,
+    db: DB,
+    llm: LLM,
+    embeddings: Embeddings,
+    settings: AppSettings,
+    background_tasks: BackgroundTasks,
+) -> DocumentOut:
+    """Update a document's text/title and re-run ontology pipeline."""
+    cursor = await db.execute("SELECT * FROM documents WHERE id = ?", (document_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if body.text is None and body.title is None:
+        raise HTTPException(status_code=400, detail="Nothing to update")
+
+    # Build update
+    updates: dict[str, object] = {}
+    if body.text is not None:
+        updates["text"] = body.text
+    if body.title is not None:
+        updates["title"] = body.title
+
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values())
+    cursor = await db.execute(
+        f"UPDATE documents SET {set_clause}, processed = 0, updated_at = datetime('now') "  # noqa: S608
+        "WHERE id = ? RETURNING *",
+        (*values, document_id),
+    )
+    updated_row = await cursor.fetchone()
+    await cursor.close()
+
+    # Clean up old associations
+    await db.execute("DELETE FROM document_engrams WHERE document_id = ?", (document_id,))
+    await db.execute("DELETE FROM document_embeddings WHERE document_id = ?", (document_id,))
+    await db.execute("DELETE FROM edges WHERE source_document_id = ?", (document_id,))
+    await db.commit()
+
+    # Re-run ontology pipeline in background
+    background_tasks.add_task(
+        _run_ontology_pipeline, document_id, settings.db_path, settings.sqlite_vec_path, llm, embeddings
+    )
+
+    return DocumentOut(**dict(updated_row))
 
 
 @router.get("", response_model=PaginatedList[DocumentOut])

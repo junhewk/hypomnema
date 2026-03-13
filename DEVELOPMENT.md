@@ -27,6 +27,8 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P14 — Frontend: Viz Canvas | Done | 19 frontend (127 total) + 16 e2e + 1 backend (349 total) | R3F + drei, GL points/lines, orbit controls, fog, cluster labels, hover tooltip |
 | P15 — CLI + Integration | Done | 7 backend (377 pass, 1 skip total) | CLI entry point, dynamic CORS, integration tests |
 | P16 — Multi-Provider + Settings | Done | 36 backend (413 pass, 1 skip total) | OpenAI + Ollama LLM, OpenAI + Google embeddings, settings API, hot-swap, Fernet encryption, settings UI |
+| P17 — UX Overhaul | Done | 6 backend + 0 frontend (419 pass, 1 skip total; 127 frontend) | Sidebar nav, editable documents with draft auto-save, viz minimap, LayoutShell |
+| P18 — Tauri Desktop Packaging | Done | 0 new tests (scaffolding only) | Health endpoint, static file serving, desktop config mode, Tauri sidecar, PyInstaller spec |
 
 ### Implementation Notes (P0+P1+P2+P3+P4)
 
@@ -138,6 +140,29 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **New dependencies:** `cryptography>=44,<45` (Fernet), `openai>=1.60,<2` (OpenAI LLM + embeddings). Both added to pyproject.toml with mypy overrides for missing stubs.
 - **Existing test updated:** `test_config.py::test_invalid_llm_provider_rejected` was using `"openai"` as invalid provider — updated to `"nonexistent"` since OpenAI is now valid.
 
+### Implementation Notes (P17+P18)
+
+- **LayoutShell wraps all pages:** `LayoutShell` component provides a single `VizDataProvider` wrapping with conditional layout — sidebar + main for normal pages, full-screen passthrough for `/viz`. Avoids duplicate providers and context loss on navigation.
+- **Sidebar component:** Persistent left sidebar (`w-56`, `bg-surface`) with logo, nav items (Stream, Search, Settings), viz minimap, and full viz link. `NavItem` extracted as shared component used by both main nav and viz link.
+- **Sidebar active indicator:** CSS `::before` pseudo-element with `var(--accent)` left border, height animated on active/hover states via `data-active` attribute.
+- **VizMinimap performance:** Uses R3F `frameloop="demand"` with a `SlowTicker` component that calls `invalidate()` at 10fps via `setInterval`. `IntersectionObserver` defers Canvas mounting until the minimap is in viewport. No continuous 60fps loop.
+- **VizDataProvider context:** `useVizDataContext.tsx` wraps `useVizData()` in React Context. `useVizDataCtx()` throws if used outside provider (no conditional hook fallback — React Rules of Hooks). Both minimap and full viz share the same fetched data.
+- **Editable documents:** `PATCH /api/documents/{id}` endpoint updates text/title, resets `processed=0`, cleans up `document_engrams`, `document_embeddings`, and `edges WHERE source_document_id = id`, then re-runs ontology pipeline in background. Uses `UPDATE ... RETURNING *` to avoid redundant re-SELECT.
+- **DocumentUpdate schema:** `text: str | None = None`, `title: str | None = None`. Rejects empty body (both None).
+- **ScribbleInput edit mode:** `editingDocument` prop pre-fills title/text, changes button to "Save & Reprocess", shows cancel button. Calls `api.updateDocument()` instead of `api.createScribble()`.
+- **Draft auto-save:** `localStorage` persistence with 500ms debounce. Restores on mount, clears on successful save. Subtle "draft saved"/"draft restored" animation via `.draft-status` CSS class.
+- **"Continue" button on DocumentCard:** Visible on hover for scribble-type documents. Uses `.continue-btn` CSS class with fade-in transition and `::before` arrow prefix.
+- **Editor surface styling:** `.editor-surface` class with gradient background and `::before` left-margin line that fades in on `:focus-within` — manuscript editing feel.
+- **Per-page nav removed:** All inline `← back` links and pill-style nav headers stripped from StreamPage, SearchPage, DocumentDetailPage, EngramDetailPage, SettingsPage. VizPage keeps full-screen canvas, nav pills removed.
+- **Health endpoint:** `GET /api/health` → `{"status": "ok"}` — used by Tauri sidecar to poll backend readiness.
+- **Static file serving:** `main.py` mounts `StaticFiles(directory=settings.static_dir, html=True)` at `/` when `static_dir` is set. API routes take precedence (registered first).
+- **Desktop config mode:** `mode: Literal["local", "server", "desktop"]`. Desktop forces `host = "127.0.0.1"`, defaults `db_path` to `platformdirs.user_data_dir("hypomnema")`.
+- **LocalEmbeddingModel guarded import:** `main.py` wraps import in try/except ImportError, falls back to MockEmbeddingModel. Allows cloud-only builds (no torch/transformers).
+- **Next.js static export:** `next.config.ts` adds `output: process.env.NEXT_EXPORT === "1" ? "export" : undefined`. Normal dev/build workflow unaffected.
+- **Desktop entry point:** `desktop.py` resolves paths for both PyInstaller frozen bundles and dev layout, parses `--port`, runs uvicorn.
+- **Tauri v2 sidecar pattern:** `desktop/src-tauri/src/lib.rs` spawns PyInstaller'd backend, polls `GET /api/health` until ready, redirects window to `http://127.0.0.1:<port>`.
+- **PyInstaller spec:** Cloud-only profile excludes `torch`, `transformers`, `sentence-transformers`. Includes `sqlite_vec` via custom hook.
+
 ---
 
 ## Project Structure
@@ -189,11 +214,12 @@ hypomnema/
 │   │   ├── scheduler/
 │   │   │   └── cron.py                   # APScheduler within FastAPI lifespan
 │   │   └── api/
-│   │       ├── documents.py
+│   │       ├── documents.py              # CRUD + PATCH edit with re-processing
 │   │       ├── engrams.py
 │   │       ├── search.py
 │   │       ├── visualization.py
 │   │       ├── feeds.py
+│   │       ├── health.py                 # GET /api/health (desktop sidecar polling)
 │   │       └── settings.py              # Settings API + LLM hot-swap
 │   └── tests/
 │       ├── conftest.py                   # Shared fixtures: tmp_db, mock_llm, mock_embeddings
@@ -203,12 +229,23 @@ hypomnema/
 │   ├── package.json                      # Next.js 16+, vitest, playwright, tailwind
 │   ├── src/
 │   │   ├── app/                          # App Router pages
-│   │   ├── components/                   # ScribbleInput, DocumentCard, NetworkPanel, VizCanvas, SettingsPage, etc.
+│   │   ├── components/                   # Sidebar, LayoutShell, VizMinimap, ScribbleInput, DocumentCard, etc.
 │   │   ├── lib/api.ts                    # Typed fetch wrapper
 │   │   ├── lib/types.ts                  # TS types matching backend models
-│   │   └── hooks/                        # useDocuments, useEngrams, useSearch, useSettings
+│   │   ├── lib/vizTransforms.ts          # Shared buffer builders for viz (points, edges, colors)
+│   │   └── hooks/                        # useDocuments, useEngrams, useSearch, useSettings, useVizDataContext
 │   ├── __tests__/
 │   └── e2e/
+├── desktop/
+│   ├── src-tauri/                        # Tauri v2 app (Rust)
+│   │   ├── Cargo.toml
+│   │   ├── tauri.conf.json
+│   │   ├── src/lib.rs                    # Sidecar spawn, health poll, window redirect
+│   │   └── capabilities/default.json
+│   └── packaging/
+│       ├── build.py                      # Orchestrates: next export → pyinstaller → tauri build
+│       ├── hypomnema.spec                # PyInstaller spec (cloud-only, no torch)
+│       └── hooks/hook-sqlite_vec.py      # PyInstaller hook for sqlite_vec
 ├── start-web.sh                          # Local mode: localhost, auto-open browser
 └── start-server.sh                       # Server mode: Tailscale bind, 24/7
 ```
@@ -331,6 +368,9 @@ P0 (Scaffold)
          │       └─ P13 (Frontend: Search + Clusters)
          │           └─ P14 (Frontend: Viz Canvas)
          └─ P15 (Deployment + Integration)
+         └─ P16 (Multi-Provider + Settings)
+             └─ P17 (UX Overhaul — Sidebar, Edit, Minimap)
+                 └─ P18 (Tauri Desktop Packaging)
 ```
 
 ---
@@ -549,6 +589,51 @@ GET    /api/settings                → SettingsResponse (masked keys)
 PUT    /api/settings                → SettingsResponse (hot-swaps LLM)
 GET    /api/settings/providers      → ProvidersResponse (available providers)
 ```
+
+### Phase 17 — UX Overhaul: Sidebar Nav, Editable Documents, Viz Minimap
+
+**Goal:** Replace scattered per-page nav with persistent sidebar, add document editing with draft auto-save, embed viz minimap in sidebar.
+
+**Backend:**
+- `PATCH /api/documents/{id}` — update text/title, reset processed, clean up old associations, re-run ontology pipeline
+- `DocumentUpdate` schema in `api/schemas.py`
+- Tests: `test_api/test_documents.py::TestUpdateDocument` — 5 tests
+
+**Frontend:**
+- `LayoutShell` — conditional sidebar/fullscreen layout with single `VizDataProvider`
+- `Sidebar` — persistent nav with logo, active indicators, minimap
+- `VizMinimap` — low-fps R3F canvas with IntersectionObserver lazy loading
+- `useVizDataContext` — React Context sharing viz data between minimap and full page
+- `ScribbleInput` — 10-row editor, localStorage draft auto-save, edit mode
+- `DocumentCard` — "continue" button on hover for scribbles
+- All pages: removed inline nav headers/back links
+- `api.ts` — `updateDocument()` method
+
+**API addition:**
+```
+PATCH  /api/documents/{id}          → DocumentOut (edit + reprocess)
+```
+
+---
+
+### Phase 18 — Tauri Desktop Packaging
+
+**Goal:** Package as native desktop app via Tauri v2 sidecar pattern.
+
+**Backend changes (benefits both web + desktop):**
+- `GET /api/health` endpoint for sidecar polling
+- Static file serving via `StaticFiles` mount when `static_dir` is set
+- `desktop` config mode (localhost, platformdirs data dir)
+- `desktop.py` entry point for PyInstaller sidecar
+- Guarded `LocalEmbeddingModel` import for cloud-only builds
+
+**Desktop scaffolding (`desktop/`):**
+- Tauri v2 app: sidecar spawn → health poll → window redirect
+- PyInstaller spec: cloud-only profile excluding torch
+- Build orchestrator: next export → pyinstaller → tauri build
+
+**Frontend change:**
+- `next.config.ts` conditional `output: "export"` via `NEXT_EXPORT=1` env var
 
 ---
 

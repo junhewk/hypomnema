@@ -86,6 +86,16 @@ export class ApiClient {
     return this.request(`/api/documents/${id}`);
   }
 
+  async updateDocument(
+    id: string,
+    updates: { text?: string; title?: string },
+  ): Promise<Document> {
+    return this.request(`/api/documents/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    });
+  }
+
   async listEngrams(
     offset = 0,
     limit = 20,

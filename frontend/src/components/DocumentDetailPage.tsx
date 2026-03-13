@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import { useDocument } from "@/hooks/useDocument";
 import { useEngrams } from "@/hooks/useEngrams";
 import { SOURCE_STYLES, STATUS_COLOR, STATUS_ANIM } from "@/lib/documentStyles";
@@ -28,15 +27,7 @@ export function DocumentDetailPage({ id }: DocumentDetailPageProps) {
   const source = doc ? SOURCE_STYLES[doc.source_type] : null;
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-12">
-      <Link
-        href="/"
-        className="mb-8 inline-block font-mono text-xs text-muted no-underline transition-colors hover:text-foreground"
-        data-testid="back-link"
-      >
-        ← back
-      </Link>
-
+    <div className="mx-auto max-w-2xl px-4 py-8">
       {isLoading && (
         <p className="animate-pulse-dot font-mono text-sm text-muted">
           Loading…

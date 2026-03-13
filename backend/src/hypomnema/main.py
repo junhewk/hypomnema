@@ -64,9 +64,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             model=settings.embedding_model,
         )
     else:
-        from hypomnema.embeddings.local_gpu import LocalEmbeddingModel
+        try:
+            from hypomnema.embeddings.local_gpu import LocalEmbeddingModel
 
-        app.state.embeddings = LocalEmbeddingModel(model_name=settings.embedding_model)
+            app.state.embeddings = LocalEmbeddingModel(model_name=settings.embedding_model)
+        except ImportError:
+            logger.warning("Local embedding model not available (torch missing), falling back to mock")
+            from hypomnema.embeddings.mock import MockEmbeddingModel
+
+            app.state.embeddings = MockEmbeddingModel(dimension=settings.embedding_dim)
 
     # LLM
     if settings.llm_provider == "mock":
@@ -128,6 +134,7 @@ def create_app(settings: Settings | None = None, *, use_lifespan: bool = True) -
     from hypomnema.api.search import router as search_router
     from hypomnema.api.settings import router as settings_router
     from hypomnema.api.viz import router as viz_router
+    from hypomnema.api.health import router as health_router
 
     app.include_router(documents_router)
     app.include_router(engrams_router)
@@ -135,5 +142,11 @@ def create_app(settings: Settings | None = None, *, use_lifespan: bool = True) -
     app.include_router(search_router)
     app.include_router(settings_router)
     app.include_router(viz_router)
+    app.include_router(health_router)
+
+    if settings.static_dir and settings.static_dir.exists():
+        from starlette.staticfiles import StaticFiles
+
+        app.mount("/", StaticFiles(directory=str(settings.static_dir), html=True), name="static")
 
     return app

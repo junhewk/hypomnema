@@ -9,11 +9,13 @@ import { SOURCE_STYLES, STATUS_COLOR, STATUS_ANIM } from "@/lib/documentStyles";
 interface DocumentCardProps {
   document: Document | ScoredDocument;
   style?: CSSProperties;
+  onEdit?: (doc: Document) => void;
 }
 
 export const DocumentCard = memo(function DocumentCard({
   document: doc,
   style,
+  onEdit,
 }: DocumentCardProps) {
   const score = "score" in doc ? doc.score : undefined;
   const source = SOURCE_STYLES[doc.source_type];
@@ -80,6 +82,19 @@ export const DocumentCard = memo(function DocumentCard({
             >
               {(score * 100).toFixed(0)}% match
             </span>
+          )}
+          {onEdit && doc.source_type === "scribble" && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onEdit(doc);
+              }}
+              className="continue-btn ml-auto font-mono text-[10px] text-muted/50 transition-colors hover:text-[var(--accent)]"
+              data-testid="continue-button"
+            >
+              continue
+            </button>
           )}
         </div>
       </article>

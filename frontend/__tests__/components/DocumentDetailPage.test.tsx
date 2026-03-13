@@ -58,14 +58,15 @@ describe("DocumentDetailPage", () => {
     );
   });
 
-  it("shows back link to /", async () => {
+  it("renders without back link (sidebar provides navigation)", async () => {
     const doc = makeDocumentDetail({ id: "doc-1" });
     mockFetch.mockResolvedValueOnce(mockDocResponse(doc));
 
     render(<DocumentDetailPage id="doc-1" />);
-    const backLink = screen.getByTestId("back-link");
-    expect(backLink).toHaveAttribute("href", "/");
-    expect(backLink).toHaveTextContent("← back");
+    await waitFor(() =>
+      expect(screen.getByTestId("document-text")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("back-link")).not.toBeInTheDocument();
   });
 
   it("shows error state on API failure", async () => {

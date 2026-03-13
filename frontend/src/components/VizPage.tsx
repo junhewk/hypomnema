@@ -1,31 +1,13 @@
 "use client";
 
-import Link from "next/link";
-import { useVizData } from "@/hooks/useVizData";
+import { useVizDataCtx } from "@/hooks/useVizDataContext";
 import { VizScene } from "./VizScene";
 
 export function VizPage() {
-  const { points, clusters, edges, isLoading, error } = useVizData();
+  const { points, clusters, edges, isLoading, error } = useVizDataCtx();
 
   return (
     <div className="fixed inset-0 viz-viewport" data-testid="viz-page">
-      <nav className="absolute top-4 left-4 z-10 flex gap-2">
-        <Link
-          href="/"
-          className="viz-nav-pill rounded-full border px-3 py-0.5 font-mono text-[10px] text-muted no-underline"
-          data-testid="stream-link"
-        >
-          ← stream
-        </Link>
-        <Link
-          href="/search"
-          className="viz-nav-pill rounded-full border px-3 py-0.5 font-mono text-[10px] text-muted no-underline"
-          data-testid="search-link"
-        >
-          search
-        </Link>
-      </nav>
-
       {isLoading && (
         <div className="flex h-full items-center justify-center">
           <div className="text-center">
