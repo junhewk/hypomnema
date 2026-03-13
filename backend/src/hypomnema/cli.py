@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+import asyncio
 import os
 import shutil
 import subprocess
 import sys
 import threading
 import urllib.request
+from contextlib import contextmanager
 from pathlib import Path
 from time import sleep
 from typing import TYPE_CHECKING, Literal
@@ -47,19 +48,19 @@ def _has_production_frontend_build(next_dir: Path) -> bool:
     return next_dir.exists() and (next_dir / "BUILD_ID").is_file()
 
 
-def _frontend_public_env(settings: "Settings") -> dict[str, str]:
+def _frontend_public_env(settings: Settings) -> dict[str, str]:
     return {
         "NEXT_PUBLIC_API_URL": "auto",
         "NEXT_PUBLIC_API_PORT": str(settings.port),
     }
 
 
-def _frontend_build_signature(settings: "Settings") -> str:
+def _frontend_build_signature(settings: Settings) -> str:
     public_env = _frontend_public_env(settings)
     return "\n".join(f"{key}={value}" for key, value in sorted(public_env.items()))
 
 
-def _has_matching_production_frontend_build(next_dir: Path, settings: "Settings") -> bool:
+def _has_matching_production_frontend_build(next_dir: Path, settings: Settings) -> bool:
     if not _has_production_frontend_build(next_dir):
         return False
     build_env_file = next_dir / _FRONTEND_BUILD_ENV_FILE
@@ -68,7 +69,7 @@ def _has_matching_production_frontend_build(next_dir: Path, settings: "Settings"
     return build_env_file.read_text(encoding="utf-8") == _frontend_build_signature(settings)
 
 
-def _write_frontend_build_signature(next_dir: Path, settings: "Settings") -> None:
+def _write_frontend_build_signature(next_dir: Path, settings: Settings) -> None:
     (next_dir / _FRONTEND_BUILD_ENV_FILE).write_text(
         _frontend_build_signature(settings),
         encoding="utf-8",
@@ -87,7 +88,7 @@ def _open_when_ready(url: str, port: int, timeout: int = 30) -> None:
             sleep(0.5)
 
 
-def _frontend_env(settings: "Settings") -> dict[str, str]:
+def _frontend_env(settings: Settings) -> dict[str, str]:
     """Build environment for the frontend process."""
     env = {
         **os.environ,
@@ -100,7 +101,7 @@ def _frontend_env(settings: "Settings") -> dict[str, str]:
     return env
 
 
-def _backend_env(settings: "Settings") -> dict[str, str]:
+def _backend_env(settings: Settings) -> dict[str, str]:
     return {
         "HYPOMNEMA_MODE": settings.mode,
     }
@@ -120,7 +121,7 @@ def _temporary_env(overrides: dict[str, str]) -> object:
                 os.environ[key] = value
 
 
-def _load_settings(default_mode: Literal["local", "server"]) -> "Settings":
+def _load_settings(default_mode: Literal["local", "server"]) -> Settings:
     from hypomnema.config import Settings
 
     if "HYPOMNEMA_MODE" in os.environ:
@@ -130,7 +131,7 @@ def _load_settings(default_mode: Literal["local", "server"]) -> "Settings":
 
 def _run(
     *,
-    settings: "Settings",
+    settings: Settings,
     npm: str,
     reload: bool,
     frontend_cmd: list[str],
@@ -216,6 +217,38 @@ def cmd_serve(args: argparse.Namespace) -> None:
     )
 
 
+def _default_eval_output_dir(settings: Settings) -> Path:
+    return settings.db_path.parent / "evals" / "tidy-text"
+
+
+def cmd_eval_tidy_text(args: argparse.Namespace) -> None:
+    from hypomnema.evals.tidy_text import run_tidy_text_eval, write_eval_report
+
+    settings = _load_settings("local")
+    report = asyncio.run(
+        run_tidy_text_eval(
+            dataset=args.dataset,
+            variant=args.variant,
+            base_settings=settings,
+            generation_provider=args.provider,
+            generation_model=args.model,
+            judge_provider=args.judge_provider,
+            judge_model=args.judge_model,
+            include_judge=not args.no_judge,
+        )
+    )
+    output_dir = args.output_dir or _default_eval_output_dir(settings)
+    json_path, md_path = write_eval_report(report, output_dir)
+    print(f"JSON report: {json_path}")
+    print(f"Markdown summary: {md_path}")
+    print(
+        "Overall score:",
+        f"{report.aggregate.overall:.2f}",
+        f"({report.aggregate.passed_count}/{report.aggregate.case_count} passed,",
+        f"{report.aggregate.hard_fail_count} hard fails)",
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         prog="hypomnema",
@@ -229,6 +262,21 @@ def main() -> None:
     serve_p = sub.add_parser("serve", help="Production mode (defaults to server deployment mode)")
     serve_p.add_argument("--build", action="store_true", help="Force frontend rebuild")
 
+    from hypomnema.ontology.extractor import DEFAULT_PROMPT_VARIANT, list_prompt_variants
+
+    eval_p = sub.add_parser("eval", help="Local evaluation utilities")
+    eval_sub = eval_p.add_subparsers(dest="eval_command")
+
+    tidy_p = eval_sub.add_parser("tidy-text", help="Run the tidy-text eval corpus")
+    tidy_p.add_argument("--dataset", choices=("smoke", "full"), default="smoke")
+    tidy_p.add_argument("--variant", choices=list_prompt_variants(), default=DEFAULT_PROMPT_VARIANT)
+    tidy_p.add_argument("--provider", default=None, help="Override generation provider")
+    tidy_p.add_argument("--model", default=None, help="Override generation model")
+    tidy_p.add_argument("--judge-provider", default=None)
+    tidy_p.add_argument("--judge-model", default=None)
+    tidy_p.add_argument("--no-judge", action="store_true", help="Skip LLM judge scoring")
+    tidy_p.add_argument("--output-dir", type=Path, default=None)
+
     args = parser.parse_args()
     if args.command is None:
         args.command = "dev"
@@ -237,3 +285,7 @@ def main() -> None:
         cmd_dev(args)
     elif args.command == "serve":
         cmd_serve(args)
+    elif args.command == "eval" and args.eval_command == "tidy-text":
+        cmd_eval_tidy_text(args)
+    elif args.command == "eval":
+        parser.error("eval requires a subcommand")

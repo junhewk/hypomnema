@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
-import types
 import sys
-from pathlib import Path
-from typing import Any
+import types
+from typing import TYPE_CHECKING, Any
 
 from hypomnema import cli as cli_mod
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _make_frontend_dir(tmp_path: Path) -> Path:
@@ -205,3 +207,55 @@ class TestMain:
         assert len(captured_args) == 1
         assert captured_args[0].command == "dev"
         assert captured_args[0].no_browser is False
+
+    def test_dispatches_eval_tidy_text(self, monkeypatch: Any) -> None:
+        calls: list[argparse.Namespace] = []
+
+        def fake_eval(args: argparse.Namespace) -> None:
+            calls.append(args)
+
+        monkeypatch.setattr(cli_mod, "cmd_dev", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_serve", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_eval_tidy_text", fake_eval)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["hypomnema", "eval", "tidy-text", "--dataset", "smoke", "--no-judge"],
+        )
+
+        cli_mod.main()
+
+        assert len(calls) == 1
+        assert calls[0].command == "eval"
+        assert calls[0].eval_command == "tidy-text"
+        assert calls[0].dataset == "smoke"
+        assert calls[0].no_judge is True
+
+    def test_dispatches_eval_tidy_text_generation_overrides(self, monkeypatch: Any) -> None:
+        calls: list[argparse.Namespace] = []
+
+        def fake_eval(args: argparse.Namespace) -> None:
+            calls.append(args)
+
+        monkeypatch.setattr(cli_mod, "cmd_dev", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_serve", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_eval_tidy_text", fake_eval)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "hypomnema",
+                "eval",
+                "tidy-text",
+                "--provider",
+                "openai",
+                "--model",
+                "gpt-5-mini",
+            ],
+        )
+
+        cli_mod.main()
+
+        assert len(calls) == 1
+        assert calls[0].provider == "openai"
+        assert calls[0].model == "gpt-5-mini"
