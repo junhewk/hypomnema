@@ -72,6 +72,25 @@ describe("ScribbleInput", () => {
     );
   });
 
+  it("resets textarea height after successful submit", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => mockDoc,
+    });
+
+    render(<ScribbleInput onSubmit={onSubmit} />);
+    const textarea = screen.getByPlaceholderText(
+      "What are you thinking about?",
+    ) as HTMLTextAreaElement;
+    textarea.style.height = "420px";
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.click(screen.getByRole("button", { name: /save/i }));
+
+    await waitFor(() => expect(textarea).toHaveValue(""));
+    await waitFor(() => expect(textarea.style.height).toBe(""));
+  });
+
   it("calls onSubmit callback with returned document", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

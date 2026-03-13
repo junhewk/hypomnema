@@ -2,19 +2,55 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
-import type { SetupPayload, EmbeddingProviderInfo, ProviderInfo } from "@/lib/types";
+import type {
+  SetupPayload,
+  EmbeddingProviderInfo,
+  ProviderInfo,
+  ModelOption,
+} from "@/lib/types";
 
-const EMBEDDING_PROVIDERS: (EmbeddingProviderInfo & { model: string })[] = [
-  { id: "local", name: "Local (sentence-transformers)", default_dimension: 384, requires_key: false, model: "all-MiniLM-L6-v2" },
-  { id: "openai", name: "OpenAI Embeddings", default_dimension: 1536, requires_key: true, model: "text-embedding-3-small" },
-  { id: "google", name: "Google Embeddings", default_dimension: 768, requires_key: true, model: "text-embedding-004" },
+const EMBEDDING_PROVIDERS: EmbeddingProviderInfo[] = [
+  { id: "local", name: "Local (sentence-transformers)", default_dimension: 384, default_model: "all-MiniLM-L6-v2", requires_key: false },
+  { id: "openai", name: "OpenAI Embeddings", default_dimension: 1536, default_model: "text-embedding-3-small", requires_key: true },
+  { id: "google", name: "Google Embeddings", default_dimension: 768, default_model: "text-embedding-004", requires_key: true },
 ];
 
 const LLM_PROVIDERS: ProviderInfo[] = [
-  { id: "claude", name: "Anthropic Claude", requires_key: true, default_model: "claude-sonnet-4-20250514" },
-  { id: "google", name: "Google Gemini", requires_key: true, default_model: "gemini-2.0-flash" },
-  { id: "openai", name: "OpenAI", requires_key: true, default_model: "gpt-4o" },
-  { id: "ollama", name: "Ollama (local)", requires_key: false, default_model: "llama3.1" },
+  {
+    id: "claude",
+    name: "Anthropic Claude",
+    requires_key: true,
+    default_model: "claude-sonnet-4-20250514",
+    models: [
+      { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
+      { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku" },
+    ],
+  },
+  {
+    id: "google",
+    name: "Google Gemini",
+    requires_key: true,
+    default_model: "gemini-2.5-flash",
+    models: [
+      { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+      { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview" },
+      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
+      { id: "gemini-3-pro-preview", name: "Gemini 3 Pro Preview" },
+      { id: "gemini-2.5-flash-lite-preview-09-2025", name: "Gemini 2.5 Flash-Lite Preview" },
+    ],
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    requires_key: true,
+    default_model: "gpt-5-mini",
+    models: [
+      { id: "gpt-5-mini", name: "GPT-5 mini" },
+      { id: "gpt-4.1-mini", name: "GPT-4.1 mini" },
+      { id: "gpt-4o", name: "GPT-4o" },
+    ],
+  },
+  { id: "ollama", name: "Ollama (local)", requires_key: false, default_model: "llama3.1", models: [] },
 ];
 
 const PROVIDER_ICONS: Record<string, string> = {
@@ -33,23 +69,112 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
     mode === "desktop" ? "openai" : "local"
   );
   const [embeddingApiKey, setEmbeddingApiKey] = useState("");
+  const [embeddingProbe, setEmbeddingProbe] = useState<string | null>(null);
+  const [embeddingProbeTone, setEmbeddingProbeTone] = useState<"info" | "checking" | "success" | "error">("info");
+  const [embeddingChecking, setEmbeddingChecking] = useState(false);
 
   // Step 2 state
   const [llmProvider, setLlmProvider] = useState<string | null>(null);
+  const [llmModel, setLlmModel] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
   const [googleKey, setGoogleKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [ollamaUrl, setOllamaUrl] = useState("http://localhost:11434");
   const [openaiUrl, setOpenaiUrl] = useState("");
+  const [llmProbe, setLlmProbe] = useState<string | null>(null);
+  const [llmProbeTone, setLlmProbeTone] = useState<"info" | "checking" | "success" | "error">("info");
+  const [llmChecking, setLlmChecking] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const selectedEmbedding = EMBEDDING_PROVIDERS.find((p) => p.id === embeddingProvider);
+  const selectedLlm = LLM_PROVIDERS.find((p) => p.id === llmProvider) ?? null;
+  const selectedLlmModels = selectedLlm?.models ?? [];
   const needsEmbeddingKey = selectedEmbedding?.requires_key ?? false;
 
   const canProceedStep1 =
     embeddingProvider && (!needsEmbeddingKey || embeddingApiKey.trim().length > 0);
+
+  async function verifyEmbeddingConnection(providerId = embeddingProvider, key = embeddingApiKey) {
+    const selected = EMBEDDING_PROVIDERS.find((item) => item.id === providerId);
+    if (!selected) return;
+    if (selected.requires_key && !key.trim()) {
+      setEmbeddingProbeTone("info");
+      setEmbeddingProbe("Add the provider key to verify wiring.");
+      return;
+    }
+    setEmbeddingChecking(true);
+    setEmbeddingProbeTone("checking");
+    setEmbeddingProbe(`Checking ${selected.default_model}...`);
+    try {
+      const result = await api.checkConnection({
+        kind: "embedding",
+        provider: providerId,
+        model: selected.default_model,
+        openai_api_key: providerId === "openai" ? key : undefined,
+        google_api_key: providerId === "google" ? key : undefined,
+      });
+      setEmbeddingProbeTone("success");
+      setEmbeddingProbe(`${result.message}${result.dimension ? ` (${result.dimension}d)` : ""}`);
+    } catch (e) {
+      setEmbeddingProbeTone("error");
+      setEmbeddingProbe(e instanceof Error ? e.message : "Connection check failed");
+    } finally {
+      setEmbeddingChecking(false);
+    }
+  }
+
+  function currentLlmKey(providerId: string | null) {
+    switch (providerId) {
+      case "claude":
+        return anthropicKey.trim();
+      case "google":
+        return googleKey.trim();
+      case "openai":
+        return openaiKey.trim();
+      default:
+        return "";
+    }
+  }
+
+  async function verifyLlmConnection(providerId = llmProvider, modelId = llmModel) {
+    if (!providerId) return;
+    const selected = LLM_PROVIDERS.find((item) => item.id === providerId);
+    const effectiveModel = modelId || selected?.default_model || "";
+    if (!effectiveModel) {
+      setLlmProbeTone("info");
+      setLlmProbe("Select a model to verify wiring.");
+      return;
+    }
+    if (providerId !== "ollama" && !currentLlmKey(providerId)) {
+      setLlmProbeTone("info");
+      setLlmProbe("Add the provider key to verify wiring.");
+      return;
+    }
+    setLlmChecking(true);
+    setLlmProbeTone("checking");
+    setLlmProbe(`Checking ${effectiveModel}...`);
+    try {
+      const result = await api.checkConnection({
+        kind: "llm",
+        provider: providerId,
+        model: effectiveModel,
+        anthropic_api_key: providerId === "claude" ? anthropicKey : undefined,
+        google_api_key: providerId === "google" ? googleKey : undefined,
+        openai_api_key: providerId === "openai" ? openaiKey : undefined,
+        openai_base_url: providerId === "openai" ? openaiUrl : undefined,
+        ollama_base_url: providerId === "ollama" ? ollamaUrl : undefined,
+      });
+      setLlmProbeTone("success");
+      setLlmProbe(result.message);
+    } catch (e) {
+      setLlmProbeTone("error");
+      setLlmProbe(e instanceof Error ? e.message : "Connection check failed");
+    } finally {
+      setLlmChecking(false);
+    }
+  }
 
   async function handleComplete(skipLlm: boolean) {
     setSubmitting(true);
@@ -68,6 +193,7 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
 
       if (!skipLlm && llmProvider) {
         payload.llm_provider = llmProvider;
+        payload.llm_model = llmModel || selectedLlm?.default_model;
         if (llmProvider === "claude" && anthropicKey) payload.anthropic_api_key = anthropicKey;
         if (llmProvider === "google" && googleKey) payload.google_api_key = googleKey;
         if (llmProvider === "openai" && openaiKey) payload.openai_api_key = openaiKey;
@@ -138,6 +264,8 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                       if (!isDisabled) {
                         setEmbeddingProvider(p.id);
                         setEmbeddingApiKey("");
+                        setEmbeddingProbe(null);
+                        void verifyEmbeddingConnection(p.id, "");
                       }
                     }}
                     disabled={isDisabled}
@@ -167,7 +295,7 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                           {p.name}
                         </span>
                         <span className="block font-mono text-[10px] text-muted/60">
-                          {p.requires_key ? "api key required" : "no api key"} · {p.model} · {p.default_dimension}-dim
+                          {p.requires_key ? "api key required" : "no api key"} · {p.default_model} · {p.default_dimension}-dim
                         </span>
                         {isDisabled && (
                           <span className="block font-mono text-[10px] text-red-400 mt-0.5">
@@ -191,13 +319,34 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                   <input
                     type="password"
                     value={embeddingApiKey}
-                    onChange={(e) => setEmbeddingApiKey(e.target.value)}
+                    onChange={(e) => { setEmbeddingApiKey(e.target.value); setEmbeddingProbe(null); }}
                     placeholder={embeddingProvider === "openai" ? "sk-..." : "AIza..."}
                     className="w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors placeholder:text-muted/30 focus:border-border-focus"
                   />
                 </label>
               </div>
             )}
+
+            <div className="mb-4 flex items-center justify-between">
+              <span
+                className={`font-mono text-[10px] ${
+                  embeddingProbeTone === "success"
+                    ? "text-[var(--complete)]"
+                    : embeddingProbeTone === "error"
+                      ? "text-red-500"
+                      : "text-muted/50"
+                }`}
+              >
+                {embeddingProbe ?? ""}
+              </span>
+              <button
+                onClick={() => void verifyEmbeddingConnection()}
+                disabled={embeddingChecking}
+                className="font-mono text-[10px] uppercase tracking-wider text-muted/60 hover:text-foreground transition-colors disabled:opacity-20"
+              >
+                {embeddingChecking ? "Checking..." : "Check Wiring"}
+              </button>
+            </div>
 
             <div className="flex justify-end">
               <button
@@ -234,7 +383,18 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                 return (
                   <button
                     key={p.id}
-                    onClick={() => setLlmProvider(isActive ? null : p.id)}
+                    onClick={() => {
+                      if (isActive) {
+                        setLlmProvider(null);
+                        setLlmModel("");
+                        setLlmProbe(null);
+                        return;
+                      }
+                      setLlmProvider(p.id);
+                      setLlmModel(p.default_model);
+                      setLlmProbe(null);
+                      void verifyLlmConnection(p.id, p.default_model);
+                    }}
                     className="animate-fade-up group relative border-l-2 bg-surface-raised py-2.5 pr-4 pl-4 text-left transition-colors hover:bg-surface"
                     style={{
                       borderLeftColor: isActive ? "var(--accent)" : "var(--border)",
@@ -273,6 +433,42 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
             {/* LLM API key inputs */}
             {llmProvider && (
               <div className="animate-fade-up border-l-2 bg-surface-raised py-4 pr-4 pl-4 mb-4" style={{ borderLeftColor: "var(--accent)" }}>
+                {selectedLlmModels.length > 0 ? (
+                  <label className="mb-3 block">
+                    <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-muted/60">
+                      Model
+                    </span>
+                    <select
+                      value={llmModel || selectedLlm?.default_model || ""}
+                      onChange={(e) => {
+                        setLlmModel(e.target.value);
+                        setLlmProbe(null);
+                        void verifyLlmConnection(llmProvider, e.target.value);
+                      }}
+                      className="w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors focus:border-border-focus"
+                    >
+                      {selectedLlmModels.map((option: ModelOption) => (
+                        <option key={option.id} value={option.id} className="bg-background text-foreground">
+                          {option.name} · {option.id}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : (
+                  <label className="mb-3 block">
+                    <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-muted/60">
+                      Model
+                    </span>
+                    <input
+                      type="text"
+                      value={llmModel}
+                      onChange={(e) => { setLlmModel(e.target.value); setLlmProbe(null); }}
+                      placeholder={selectedLlm?.default_model}
+                      className="w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors placeholder:text-muted/30 focus:border-border-focus"
+                    />
+                  </label>
+                )}
+
                 {llmProvider === "claude" && (
                   <label className="block">
                     <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-muted/60">
@@ -281,7 +477,7 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                     <input
                       type="password"
                       value={anthropicKey}
-                      onChange={(e) => setAnthropicKey(e.target.value)}
+                      onChange={(e) => { setAnthropicKey(e.target.value); setLlmProbe(null); }}
                       placeholder="sk-ant-..."
                       className="w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors placeholder:text-muted/30 focus:border-border-focus"
                     />
@@ -296,7 +492,7 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                     <input
                       type="password"
                       value={googleKey}
-                      onChange={(e) => setGoogleKey(e.target.value)}
+                      onChange={(e) => { setGoogleKey(e.target.value); setLlmProbe(null); }}
                       placeholder="AIza..."
                       className="w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors placeholder:text-muted/30 focus:border-border-focus"
                     />
@@ -312,7 +508,7 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                       <input
                         type="password"
                         value={openaiKey}
-                        onChange={(e) => setOpenaiKey(e.target.value)}
+                        onChange={(e) => { setOpenaiKey(e.target.value); setLlmProbe(null); }}
                         placeholder="sk-..."
                         className="w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors placeholder:text-muted/30 focus:border-border-focus"
                       />
@@ -324,7 +520,7 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                       <input
                         type="text"
                         value={openaiUrl}
-                        onChange={(e) => setOpenaiUrl(e.target.value)}
+                        onChange={(e) => { setOpenaiUrl(e.target.value); setLlmProbe(null); }}
                         placeholder="https://api.openai.com/v1"
                         className="w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors placeholder:text-muted/30 focus:border-border-focus"
                       />
@@ -340,12 +536,33 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                     <input
                       type="text"
                       value={ollamaUrl}
-                      onChange={(e) => setOllamaUrl(e.target.value)}
+                      onChange={(e) => { setOllamaUrl(e.target.value); setLlmProbe(null); }}
                       placeholder="http://localhost:11434"
                       className="w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors placeholder:text-muted/30 focus:border-border-focus"
                     />
                   </label>
                 )}
+
+                <div className="mt-4 flex items-center justify-between">
+                  <span
+                    className={`font-mono text-[10px] ${
+                      llmProbeTone === "success"
+                        ? "text-[var(--complete)]"
+                        : llmProbeTone === "error"
+                          ? "text-red-500"
+                          : "text-muted/50"
+                    }`}
+                  >
+                    {llmProbe ?? ""}
+                  </span>
+                  <button
+                    onClick={() => void verifyLlmConnection()}
+                    disabled={llmChecking}
+                    className="font-mono text-[10px] uppercase tracking-wider text-muted/60 hover:text-foreground transition-colors disabled:opacity-20"
+                  >
+                    {llmChecking ? "Checking..." : "Check Wiring"}
+                  </button>
+                </div>
               </div>
             )}
 

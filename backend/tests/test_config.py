@@ -55,10 +55,12 @@ class TestSettingsEnvOverride:
         monkeypatch.setenv("HYPOMNEMA_MODE", "server")
         monkeypatch.setenv("HYPOMNEMA_HOST", "10.0.0.5")
         assert Settings().host == "10.0.0.5"
+        assert Settings().cors_origin_regex is None
 
     def test_server_mode_defaults_to_all_interfaces(self, monkeypatch):
         monkeypatch.setenv("HYPOMNEMA_MODE", "server")
         assert Settings().host == "0.0.0.0"
+        assert Settings().cors_origin_regex == r"^https?://[^/]+:3073$"
 
     def test_host_forced_localhost_in_local_mode(self, monkeypatch):
         monkeypatch.setenv("HYPOMNEMA_MODE", "local")

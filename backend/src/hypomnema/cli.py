@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 import os
 import shutil
 import subprocess
@@ -11,13 +12,14 @@ import threading
 import urllib.request
 from pathlib import Path
 from time import sleep
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from hypomnema.config import Settings
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 _FRONTEND_DIR = _REPO_ROOT / "frontend"
+_FRONTEND_BUILD_ENV_FILE = "hypomnema-build-env"
 
 
 def _find_npm() -> str:
@@ -45,6 +47,34 @@ def _has_production_frontend_build(next_dir: Path) -> bool:
     return next_dir.exists() and (next_dir / "BUILD_ID").is_file()
 
 
+def _frontend_public_env(settings: "Settings") -> dict[str, str]:
+    return {
+        "NEXT_PUBLIC_API_URL": "auto",
+        "NEXT_PUBLIC_API_PORT": str(settings.port),
+    }
+
+
+def _frontend_build_signature(settings: "Settings") -> str:
+    public_env = _frontend_public_env(settings)
+    return "\n".join(f"{key}={value}" for key, value in sorted(public_env.items()))
+
+
+def _has_matching_production_frontend_build(next_dir: Path, settings: "Settings") -> bool:
+    if not _has_production_frontend_build(next_dir):
+        return False
+    build_env_file = next_dir / _FRONTEND_BUILD_ENV_FILE
+    if not build_env_file.is_file():
+        return False
+    return build_env_file.read_text(encoding="utf-8") == _frontend_build_signature(settings)
+
+
+def _write_frontend_build_signature(next_dir: Path, settings: "Settings") -> None:
+    (next_dir / _FRONTEND_BUILD_ENV_FILE).write_text(
+        _frontend_build_signature(settings),
+        encoding="utf-8",
+    )
+
+
 def _open_when_ready(url: str, port: int, timeout: int = 30) -> None:
     import webbrowser
 
@@ -57,36 +87,45 @@ def _open_when_ready(url: str, port: int, timeout: int = 30) -> None:
             sleep(0.5)
 
 
-def _resolve_host(settings: "Settings") -> str:
-    """Resolve the host for URLs that browsers will use.
-
-    0.0.0.0 binds all interfaces but isn't a valid browser URL — resolve to
-    the machine's hostname so remote clients can reach the backend.
-    """
-    import socket
-
-    host = settings.host
-    if host == "0.0.0.0":  # noqa: S104
-        host = socket.gethostname()
-        try:
-            host = socket.getaddrinfo(host, None, socket.AF_INET)[0][4][0]
-        except OSError:
-            pass
-    return host
-
-
 def _frontend_env(settings: "Settings") -> dict[str, str]:
     """Build environment for the frontend process."""
-    public_host = _resolve_host(settings)
     env = {
         **os.environ,
         "PORT": str(settings.frontend_port),
-        "NEXT_PUBLIC_API_URL": f"http://{public_host}:{settings.port}",
+        **_frontend_public_env(settings),
     }
     # In server mode, bind Next.js to all interfaces so it's reachable remotely
     if settings.is_remote:
         env["HOSTNAME"] = "0.0.0.0"
     return env
+
+
+def _backend_env(settings: "Settings") -> dict[str, str]:
+    return {
+        "HYPOMNEMA_MODE": settings.mode,
+    }
+
+
+@contextmanager
+def _temporary_env(overrides: dict[str, str]) -> object:
+    previous = {key: os.environ.get(key) for key in overrides}
+    os.environ.update(overrides)
+    try:
+        yield
+    finally:
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def _load_settings(default_mode: Literal["local", "server"]) -> "Settings":
+    from hypomnema.config import Settings
+
+    if "HYPOMNEMA_MODE" in os.environ:
+        return Settings()
+    return Settings(mode=default_mode)
 
 
 def _run(
@@ -117,15 +156,16 @@ def _run(
         ).start()
 
     try:
-        uvicorn.run(
-            "hypomnema.main:create_app",
-            factory=True,
-            host=settings.host,
-            port=settings.port,
-            reload=reload,
-            reload_dirs=[str(_REPO_ROOT / "backend" / "src")] if reload else None,
-            log_level="info",
-        )
+        with _temporary_env(_backend_env(settings)):
+            uvicorn.run(
+                "hypomnema.main:create_app",
+                factory=True,
+                host=settings.host,
+                port=settings.port,
+                reload=reload,
+                reload_dirs=[str(_REPO_ROOT / "backend" / "src")] if reload else None,
+                log_level="info",
+            )
     finally:
         frontend_proc.terminate()
         try:
@@ -135,10 +175,8 @@ def _run(
 
 
 def cmd_dev(args: argparse.Namespace) -> None:
-    from hypomnema.config import Settings
-
     npm = _find_npm()
-    settings = Settings()
+    settings = _load_settings("local")
     _run(
         settings=settings,
         npm=npm,
@@ -149,26 +187,25 @@ def cmd_dev(args: argparse.Namespace) -> None:
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
-    from hypomnema.config import Settings
-
     npm = _find_npm()
-    settings = Settings()
+    settings = _load_settings("server")
 
     # Build with NEXT_PUBLIC_API_URL so Next.js inlines the correct backend URL
     next_dir = _FRONTEND_DIR / ".next"
-    if args.build or not _has_production_frontend_build(next_dir):
+    if args.build or not _has_matching_production_frontend_build(next_dir, settings):
         _ensure_frontend()
         _ensure_node_modules(npm)
         if args.build:
             print("Building frontend for production...")
         else:
-            print("Production frontend build missing or incomplete; rebuilding...")
+            print("Production frontend build missing, incomplete, or outdated; rebuilding...")
         subprocess.run(
             [npm, "run", "build"],
             cwd=_FRONTEND_DIR,
             env=_frontend_env(settings),
             check=True,
         )
+        _write_frontend_build_signature(next_dir, settings)
 
     _run(
         settings=settings,
@@ -189,7 +226,7 @@ def main() -> None:
     dev_p = sub.add_parser("dev", help="Development mode (default)")
     dev_p.add_argument("--no-browser", action="store_true")
 
-    serve_p = sub.add_parser("serve", help="Production mode")
+    serve_p = sub.add_parser("serve", help="Production mode (defaults to server deployment mode)")
     serve_p.add_argument("--build", action="store_true", help="Force frontend rebuild")
 
     args = parser.parse_args()

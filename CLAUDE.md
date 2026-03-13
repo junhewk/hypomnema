@@ -29,7 +29,7 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 ### Deployment Modes
 
 - **Local mode** (`uv run hypomnema dev`) — binds to localhost:8073/3073, opens browser, hot-reload enabled
-- **Server mode** (`HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<ip> uv run hypomnema serve`) — binds to specified host (e.g. Tailscale IP), runs production frontend, 24/7 continuous ingestion
+- **Server mode** (`uv run hypomnema serve` or `HYPOMNEMA_HOST=<ip> uv run hypomnema serve`) — defaults to remote/server networking, runs production frontend, 24/7 continuous ingestion
 - **Docker mode** (`docker compose up`) — single container, static frontend served by FastAPI, port 8073
 - **Desktop mode** (`HYPOMNEMA_MODE=desktop`) — Tauri v2 native app, PyInstaller'd backend as sidecar, static frontend served via FastAPI `StaticFiles`, cloud-only embeddings (no torch)
 
@@ -43,8 +43,9 @@ uv run hypomnema dev
 uv run hypomnema dev --no-browser
 
 # Production / server mode (Tailscale / remote access)
-HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<tailscale-ip> uv run hypomnema serve
-HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<tailscale-ip> uv run hypomnema serve --build  # force frontend rebuild
+uv run hypomnema serve
+HYPOMNEMA_HOST=<tailscale-ip> uv run hypomnema serve
+HYPOMNEMA_HOST=<tailscale-ip> uv run hypomnema serve --build  # force frontend rebuild
 
 # Docker
 docker compose up --build                      # single container, port 8073
@@ -59,7 +60,7 @@ cd frontend && npx playwright test             # e2e
 
 All settings use `HYPOMNEMA_` env prefix. Key env vars:
 
-- `HYPOMNEMA_MODE` — `local` (default), `server`, or `desktop`
+- `HYPOMNEMA_MODE` — `local` (default), `server`, or `desktop`; `serve` defaults to `server` if unset
 - `HYPOMNEMA_HOST` — bind address (default `127.0.0.1`, set to Tailscale IP for server mode)
 - `HYPOMNEMA_LLM_PROVIDER` — `claude`, `google`, `openai`, `ollama`, or `mock` (default `mock`)
 - `HYPOMNEMA_EMBEDDING_PROVIDER` — `local`, `openai`, or `google` (default `local`, fixed at startup)

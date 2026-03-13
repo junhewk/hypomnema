@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import types
 import sys
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,25 @@ def _make_frontend_dir(tmp_path: Path) -> Path:
 
 
 class TestServeCommand:
+    def test_load_settings_defaults_to_server_for_serve(self, monkeypatch: Any) -> None:
+        monkeypatch.delenv("HYPOMNEMA_MODE", raising=False)
+        settings = cli_mod._load_settings("server")
+        assert settings.mode == "server"
+        assert settings.host == "0.0.0.0"
+
+    def test_load_settings_respects_explicit_mode_env(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("HYPOMNEMA_MODE", "local")
+        settings = cli_mod._load_settings("server")
+        assert settings.mode == "local"
+        assert settings.host == "127.0.0.1"
+
+    def test_build_signature_tracks_frontend_api_env(self) -> None:
+        settings = type("Settings", (), {"port": 8073})()
+        assert cli_mod._frontend_build_signature(settings) == (
+            "NEXT_PUBLIC_API_PORT=8073\n"
+            "NEXT_PUBLIC_API_URL=auto"
+        )
+
     def test_rebuilds_when_next_dir_only_contains_dev_artifacts(
         self,
         tmp_path: Path,
@@ -32,6 +52,7 @@ class TestServeCommand:
         monkeypatch.setattr(cli_mod, "_FRONTEND_DIR", frontend_dir)
         monkeypatch.setattr(cli_mod, "_find_npm", lambda: "npm")
         monkeypatch.setattr(cli_mod, "_ensure_node_modules", lambda _npm: None)
+        monkeypatch.setattr(cli_mod, "_write_frontend_build_signature", lambda *_args: None)
 
         def fake_build(cmd: list[str], **kwargs: Any) -> None:
             build_calls.append((cmd, kwargs))
@@ -49,7 +70,8 @@ class TestServeCommand:
         assert cmd == ["npm", "run", "build"]
         assert kwargs["cwd"] == frontend_dir
         assert kwargs["check"] is True
-        assert kwargs["env"]["NEXT_PUBLIC_API_URL"] == "http://127.0.0.1:8073"
+        assert kwargs["env"]["NEXT_PUBLIC_API_URL"] == "auto"
+        assert kwargs["env"]["NEXT_PUBLIC_API_PORT"] == "8073"
 
         assert run_kwargs["frontend_cmd"] == ["npm", "run", "start"]
         assert run_kwargs["reload"] is False
@@ -71,6 +93,13 @@ class TestServeCommand:
         monkeypatch.setattr(cli_mod, "_FRONTEND_DIR", frontend_dir)
         monkeypatch.setattr(cli_mod, "_find_npm", lambda: "npm")
         monkeypatch.setattr(cli_mod, "_ensure_node_modules", lambda _npm: None)
+        monkeypatch.setattr(cli_mod, "_write_frontend_build_signature", lambda *_args: None)
+
+        build_env_file = next_dir / cli_mod._FRONTEND_BUILD_ENV_FILE
+        build_env_file.write_text(
+            cli_mod._frontend_build_signature(type("Settings", (), {"port": 8073})()),
+            encoding="utf-8",
+        )
 
         def fake_build(cmd: list[str], **kwargs: Any) -> None:
             build_calls.append((cmd, kwargs))
@@ -85,6 +114,76 @@ class TestServeCommand:
 
         assert build_calls == []
         assert run_kwargs["frontend_cmd"] == ["npm", "run", "start"]
+
+    def test_rebuilds_when_cached_build_env_is_outdated(
+        self,
+        tmp_path: Path,
+        monkeypatch: Any,
+    ) -> None:
+        frontend_dir = _make_frontend_dir(tmp_path)
+        next_dir = frontend_dir / ".next"
+        next_dir.mkdir()
+        (next_dir / "BUILD_ID").write_text("build-id", encoding="utf-8")
+        (next_dir / cli_mod._FRONTEND_BUILD_ENV_FILE).write_text(
+            "NEXT_PUBLIC_API_PORT=9000\nNEXT_PUBLIC_API_URL=auto",
+            encoding="utf-8",
+        )
+
+        build_calls: list[tuple[list[str], dict[str, Any]]] = []
+
+        monkeypatch.setattr(cli_mod, "_FRONTEND_DIR", frontend_dir)
+        monkeypatch.setattr(cli_mod, "_find_npm", lambda: "npm")
+        monkeypatch.setattr(cli_mod, "_ensure_node_modules", lambda _npm: None)
+        monkeypatch.setattr(cli_mod, "_run", lambda **_kwargs: None)
+        monkeypatch.setattr(cli_mod, "_write_frontend_build_signature", lambda *_args: None)
+
+        def fake_build(cmd: list[str], **kwargs: Any) -> None:
+            build_calls.append((cmd, kwargs))
+
+        monkeypatch.setattr(cli_mod.subprocess, "run", fake_build)
+
+        cli_mod.cmd_serve(argparse.Namespace(build=False))
+
+        assert len(build_calls) == 1
+
+    def test_run_exports_backend_mode_for_factory_app(
+        self,
+        tmp_path: Path,
+        monkeypatch: Any,
+    ) -> None:
+        frontend_dir = _make_frontend_dir(tmp_path)
+        captured: dict[str, str] = {}
+
+        class FakeProc:
+            def terminate(self) -> None:
+                return None
+
+            def wait(self, timeout: int) -> None:
+                return None
+
+        def fake_uvicorn_run(*args: Any, **kwargs: Any) -> None:
+            captured["mode"] = cli_mod.os.environ.get("HYPOMNEMA_MODE", "")
+            captured["host"] = kwargs["host"]
+
+        monkeypatch.setattr(cli_mod, "_FRONTEND_DIR", frontend_dir)
+        monkeypatch.setattr(cli_mod, "_ensure_frontend", lambda: None)
+        monkeypatch.setattr(cli_mod, "_ensure_node_modules", lambda _npm: None)
+        monkeypatch.setattr(cli_mod.subprocess, "Popen", lambda *args, **kwargs: FakeProc())
+        monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace(run=fake_uvicorn_run))
+        monkeypatch.delenv("HYPOMNEMA_MODE", raising=False)
+
+        settings = cli_mod._load_settings("server")
+        cli_mod._run(
+            settings=settings,
+            npm="npm",
+            reload=False,
+            frontend_cmd=["npm", "run", "start"],
+            open_browser=False,
+        )
+
+        assert captured["mode"] == "server"
+        assert captured["host"] == "0.0.0.0"
+        assert "HYPOMNEMA_MODE" not in cli_mod.os.environ
 
 
 class TestMain:

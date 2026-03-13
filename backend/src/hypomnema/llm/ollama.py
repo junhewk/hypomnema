@@ -1,9 +1,10 @@
 """Ollama LLM client — hits the REST API directly via httpx."""
 
-import json
 from typing import Any
 
 import httpx
+
+from hypomnema.llm.json_utils import parse_json_object
 
 
 class OllamaLLMClient:
@@ -31,4 +32,4 @@ class OllamaLLMClient:
 
     async def complete_json(self, prompt: str, *, system: str = "") -> dict[str, Any]:
         text = await self.complete(prompt, system=system)
-        return dict(json.loads(text))
+        return parse_json_object(text)

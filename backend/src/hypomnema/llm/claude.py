@@ -1,9 +1,10 @@
 """Claude (Anthropic) LLM client."""
 
-import json
 from typing import Any
 
 from anthropic import AsyncAnthropic
+
+from hypomnema.llm.json_utils import parse_json_object
 
 
 class ClaudeLLMClient:
@@ -31,4 +32,4 @@ class ClaudeLLMClient:
 
     async def complete_json(self, prompt: str, *, system: str = "") -> dict[str, Any]:
         text = await self.complete(prompt, system=system)
-        return dict(json.loads(text))
+        return parse_json_object(text)

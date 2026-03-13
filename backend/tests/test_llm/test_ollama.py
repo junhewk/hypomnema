@@ -44,3 +44,13 @@ class TestOllamaLLMClient:
 
         result = await client.complete_json("test")
         assert result == {"key": "value"}
+
+    async def test_complete_json_parses_prefixed_json(self):
+        client = OllamaLLMClient()
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"response": 'Here is the JSON:\n{"key": "value"}'}
+        mock_response.raise_for_status = MagicMock()
+        client._http.post = AsyncMock(return_value=mock_response)
+
+        result = await client.complete_json("test")
+        assert result == {"key": "value"}

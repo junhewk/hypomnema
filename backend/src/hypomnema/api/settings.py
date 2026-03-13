@@ -10,8 +10,11 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request
 from hypomnema.api.deps import AppSettings, DB, FernetKey, LLMLock
 from hypomnema.api.schemas import (
     ChangeEmbeddingPayload,
+    ConnectivityCheck,
+    ConnectivityCheckResponse,
     EmbeddingChangeStatus,
     EmbeddingProviderInfo,
+    ModelOption,
     ProviderInfo,
     ProvidersResponse,
     SettingsResponse,
@@ -29,6 +32,31 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 _ENCRYPTED_KEYS = {"anthropic_api_key", "google_api_key", "openai_api_key"}
 _VALID_LLM_PROVIDERS = {"claude", "google", "openai", "ollama"}
+_LLM_MODELS: dict[str, list[ModelOption]] = {
+    "claude": [
+        ModelOption(id="claude-sonnet-4-20250514", name="Claude Sonnet 4"),
+        ModelOption(id="claude-3-5-haiku-20241022", name="Claude 3.5 Haiku"),
+    ],
+    "google": [
+        ModelOption(id="gemini-2.5-flash", name="Gemini 2.5 Flash"),
+        ModelOption(id="gemini-3-flash-preview", name="Gemini 3 Flash Preview"),
+        ModelOption(id="gemini-2.5-pro", name="Gemini 2.5 Pro"),
+        ModelOption(id="gemini-3-pro-preview", name="Gemini 3 Pro Preview"),
+        ModelOption(id="gemini-2.5-flash-lite-preview-09-2025", name="Gemini 2.5 Flash-Lite Preview"),
+    ],
+    "openai": [
+        ModelOption(id="gpt-5-mini", name="GPT-5 mini"),
+        ModelOption(id="gpt-4.1-mini", name="GPT-4.1 mini"),
+        ModelOption(id="gpt-4o", name="GPT-4o"),
+    ],
+    "ollama": [],
+}
+_DEFAULT_LLM_MODELS = {
+    "claude": "claude-sonnet-4-20250514",
+    "google": "gemini-2.5-flash",
+    "openai": "gpt-5-mini",
+    "ollama": "llama3.1",
+}
 
 
 def _build_response(settings: AppSettings, masked_keys: dict[str, str]) -> SettingsResponse:
@@ -135,8 +163,14 @@ async def complete_setup(
     if row is not None:
         raise HTTPException(status_code=409, detail="Setup already complete")
 
-    # 2. Determine embedding config
-    dim, model = EMBEDDING_DEFAULTS[body.embedding_provider]
+    # 2. Resolve and validate embedding config before persisting it.
+    dim, model = await _resolve_embedding_configuration(
+        body.embedding_provider,
+        settings,
+        openai_api_key=body.openai_api_key,
+        google_api_key=body.google_api_key,
+        openai_base_url=body.openai_base_url,
+    )
 
     # 3. Store embedding settings (plain text, not encrypted)
     for key, value in [
@@ -149,6 +183,13 @@ async def complete_setup(
     # 4. Store LLM settings if provided
     if body.llm_provider:
         await set_setting(db, "llm_provider", body.llm_provider, fernet_key=fernet_key, encrypt_value=False)
+        await set_setting(
+            db,
+            "llm_model",
+            _resolve_llm_model(body.llm_provider, body.llm_model),
+            fernet_key=fernet_key,
+            encrypt_value=False,
+        )
     if body.anthropic_api_key:
         await set_setting(db, "anthropic_api_key", body.anthropic_api_key, fernet_key=fernet_key, encrypt_value=True)
     if body.google_api_key:
@@ -161,8 +202,8 @@ async def complete_setup(
         await set_setting(db, "openai_base_url", body.openai_base_url, fernet_key=fernet_key, encrypt_value=False)
 
     # 5. Create vec tables
-    from hypomnema.db.schema import create_vec_tables
-    await create_vec_tables(db, dim)
+    from hypomnema.db.schema import ensure_vec_tables
+    await ensure_vec_tables(db, dim)
 
     # 6. Reload settings and update app state
     db_settings = await get_all_settings(db, fernet_key=fernet_key)
@@ -207,6 +248,174 @@ async def complete_setup(
     return _build_response(new_settings, masked_keys)
 
 
+def _llm_provider_catalog() -> list[ProviderInfo]:
+    return [
+        ProviderInfo(
+            id="claude",
+            name="Anthropic Claude",
+            requires_key=True,
+            default_model=_DEFAULT_LLM_MODELS["claude"],
+            models=_LLM_MODELS["claude"],
+        ),
+        ProviderInfo(
+            id="google",
+            name="Google Gemini",
+            requires_key=True,
+            default_model=_DEFAULT_LLM_MODELS["google"],
+            models=_LLM_MODELS["google"],
+        ),
+        ProviderInfo(
+            id="openai",
+            name="OpenAI",
+            requires_key=True,
+            default_model=_DEFAULT_LLM_MODELS["openai"],
+            models=_LLM_MODELS["openai"],
+        ),
+        ProviderInfo(
+            id="ollama",
+            name="Ollama (local)",
+            requires_key=False,
+            default_model=_DEFAULT_LLM_MODELS["ollama"],
+            models=[],
+        ),
+    ]
+
+
+def _resolve_llm_model(provider: str, model: str | None) -> str:
+    return model or _DEFAULT_LLM_MODELS.get(provider, "")
+
+
+def _resolve_api_key(provider: str, body: ConnectivityCheck, settings: AppSettings) -> str:
+    match provider:
+        case "claude":
+            return body.anthropic_api_key if body.anthropic_api_key is not None else settings.anthropic_api_key
+        case "google":
+            return body.google_api_key if body.google_api_key is not None else settings.google_api_key
+        case "openai":
+            return body.openai_api_key if body.openai_api_key is not None else settings.openai_api_key
+        case _:
+            return ""
+
+
+def _resolve_base_url(provider: str, body: ConnectivityCheck, settings: AppSettings) -> str:
+    match provider:
+        case "ollama":
+            return body.ollama_base_url if body.ollama_base_url is not None else settings.ollama_base_url
+        case "openai":
+            return body.openai_base_url if body.openai_base_url is not None else settings.openai_base_url
+        case _:
+            return ""
+
+
+async def _resolve_embedding_configuration(
+    provider: str,
+    settings: AppSettings,
+    *,
+    openai_api_key: str | None = None,
+    google_api_key: str | None = None,
+    openai_base_url: str | None = None,
+) -> tuple[int, str]:
+    default_dim, default_model = EMBEDDING_DEFAULTS[provider]
+    if provider == "local":
+        return default_dim, default_model
+
+    result = await _check_embedding_connection(
+        ConnectivityCheck(
+            kind="embedding",
+            provider=provider,
+            model=default_model,
+            openai_api_key=openai_api_key,
+            google_api_key=google_api_key,
+            openai_base_url=openai_base_url,
+        ),
+        settings,
+    )
+    if result.dimension is None:
+        raise HTTPException(status_code=400, detail="Embedding connection check did not return a dimension")
+    return result.dimension, result.model
+
+
+async def _check_llm_connection(
+    body: ConnectivityCheck,
+    settings: AppSettings,
+) -> ConnectivityCheckResponse:
+    if body.provider not in _VALID_LLM_PROVIDERS:
+        raise HTTPException(status_code=400, detail=f"Invalid LLM provider: {body.provider}")
+
+    model = _resolve_llm_model(body.provider, body.model)
+    api_key = _resolve_api_key(body.provider, body, settings)
+    base_url = _resolve_base_url(body.provider, body, settings)
+
+    if body.provider != "ollama" and not api_key:
+        raise HTTPException(status_code=400, detail=f"{body.provider} API key required")
+
+    try:
+        llm = build_llm(
+            body.provider,
+            api_key=api_key,
+            model=model,
+            base_url=base_url,
+        )
+        await llm.complete(
+            "Reply with exactly wired.",
+            system="You are a connectivity probe. Reply with exactly wired.",
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Connection check failed: {exc}") from exc
+
+    return ConnectivityCheckResponse(
+        kind="llm",
+        provider=body.provider,
+        model=model,
+        message=f"{model} is wired and reachable.",
+    )
+
+
+async def _check_embedding_connection(
+    body: ConnectivityCheck,
+    settings: AppSettings,
+) -> ConnectivityCheckResponse:
+    provider = body.provider
+    model = body.model or EMBEDDING_DEFAULTS.get(provider, (0, ""))[1]
+    try:
+        if provider == "local":
+            from hypomnema.embeddings.local_gpu import LocalEmbeddingModel
+
+            embeddings = LocalEmbeddingModel(model_name=model)
+        elif provider == "openai":
+            from hypomnema.embeddings.openai import OpenAIEmbeddingModel
+
+            api_key = body.openai_api_key if body.openai_api_key is not None else settings.openai_api_key
+            base_url = body.openai_base_url if body.openai_base_url is not None else settings.openai_base_url
+            if not api_key:
+                raise HTTPException(status_code=400, detail="OpenAI API key required")
+            embeddings = OpenAIEmbeddingModel(api_key=api_key, model=model, base_url=base_url or None)
+        elif provider == "google":
+            from hypomnema.embeddings.google import GoogleEmbeddingModel
+
+            api_key = body.google_api_key if body.google_api_key is not None else settings.google_api_key
+            if not api_key:
+                raise HTTPException(status_code=400, detail="Google API key required")
+            embeddings = GoogleEmbeddingModel(api_key=api_key, model=model)
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid embedding provider: {provider}")
+
+        vectors = await asyncio.to_thread(embeddings.embed, ["wired"])
+        dimension = int(vectors.shape[1]) if len(vectors.shape) == 2 else embeddings.dimension
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Connection check failed: {exc}") from exc
+
+    return ConnectivityCheckResponse(
+        kind="embedding",
+        provider=provider,
+        model=model,
+        message=f"{model} is wired and reachable.",
+        dimension=dimension,
+    )
+
+
 @router.post("/change-embedding", response_model=EmbeddingChangeStatus)
 async def change_embedding_provider(
     body: ChangeEmbeddingPayload,
@@ -220,19 +429,21 @@ async def change_embedding_provider(
     if request.app.state.embedding_change_status.status == "in_progress":
         raise HTTPException(status_code=409, detail="Embedding change already in progress")
 
-    # Validate API key for cloud providers
-    if body.embedding_provider == "openai" and not (body.openai_api_key or settings.openai_api_key):
-        raise HTTPException(status_code=400, detail="OpenAI API key required")
-    if body.embedding_provider == "google" and not (body.google_api_key or settings.google_api_key):
-        raise HTTPException(status_code=400, detail="Google API key required")
-
-    dim, model = EMBEDDING_DEFAULTS[body.embedding_provider]
+    dim, model = await _resolve_embedding_configuration(
+        body.embedding_provider,
+        settings,
+        openai_api_key=body.openai_api_key,
+        google_api_key=body.google_api_key,
+        openai_base_url=body.openai_base_url,
+    )
 
     # Store new API keys if provided
     if body.openai_api_key:
         await set_setting(db, "openai_api_key", body.openai_api_key, fernet_key=fernet_key, encrypt_value=True)
     if body.google_api_key:
         await set_setting(db, "google_api_key", body.google_api_key, fernet_key=fernet_key, encrypt_value=True)
+    if body.openai_base_url is not None:
+        await set_setting(db, "openai_base_url", body.openai_base_url, fernet_key=fernet_key, encrypt_value=False)
 
     # Reset knowledge graph + vec tables
     from hypomnema.db.schema import create_vec_tables, drop_vec_tables, reset_knowledge_graph
@@ -263,6 +474,12 @@ async def change_embedding_provider(
     row = await cursor.fetchone()
     await cursor.close()
     total = row[0] if row else 0
+
+    if total == 0:
+        change_status = EmbeddingChangeStatus(status="complete", total=0, processed=0)
+        request.app.state.embedding_change_status = change_status
+        request.app.state.embedding_change_task = None
+        return change_status
 
     # Set initial status
     change_status = EmbeddingChangeStatus(status="in_progress", total=total, processed=0)
@@ -348,21 +565,43 @@ async def get_embedding_status(request: Request) -> EmbeddingChangeStatus:
     return request.app.state.embedding_change_status
 
 
+@router.post("/check-connection", response_model=ConnectivityCheckResponse)
+async def check_connection(
+    body: ConnectivityCheck,
+    settings: AppSettings,
+) -> ConnectivityCheckResponse:
+    """Validate that a selected LLM or embedding model is reachable."""
+    if body.kind == "llm":
+        return await _check_llm_connection(body, settings)
+    return await _check_embedding_connection(body, settings)
+
+
 @router.get("/providers", response_model=ProvidersResponse)
 async def get_providers() -> ProvidersResponse:
     """Return available provider metadata (excludes mock)."""
     return ProvidersResponse(
-        llm=[
-            ProviderInfo(id="claude", name="Anthropic Claude", requires_key=True, default_model="claude-sonnet-4-20250514"),
-            ProviderInfo(id="google", name="Google Gemini", requires_key=True, default_model="gemini-2.0-flash"),
-            ProviderInfo(id="openai", name="OpenAI", requires_key=True, default_model="gpt-4o"),
-            ProviderInfo(id="ollama", name="Ollama (local)", requires_key=False, default_model="llama3.1"),
-        ],
+        llm=_llm_provider_catalog(),
         embedding=[
-            EmbeddingProviderInfo(id="local", name="Local (sentence-transformers)", default_dimension=EMBEDDING_DEFAULTS["local"][0], requires_key=False),
-            EmbeddingProviderInfo(id="openai", name="OpenAI Embeddings", default_dimension=EMBEDDING_DEFAULTS["openai"][0], requires_key=True),
-            EmbeddingProviderInfo(id="google", name="Google Embeddings", default_dimension=EMBEDDING_DEFAULTS["google"][0], requires_key=True),
+            EmbeddingProviderInfo(
+                id="local",
+                name="Local (sentence-transformers)",
+                default_model=EMBEDDING_DEFAULTS["local"][1],
+                default_dimension=EMBEDDING_DEFAULTS["local"][0],
+                requires_key=False,
+            ),
+            EmbeddingProviderInfo(
+                id="openai",
+                name="OpenAI Embeddings",
+                default_model=EMBEDDING_DEFAULTS["openai"][1],
+                default_dimension=EMBEDDING_DEFAULTS["openai"][0],
+                requires_key=True,
+            ),
+            EmbeddingProviderInfo(
+                id="google",
+                name="Google Embeddings",
+                default_model=EMBEDDING_DEFAULTS["google"][1],
+                default_dimension=EMBEDDING_DEFAULTS["google"][0],
+                requires_key=True,
+            ),
         ],
     )
-
-

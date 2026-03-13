@@ -85,5 +85,5 @@ class TestGoogleLLMClient:
         assert client._model == GoogleLLMClient.DEFAULT_MODEL
 
     def test_custom_model(self) -> None:
-        client = GoogleLLMClient(api_key="fake", model="gemini-2.0-pro")
-        assert client._model == "gemini-2.0-pro"
+        client = GoogleLLMClient(api_key="fake", model="gemini-2.5-pro")
+        assert client._model == "gemini-2.5-pro"

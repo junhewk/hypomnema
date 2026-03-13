@@ -18,9 +18,35 @@ import type {
   SetupPayload,
   ChangeEmbeddingPayload,
   EmbeddingChangeStatus,
+  ConnectivityCheckPayload,
+  ConnectivityCheckResponse,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:8073";
+const AUTO_BASE_URL = "auto";
+
+function inferBaseUrl(): string {
+  if (typeof window !== "undefined") {
+    const port =
+      (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_PORT) || "8073";
+    return `${window.location.protocol}//${window.location.hostname}:${port}`;
+  }
+  return DEFAULT_BASE_URL;
+}
+
+function resolveBaseUrl(baseUrl?: string): string {
+  if (baseUrl !== undefined) {
+    return baseUrl;
+  }
+  if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL !== undefined) {
+    if (process.env.NEXT_PUBLIC_API_URL === AUTO_BASE_URL) {
+      return inferBaseUrl();
+    }
+    // Empty string means same-origin (static serving / Docker mode)
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  return inferBaseUrl();
+}
 
 export class ApiError extends Error {
   constructor(
@@ -37,14 +63,7 @@ export class ApiClient {
   private baseUrl: string;
 
   constructor(baseUrl?: string) {
-    if (baseUrl !== undefined) {
-      this.baseUrl = baseUrl;
-    } else if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL !== undefined) {
-      // Empty string means same-origin (static serving / Docker mode)
-      this.baseUrl = process.env.NEXT_PUBLIC_API_URL;
-    } else {
-      this.baseUrl = DEFAULT_BASE_URL;
-    }
+    this.baseUrl = resolveBaseUrl(baseUrl);
   }
 
   private async request<T>(
@@ -194,6 +213,13 @@ export class ApiClient {
 
   async completeSetup(payload: SetupPayload): Promise<AppSettings> {
     return this.request("/api/settings/setup", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async checkConnection(payload: ConnectivityCheckPayload): Promise<ConnectivityCheckResponse> {
+    return this.request("/api/settings/check-connection", {
       method: "POST",
       body: JSON.stringify(payload),
     });

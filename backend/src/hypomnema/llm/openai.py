@@ -1,13 +1,14 @@
 """OpenAI LLM client."""
 
-import json
 from typing import Any
 
 from openai import AsyncOpenAI
 
+from hypomnema.llm.json_utils import parse_json_object
+
 
 class OpenAILLMClient:
-    DEFAULT_MODEL = "gpt-4o"
+    DEFAULT_MODEL = "gpt-5-mini"
     DEFAULT_MAX_TOKENS = 4096
 
     def __init__(
@@ -34,4 +35,4 @@ class OpenAILLMClient:
 
     async def complete_json(self, prompt: str, *, system: str = "") -> dict[str, Any]:
         text = await self.complete(prompt, system=system)
-        return dict(json.loads(text))
+        return parse_json_object(text)

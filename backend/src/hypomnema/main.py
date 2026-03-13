@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from hypomnema.config import Settings
 from hypomnema.crypto import get_or_create_key
 from hypomnema.db.engine import get_connection
-from hypomnema.db.schema import create_core_tables, create_vec_tables
+from hypomnema.db.schema import create_core_tables, ensure_vec_tables
 from hypomnema.db.settings_store import get_all_settings
 from hypomnema.embeddings.factory import build_embeddings
 from hypomnema.llm.factory import api_key_for_provider, base_url_for_provider, build_llm
@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Embedding change status
     from hypomnema.api.schemas import EmbeddingChangeStatus
     app.state.embedding_change_status = EmbeddingChangeStatus()
+    app.state.embedding_change_task = None
 
     # Check if setup is complete
     db_settings = await get_all_settings(db, fernet_key=fernet_key)
@@ -54,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         settings = Settings.with_db_overrides(settings, db_settings)
         app.state.settings = settings
 
-        await create_vec_tables(db, settings.embedding_dim)
+        vec_schema_rebuilt = await ensure_vec_tables(db, settings.embedding_dim)
 
         # Embeddings
         if settings.llm_provider == "mock":
@@ -90,6 +91,33 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await scheduler.load_jobs()
         scheduler.start()
         app.state.scheduler = scheduler
+
+        if vec_schema_rebuilt:
+            logger.warning(
+                "Embedding dimension mismatch detected; rebuilt vec tables for %s dimensions and queued full reprocessing",
+                settings.embedding_dim,
+            )
+            cursor = await db.execute("SELECT count(*) FROM documents")
+            row = await cursor.fetchone()
+            await cursor.close()
+            total = row[0] if row else 0
+            if total == 0:
+                app.state.embedding_change_status = EmbeddingChangeStatus(
+                    status="complete",
+                    total=0,
+                    processed=0,
+                )
+            else:
+                from hypomnema.api.settings import _reprocess_all_documents
+
+                app.state.embedding_change_status = EmbeddingChangeStatus(
+                    status="in_progress",
+                    total=total,
+                    processed=0,
+                )
+                app.state.embedding_change_task = asyncio.create_task(
+                    _reprocess_all_documents(app, total)
+                )
     else:
         # Setup mode: no embeddings, no LLM, no scheduler
         app.state.embeddings = None
@@ -100,6 +128,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     if app.state.scheduler:
         app.state.scheduler.shutdown(wait=True)
+    if app.state.embedding_change_task:
+        app.state.embedding_change_task.cancel()
     await db.close()
 
 
@@ -119,6 +149,7 @@ def create_app(settings: Settings | None = None, *, use_lifespan: bool = True) -
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
+        allow_origin_regex=settings.cors_origin_regex,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

@@ -3,7 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import { api } from "@/lib/api";
 import { useSettings } from "@/hooks/useSettings";
-import type { SettingsUpdatePayload, ProviderInfo, EmbeddingChangeStatus } from "@/lib/types";
+import type {
+  SettingsUpdatePayload,
+  ProviderInfo,
+  EmbeddingChangeStatus,
+  ModelOption,
+  ConnectivityCheckPayload,
+} from "@/lib/types";
 
 const PROVIDER_ICONS: Record<string, string> = {
   claude: "A",
@@ -93,6 +99,53 @@ function FieldInput({
   );
 }
 
+function FieldSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: ModelOption[];
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="mb-3 block animate-fade-up">
+      <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-muted/60">
+        {label}
+      </span>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors focus:border-border-focus"
+      >
+        {options.map((option) => (
+          <option key={option.id} value={option.id} className="bg-background text-foreground">
+            {option.name} · {option.id}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+type ProbeState = {
+  tone: "info" | "checking" | "success" | "error";
+  message: string;
+} | null;
+
+function ProbeMessage({ state }: { state: ProbeState }) {
+  if (!state) return null;
+  const color = {
+    info: "text-muted/50",
+    checking: "text-muted/60",
+    success: "text-[var(--complete)]",
+    error: "text-red-500",
+  }[state.tone];
+  return <span className={`animate-fade-up font-mono text-[10px] ${color}`}>{state.message}</span>;
+}
+
 export function SettingsPage() {
   const { settings, providers, isLoading, error: loadError, refresh } = useSettings();
 
@@ -108,6 +161,8 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveOk, setSaveOk] = useState(false);
+  const [llmProbe, setLlmProbe] = useState<ProbeState>(null);
+  const [llmChecking, setLlmChecking] = useState(false);
 
   useEffect(() => {
     if (!settings) return;
@@ -119,6 +174,7 @@ export function SettingsPage() {
     setOllamaUrl(settings.ollama_base_url);
     setOpenaiUrl(settings.openai_base_url);
     setDirty(new Set());
+    setLlmProbe(null);
   }, [settings]);
 
   function markDirty(field: string) {
@@ -127,14 +183,84 @@ export function SettingsPage() {
     setSaveError(null);
   }
 
+  function providerInfo(id: string) {
+    return providers?.llm.find((item) => item.id === id) ?? null;
+  }
+
+  function configuredSecret(providerId: string) {
+    switch (providerId) {
+      case "claude":
+        return anthropicKey.trim();
+      case "google":
+        return googleKey.trim();
+      case "openai":
+        return openaiKey.trim();
+      default:
+        return "";
+    }
+  }
+
+  function buildLlmProbePayload(nextProvider = provider, nextModel = model): ConnectivityCheckPayload {
+    const payload: ConnectivityCheckPayload = {
+      kind: "llm",
+      provider: nextProvider,
+      model: nextModel,
+    };
+
+    switch (nextProvider) {
+      case "claude":
+        if (dirty.has("anthropic_api_key")) payload.anthropic_api_key = anthropicKey;
+        break;
+      case "google":
+        if (dirty.has("google_api_key")) payload.google_api_key = googleKey;
+        break;
+      case "openai":
+        if (dirty.has("openai_api_key")) payload.openai_api_key = openaiKey;
+        if (dirty.has("openai_base_url")) payload.openai_base_url = openaiUrl;
+        break;
+      case "ollama":
+        if (dirty.has("ollama_base_url")) payload.ollama_base_url = ollamaUrl;
+        break;
+    }
+
+    return payload;
+  }
+
+  async function verifyLlmConnection(nextProvider = provider, nextModel = model) {
+    if (!nextProvider) return;
+    const selectedModel = nextModel || providerInfo(nextProvider)?.default_model || "";
+    if (!selectedModel) {
+      setLlmProbe({ tone: "info", message: "Select a model to verify wiring." });
+      return;
+    }
+    if (nextProvider !== "ollama" && configuredSecret(nextProvider).length === 0) {
+      setLlmProbe({ tone: "info", message: "Add the provider key to verify wiring." });
+      return;
+    }
+
+    setLlmChecking(true);
+    setLlmProbe({ tone: "checking", message: `Checking ${selectedModel}...` });
+    try {
+      const result = await api.checkConnection(buildLlmProbePayload(nextProvider, selectedModel));
+      setLlmProbe({ tone: "success", message: result.message });
+    } catch (e) {
+      setLlmProbe({ tone: "error", message: e instanceof Error ? e.message : "Connection check failed" });
+    } finally {
+      setLlmChecking(false);
+    }
+  }
+
   function selectProvider(id: string) {
+    const nextInfo = providerInfo(id);
+    const nextModel = nextInfo?.default_model ?? model;
     setProvider(id);
     markDirty("llm_provider");
-    const p = providers?.llm.find((l) => l.id === id);
-    if (p) {
-      setModel(p.default_model);
+    if (nextInfo) {
+      setModel(nextModel);
       markDirty("llm_model");
     }
+    setLlmProbe(null);
+    void verifyLlmConnection(id, nextModel);
   }
 
   async function handleSave() {
@@ -156,6 +282,7 @@ export function SettingsPage() {
       await api.updateSettings(payload);
       setSaveOk(true);
       setDirty(new Set());
+      setLlmProbe(null);
       refresh();
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Failed to save");
@@ -179,6 +306,9 @@ export function SettingsPage() {
       </div>
     );
   }
+
+  const selectedProvider = providerInfo(provider);
+  const modelOptions = selectedProvider?.models ?? [];
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -221,12 +351,26 @@ export function SettingsPage() {
           className="animate-fade-up border-l-2 bg-surface-raised py-4 pr-4 pl-4"
           style={{ borderLeftColor: "var(--accent)" }}
         >
-          <FieldInput
-            label="Model"
-            value={model}
-            onChange={(v) => { setModel(v); markDirty("llm_model"); }}
-            placeholder={providers?.llm.find((p) => p.id === provider)?.default_model}
-          />
+          {modelOptions.length > 0 ? (
+            <FieldSelect
+              label="Model"
+              value={model || selectedProvider?.default_model || ""}
+              options={modelOptions}
+              onChange={(v) => {
+                setModel(v);
+                markDirty("llm_model");
+                setLlmProbe(null);
+                void verifyLlmConnection(provider, v);
+              }}
+            />
+          ) : (
+            <FieldInput
+              label="Model"
+              value={model}
+              onChange={(v) => { setModel(v); markDirty("llm_model"); setLlmProbe(null); }}
+              placeholder={selectedProvider?.default_model}
+            />
+          )}
 
           {provider === "claude" && (
             <FieldInput
@@ -275,6 +419,17 @@ export function SettingsPage() {
             />
           )}
 
+          <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
+            <ProbeMessage state={llmProbe} />
+            <button
+              onClick={() => void verifyLlmConnection()}
+              disabled={llmChecking || !provider}
+              className="font-mono text-[10px] uppercase tracking-wider text-muted transition-colors hover:text-foreground disabled:opacity-20"
+            >
+              {llmChecking ? "Checking..." : "Check Wiring"}
+            </button>
+          </div>
+
           {/* Save action row */}
           <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
             <span className="font-mono text-[10px] text-muted/40">
@@ -310,6 +465,10 @@ export function SettingsPage() {
         settings={settings}
         providers={providers}
         refresh={refresh}
+        openaiKey={openaiKey}
+        googleKey={googleKey}
+        openaiUrl={openaiUrl}
+        dirty={dirty}
       />
     </div>
   );
@@ -319,10 +478,18 @@ function EmbeddingSection({
   settings,
   providers,
   refresh,
+  openaiKey,
+  googleKey,
+  openaiUrl,
+  dirty,
 }: {
   settings: ReturnType<typeof useSettings>["settings"];
   providers: ReturnType<typeof useSettings>["providers"];
   refresh: () => void;
+  openaiKey: string;
+  googleKey: string;
+  openaiUrl: string;
+  dirty: Set<string>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [newProvider, setNewProvider] = useState("");
@@ -331,6 +498,8 @@ function EmbeddingSection({
   const [changing, setChanging] = useState(false);
   const [changeError, setChangeError] = useState<string | null>(null);
   const [status, setStatus] = useState<EmbeddingChangeStatus | null>(null);
+  const [embeddingProbe, setEmbeddingProbe] = useState<ProbeState>(null);
+  const [embeddingChecking, setEmbeddingChecking] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Poll for embedding change status
@@ -351,6 +520,7 @@ function EmbeddingSection({
             setConfirmText("");
             setNewProvider("");
             setApiKey("");
+            setEmbeddingProbe(null);
           }
         }
       } catch {
@@ -362,16 +532,106 @@ function EmbeddingSection({
     };
   }, [status?.status, refresh]);
 
+  function embeddingInfo(id: string) {
+    return providers?.embedding.find((item) => item.id === id) ?? null;
+  }
+
+  function configuredSharedKey(providerId: string, typedKey = apiKey) {
+    if (providerId === "openai") {
+      if (typedKey.trim()) return typedKey.trim();
+      return (dirty.has("openai_api_key") ? openaiKey : settings?.openai_api_key || "").trim();
+    }
+    if (providerId === "google") {
+      if (typedKey.trim()) return typedKey.trim();
+      return (dirty.has("google_api_key") ? googleKey : settings?.google_api_key || "").trim();
+    }
+    return "";
+  }
+
+  function hasEmbeddingCredential(providerId: string, typedKey = apiKey) {
+    if (providerId === "local") return true;
+    return configuredSharedKey(providerId, typedKey).length > 0;
+  }
+
+  function buildEmbeddingProbePayload(providerId: string, typedKey = apiKey): ConnectivityCheckPayload {
+    const selected = embeddingInfo(providerId);
+    const payload: ConnectivityCheckPayload = {
+      kind: "embedding",
+      provider: providerId,
+      model: selected?.default_model,
+    };
+
+    if (providerId === "openai") {
+      if (typedKey) {
+        payload.openai_api_key = typedKey;
+      } else if (dirty.has("openai_api_key")) {
+        payload.openai_api_key = openaiKey;
+      }
+      if (dirty.has("openai_base_url")) payload.openai_base_url = openaiUrl;
+    }
+    if (providerId === "google") {
+      if (typedKey) {
+        payload.google_api_key = typedKey;
+      } else if (dirty.has("google_api_key")) {
+        payload.google_api_key = googleKey;
+      }
+    }
+
+    return payload;
+  }
+
+  async function verifyEmbeddingConnection(providerId = newProvider, typedKey = apiKey) {
+    if (!providerId) return;
+    const selected = embeddingInfo(providerId);
+    if (!selected) return;
+    if (!hasEmbeddingCredential(providerId, typedKey)) {
+      setEmbeddingProbe({ tone: "info", message: "Add the provider key to verify wiring." });
+      return;
+    }
+
+    setEmbeddingChecking(true);
+    setEmbeddingProbe({ tone: "checking", message: `Checking ${selected.default_model}...` });
+    try {
+      const result = await api.checkConnection(buildEmbeddingProbePayload(providerId, typedKey));
+      const suffix = result.dimension ? ` (${result.dimension}d)` : "";
+      setEmbeddingProbe({ tone: "success", message: `${result.message}${suffix}` });
+    } catch (e) {
+      setEmbeddingProbe({ tone: "error", message: e instanceof Error ? e.message : "Connection check failed" });
+    } finally {
+      setEmbeddingChecking(false);
+    }
+  }
+
   async function handleChange() {
     if (!newProvider || confirmText !== "RESET") return;
     setChanging(true);
     setChangeError(null);
     try {
-      const payload: { embedding_provider: "local" | "openai" | "google"; openai_api_key?: string; google_api_key?: string } = {
+      const payload: {
+        embedding_provider: "local" | "openai" | "google";
+        openai_api_key?: string;
+        google_api_key?: string;
+        openai_base_url?: string;
+      } = {
         embedding_provider: newProvider as "local" | "openai" | "google",
       };
-      if (newProvider === "openai" && apiKey) payload.openai_api_key = apiKey;
-      if (newProvider === "google" && apiKey) payload.google_api_key = apiKey;
+      if (newProvider === "openai") {
+        if (apiKey) {
+          payload.openai_api_key = apiKey;
+        } else if (dirty.has("openai_api_key")) {
+          payload.openai_api_key = openaiKey;
+        }
+        if (dirty.has("openai_base_url")) {
+          payload.openai_base_url = openaiUrl;
+        }
+      }
+      if (newProvider === "google") {
+        if (apiKey) {
+          payload.google_api_key = apiKey;
+        } else if (dirty.has("google_api_key")) {
+          payload.google_api_key = googleKey;
+        }
+      }
       const s = await api.changeEmbeddingProvider(payload);
       setStatus(s);
     } catch (e) {
@@ -468,7 +728,12 @@ function EmbeddingSection({
                   {providers?.embedding.map((p, i) => (
                     <button
                       key={p.id}
-                      onClick={() => { setNewProvider(p.id); setApiKey(""); }}
+                      onClick={() => {
+                        setNewProvider(p.id);
+                        setApiKey("");
+                        setEmbeddingProbe(null);
+                        void verifyEmbeddingConnection(p.id, "");
+                      }}
                       className="animate-fade-up group relative border-l-2 bg-surface py-2.5 pr-4 pl-4 text-left transition-colors hover:bg-surface-raised"
                       style={{
                         borderLeftColor: newProvider === p.id ? "var(--engram)" : "var(--border)",
@@ -493,7 +758,7 @@ function EmbeddingSection({
                         <div>
                           <span className="block font-mono text-xs font-medium">{p.name}</span>
                           <span className="block font-mono text-[10px] text-muted/60">
-                            {p.requires_key ? "api key required" : "local"} · {p.default_dimension}d
+                            {p.requires_key ? "api key required" : "local"} · {p.default_model} · {p.default_dimension}d
                           </span>
                         </div>
                       </div>
@@ -506,10 +771,23 @@ function EmbeddingSection({
                   <FieldInput
                     label={`${newProvider === "openai" ? "OpenAI" : "Google"} API Key`}
                     value={apiKey}
-                    onChange={setApiKey}
+                    onChange={(value) => { setApiKey(value); setEmbeddingProbe(null); }}
                     type="password"
                     placeholder={newProvider === "openai" ? "sk-..." : "AIza..."}
                   />
+                )}
+
+                {newProvider && (
+                  <div className="flex items-center justify-between border-t border-border pt-3">
+                    <ProbeMessage state={embeddingProbe} />
+                    <button
+                      onClick={() => void verifyEmbeddingConnection()}
+                      disabled={embeddingChecking}
+                      className="font-mono text-[10px] uppercase tracking-wider text-muted transition-colors hover:text-foreground disabled:opacity-20"
+                    >
+                      {embeddingChecking ? "Checking..." : "Check Wiring"}
+                    </button>
+                  </div>
                 )}
 
                 {/* Warning + confirmation — grouped in a danger zone */}
@@ -550,14 +828,21 @@ function EmbeddingSection({
 
                 <div className="flex items-center gap-3 pt-1">
                   <button
-                    onClick={() => { setExpanded(false); setNewProvider(""); setApiKey(""); setConfirmText(""); setChangeError(null); }}
+                    onClick={() => {
+                      setExpanded(false);
+                      setNewProvider("");
+                      setApiKey("");
+                      setConfirmText("");
+                      setChangeError(null);
+                      setEmbeddingProbe(null);
+                    }}
                     className="font-mono text-[10px] text-muted transition-colors hover:text-foreground"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleChange}
-                    disabled={changing || confirmText !== "RESET" || !newProvider || (needsKey && !apiKey)}
+                    disabled={changing || confirmText !== "RESET" || !newProvider || !hasEmbeddingCredential(newProvider)}
                     className="rounded-sm bg-[var(--accent)] px-4 py-1.5 font-mono text-xs font-medium text-white transition-opacity disabled:opacity-20"
                   >
                     {changing ? "Rebuilding..." : "Reset & Rebuild"}

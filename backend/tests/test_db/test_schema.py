@@ -7,7 +7,7 @@ from datetime import datetime
 import pytest
 
 from hypomnema.db.models import Document, Edge, Engram, FeedSource, Projection
-from hypomnema.db.schema import create_tables
+from hypomnema.db.schema import create_tables, ensure_vec_tables, get_vec_table_embedding_dim
 
 
 def _float_list_to_bytes(floats: list[float]) -> bytes:
@@ -29,6 +29,38 @@ class TestIdempotency:
         for vt in ["engram_embeddings", "document_embeddings", "documents_fts"]:
             cursor = await tmp_db.execute("SELECT count(*) FROM sqlite_master WHERE name=?", (vt,))
             assert (await cursor.fetchone())[0] >= 1, f"Virtual table '{vt}' not found"
+
+    async def test_reads_vec_table_dimension(self, tmp_db):
+        assert await get_vec_table_embedding_dim(tmp_db, "engram_embeddings") == 384
+        assert await get_vec_table_embedding_dim(tmp_db, "document_embeddings") == 384
+
+    async def test_rebuilds_vec_tables_when_dimension_changes(self, tmp_db):
+        await tmp_db.execute(
+            "INSERT INTO documents (id, source_type, text, processed, triaged) VALUES (?, ?, ?, ?, ?)",
+            ("doc1", "scribble", "hello", 2, 1),
+        )
+        await tmp_db.execute(
+            "INSERT INTO engrams (id, canonical_name, concept_hash) VALUES (?, ?, ?)",
+            ("eng1", "concept", "hash1"),
+        )
+        await tmp_db.execute(
+            "INSERT INTO document_engrams (document_id, engram_id) VALUES (?, ?)",
+            ("doc1", "eng1"),
+        )
+        await tmp_db.commit()
+
+        rebuilt = await ensure_vec_tables(tmp_db, 1536)
+
+        assert rebuilt is True
+        assert await get_vec_table_embedding_dim(tmp_db, "engram_embeddings") == 1536
+        assert await get_vec_table_embedding_dim(tmp_db, "document_embeddings") == 1536
+
+        cursor = await tmp_db.execute("SELECT count(*) FROM engrams")
+        assert (await cursor.fetchone())[0] == 0
+        cursor = await tmp_db.execute("SELECT processed, triaged FROM documents WHERE id = 'doc1'")
+        row = await cursor.fetchone()
+        assert row["processed"] == 0
+        assert row["triaged"] == 0
 
 
 class TestDocumentsCRUD:

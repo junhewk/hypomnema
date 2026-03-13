@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 from typing import Literal
 
 from pydantic import field_validator, model_validator
@@ -93,6 +94,12 @@ class Settings(BaseSettings):
             else:
                 origins.append(f"http://{self.host}:{self.frontend_port}")
         return origins
+
+    @property
+    def cors_origin_regex(self) -> str | None:
+        if self.host == "0.0.0.0":  # noqa: S104
+            return rf"^https?://[^/]+:{re.escape(str(self.frontend_port))}$"
+        return None
 
     @classmethod
     def with_db_overrides(cls, base: "Settings", db_settings: dict[str, str]) -> "Settings":

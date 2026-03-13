@@ -131,16 +131,23 @@ export interface SettingsUpdatePayload {
   openai_base_url?: string;
 }
 
+export interface ModelOption {
+  id: string;
+  name: string;
+}
+
 export interface ProviderInfo {
   id: string;
   name: string;
   requires_key: boolean;
   default_model: string;
+  models: ModelOption[];
 }
 
 export interface EmbeddingProviderInfo {
   id: string;
   name: string;
+  default_model: string;
   default_dimension: number;
   requires_key: boolean;
 }
@@ -160,6 +167,26 @@ export interface ChangeEmbeddingPayload {
   embedding_provider: "local" | "openai" | "google";
   openai_api_key?: string;
   google_api_key?: string;
+  openai_base_url?: string;
+}
+
+export interface ConnectivityCheckPayload {
+  kind: "llm" | "embedding";
+  provider: string;
+  model?: string;
+  anthropic_api_key?: string;
+  google_api_key?: string;
+  openai_api_key?: string;
+  ollama_base_url?: string;
+  openai_base_url?: string;
+}
+
+export interface ConnectivityCheckResponse {
+  kind: "llm" | "embedding";
+  provider: string;
+  model: string;
+  message: string;
+  dimension?: number | null;
 }
 
 export interface EmbeddingChangeStatus {
@@ -172,6 +199,7 @@ export interface EmbeddingChangeStatus {
 export interface SetupPayload {
   embedding_provider: "local" | "openai" | "google";
   llm_provider?: string;
+  llm_model?: string;
   anthropic_api_key?: string;
   google_api_key?: string;
   openai_api_key?: string;

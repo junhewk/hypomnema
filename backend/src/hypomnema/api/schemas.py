@@ -128,6 +128,7 @@ class SettingsUpdate(BaseModel):
 class SetupPayload(BaseModel):
     embedding_provider: Literal["local", "openai", "google"]
     llm_provider: str | None = None
+    llm_model: str | None = None
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
     openai_api_key: str | None = None
@@ -135,16 +136,23 @@ class SetupPayload(BaseModel):
     openai_base_url: str | None = None
 
 
+class ModelOption(BaseModel):
+    id: str
+    name: str
+
+
 class ProviderInfo(BaseModel):
     id: str
     name: str
     requires_key: bool
     default_model: str
+    models: list[ModelOption] = []
 
 
 class EmbeddingProviderInfo(BaseModel):
     id: str
     name: str
+    default_model: str
     default_dimension: int
     requires_key: bool
 
@@ -154,10 +162,30 @@ class ProvidersResponse(BaseModel):
     embedding: list[EmbeddingProviderInfo]
 
 
+class ConnectivityCheck(BaseModel):
+    kind: Literal["llm", "embedding"]
+    provider: str
+    model: str | None = None
+    anthropic_api_key: str | None = None
+    google_api_key: str | None = None
+    openai_api_key: str | None = None
+    ollama_base_url: str | None = None
+    openai_base_url: str | None = None
+
+
+class ConnectivityCheckResponse(BaseModel):
+    kind: Literal["llm", "embedding"]
+    provider: str
+    model: str
+    message: str
+    dimension: int | None = None
+
+
 class ChangeEmbeddingPayload(BaseModel):
     embedding_provider: Literal["local", "openai", "google"]
     openai_api_key: str | None = None
     google_api_key: str | None = None
+    openai_base_url: str | None = None
 
 
 class EmbeddingChangeStatus(BaseModel):

@@ -23,6 +23,17 @@ export function ScribbleInput({ onSubmit, editingDocument, onCancelEdit }: Scrib
   const canSubmit = text.trim().length > 0 && !isSubmitting;
   const isEditing = editingDocument != null;
 
+  function syncTextareaHeight(nextText: string) {
+    const el = textareaRef.current;
+    if (!el) return;
+    if (!nextText) {
+      el.style.height = "";
+      return;
+    }
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }
+
   // Restore draft on mount (only when not editing)
   useEffect(() => {
     if (isEditing) return;
@@ -63,6 +74,10 @@ export function ScribbleInput({ onSubmit, editingDocument, onCancelEdit }: Scrib
       setError(null);
     }
   }, [editingDocument]);
+
+  useEffect(() => {
+    syncTextareaHeight(text);
+  }, [text]);
 
   async function handleSubmit(e?: FormEvent) {
     e?.preventDefault();
@@ -112,8 +127,7 @@ export function ScribbleInput({ onSubmit, editingDocument, onCancelEdit }: Scrib
     const el = textareaRef.current;
     if (el) {
       requestAnimationFrame(() => {
-        el.style.height = "auto";
-        el.style.height = el.scrollHeight + "px";
+        syncTextareaHeight(el.value);
       });
     }
   }

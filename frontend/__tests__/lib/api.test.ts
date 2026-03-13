@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ApiClient, ApiError } from "@/lib/api";
 
 const mockFetch = vi.fn();
@@ -6,10 +6,36 @@ global.fetch = mockFetch;
 
 describe("ApiClient", () => {
   let client: ApiClient;
+  const originalApiUrl = process.env.NEXT_PUBLIC_API_URL;
+  const originalApiPort = process.env.NEXT_PUBLIC_API_PORT;
+  const originalLocation = window.location;
 
   beforeEach(() => {
+    delete process.env.NEXT_PUBLIC_API_URL;
+    delete process.env.NEXT_PUBLIC_API_PORT;
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: new URL("http://localhost:3073/settings"),
+    });
     client = new ApiClient("http://localhost:8073");
     mockFetch.mockReset();
+  });
+
+  afterEach(() => {
+    if (originalApiUrl === undefined) {
+      delete process.env.NEXT_PUBLIC_API_URL;
+    } else {
+      process.env.NEXT_PUBLIC_API_URL = originalApiUrl;
+    }
+    if (originalApiPort === undefined) {
+      delete process.env.NEXT_PUBLIC_API_PORT;
+    } else {
+      process.env.NEXT_PUBLIC_API_PORT = originalApiPort;
+    }
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
+    });
   });
 
   describe("constructor", () => {
@@ -23,6 +49,47 @@ describe("ApiClient", () => {
       c.listDocuments();
       expect(mockFetch).toHaveBeenCalledWith(
         "http://localhost:8073/api/documents?offset=0&limit=20",
+        expect.any(Object),
+      );
+    });
+
+    it("derives the backend host from the browser location in auto mode", () => {
+      process.env.NEXT_PUBLIC_API_URL = "auto";
+      process.env.NEXT_PUBLIC_API_PORT = "9000";
+      Object.defineProperty(window, "location", {
+        configurable: true,
+        value: new URL("http://100.122.169.13:3073/settings"),
+      });
+
+      const c = new ApiClient();
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [], total: 0, offset: 0, limit: 20 }),
+      });
+
+      c.listDocuments();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://100.122.169.13:9000/api/documents?offset=0&limit=20",
+        expect.any(Object),
+      );
+    });
+
+    it("preserves same-origin mode when the env override is empty", () => {
+      process.env.NEXT_PUBLIC_API_URL = "";
+
+      const c = new ApiClient();
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ items: [], total: 0, offset: 0, limit: 20 }),
+      });
+
+      c.listDocuments();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "/api/documents?offset=0&limit=20",
         expect.any(Object),
       );
     });
@@ -110,6 +177,42 @@ describe("ApiClient", () => {
       mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
       const result = await client.deleteFeed("feed1");
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe("checkConnection", () => {
+    it("posts the selected provider and model", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          kind: "llm",
+          provider: "openai",
+          model: "gpt-5-mini",
+          message: "gpt-5-mini is wired and reachable.",
+        }),
+      });
+
+      const result = await client.checkConnection({
+        kind: "llm",
+        provider: "openai",
+        model: "gpt-5-mini",
+        openai_api_key: "sk-test",
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:8073/api/settings/check-connection",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            kind: "llm",
+            provider: "openai",
+            model: "gpt-5-mini",
+            openai_api_key: "sk-test",
+          }),
+        }),
+      );
+      expect(result.model).toBe("gpt-5-mini");
     });
   });
 

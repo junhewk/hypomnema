@@ -12,7 +12,7 @@ class TestOpenAILLMClient:
 
     def test_instantiates_defaults(self):
         client = OpenAILLMClient(api_key="fake")
-        assert client._model == "gpt-4o"
+        assert client._model == "gpt-5-mini"
         assert client._max_tokens == 4096
 
     def test_custom_model(self):
@@ -35,6 +35,17 @@ class TestOpenAILLMClient:
         client = OpenAILLMClient(api_key="fake")
         mock_choice = MagicMock()
         mock_choice.message.content = '{"key": "value"}'
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+        client._client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+        result = await client.complete_json("test")
+        assert result == {"key": "value"}
+
+    async def test_complete_json_parses_fenced_json(self):
+        client = OpenAILLMClient(api_key="fake")
+        mock_choice = MagicMock()
+        mock_choice.message.content = '```json\n{"key": "value"}\n```'
         mock_response = MagicMock()
         mock_response.choices = [mock_choice]
         client._client.chat.completions.create = AsyncMock(return_value=mock_response)
