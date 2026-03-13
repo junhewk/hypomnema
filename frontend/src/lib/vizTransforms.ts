@@ -104,3 +104,22 @@ export function pointAtIndex(
   if (index < 0 || index >= points.length) return null;
   return points[index];
 }
+
+/** Build Float32Array of per-node sizes based on edge count. */
+export function buildSizeBuffer(
+  points: ProjectionPoint[],
+  edges: Array<{ source_engram_id: string; target_engram_id: string }>,
+): Float32Array {
+  // Count edges per engram
+  const edgeCounts = new Map<string, number>();
+  for (const e of edges) {
+    edgeCounts.set(e.source_engram_id, (edgeCounts.get(e.source_engram_id) ?? 0) + 1);
+    edgeCounts.set(e.target_engram_id, (edgeCounts.get(e.target_engram_id) ?? 0) + 1);
+  }
+  const buf = new Float32Array(points.length);
+  for (let i = 0; i < points.length; i++) {
+    const count = edgeCounts.get(points[i].engram_id) ?? 0;
+    buf[i] = 5 + Math.log(count + 1) * 4;  // base 5px + log scale
+  }
+  return buf;
+}

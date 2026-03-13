@@ -1,21 +1,37 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useVizDataCtx } from "@/hooks/useVizDataContext";
 import { VizScene } from "./VizScene";
+import { VizControlsHUD } from "./VizControlsHUD";
+import type { ProjectionPoint } from "@/lib/types";
 
 export function VizPage() {
   const router = useRouter();
   const { points, clusters, edges, isLoading, error } = useVizDataCtx();
+  const [focusedNode, setFocusedNode] = useState<ProjectionPoint | null>(null);
+
+  const handleNavigateNode = useCallback(
+    (engramId: string) => {
+      router.push(`/engrams/${engramId}`);
+    },
+    [router],
+  );
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") router.push("/");
+      if (e.key === "Escape") {
+        if (focusedNode) {
+          setFocusedNode(null);
+        } else {
+          router.push("/");
+        }
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [router]);
+  }, [router, focusedNode]);
 
   return (
     <div className="fixed inset-0 viz-viewport" data-testid="viz-page">
@@ -24,7 +40,7 @@ export function VizPage() {
         className="viz-nav-pill fixed top-4 left-4 z-50 rounded-md border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted/60"
         aria-label="Back to stream"
       >
-        <span className="mr-1 text-[8px]">‹</span>
+        <span className="mr-1 text-[8px]">&#x2039;</span>
         back
       </button>
 
@@ -62,9 +78,18 @@ export function VizPage() {
 
       {!isLoading && !error && points.length > 0 && (
         <div className="h-full w-full animate-viz-in">
-          <VizScene points={points} clusters={clusters} edges={edges} />
+          <VizScene
+            points={points}
+            clusters={clusters}
+            edges={edges}
+            focusedNode={focusedNode}
+            onFocusNode={setFocusedNode}
+            onNavigateNode={handleNavigateNode}
+          />
         </div>
       )}
+
+      <VizControlsHUD />
     </div>
   );
 }
