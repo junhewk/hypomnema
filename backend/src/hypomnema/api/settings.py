@@ -248,37 +248,36 @@ async def complete_setup(
     return _build_response(new_settings, masked_keys)
 
 
-def _llm_provider_catalog() -> list[ProviderInfo]:
-    return [
-        ProviderInfo(
-            id="claude",
-            name="Anthropic Claude",
-            requires_key=True,
-            default_model=_DEFAULT_LLM_MODELS["claude"],
-            models=_LLM_MODELS["claude"],
-        ),
-        ProviderInfo(
-            id="google",
-            name="Google Gemini",
-            requires_key=True,
-            default_model=_DEFAULT_LLM_MODELS["google"],
-            models=_LLM_MODELS["google"],
-        ),
-        ProviderInfo(
-            id="openai",
-            name="OpenAI",
-            requires_key=True,
-            default_model=_DEFAULT_LLM_MODELS["openai"],
-            models=_LLM_MODELS["openai"],
-        ),
-        ProviderInfo(
-            id="ollama",
-            name="Ollama (local)",
-            requires_key=False,
-            default_model=_DEFAULT_LLM_MODELS["ollama"],
-            models=[],
-        ),
-    ]
+_LLM_PROVIDER_CATALOG = [
+    ProviderInfo(
+        id="claude",
+        name="Anthropic Claude",
+        requires_key=True,
+        default_model=_DEFAULT_LLM_MODELS["claude"],
+        models=_LLM_MODELS["claude"],
+    ),
+    ProviderInfo(
+        id="google",
+        name="Google Gemini",
+        requires_key=True,
+        default_model=_DEFAULT_LLM_MODELS["google"],
+        models=_LLM_MODELS["google"],
+    ),
+    ProviderInfo(
+        id="openai",
+        name="OpenAI",
+        requires_key=True,
+        default_model=_DEFAULT_LLM_MODELS["openai"],
+        models=_LLM_MODELS["openai"],
+    ),
+    ProviderInfo(
+        id="ollama",
+        name="Ollama (local)",
+        requires_key=False,
+        default_model=_DEFAULT_LLM_MODELS["ollama"],
+        models=[],
+    ),
+]
 
 
 def _resolve_llm_model(provider: str, model: str | None) -> str:
@@ -377,6 +376,8 @@ async def _check_embedding_connection(
 ) -> ConnectivityCheckResponse:
     provider = body.provider
     model = body.model or EMBEDDING_DEFAULTS.get(provider, (0, ""))[1]
+    api_key = _resolve_api_key(provider, body, settings)
+    base_url = _resolve_base_url(provider, body, settings)
     try:
         if provider == "local":
             from hypomnema.embeddings.local_gpu import LocalEmbeddingModel
@@ -385,15 +386,12 @@ async def _check_embedding_connection(
         elif provider == "openai":
             from hypomnema.embeddings.openai import OpenAIEmbeddingModel
 
-            api_key = body.openai_api_key if body.openai_api_key is not None else settings.openai_api_key
-            base_url = body.openai_base_url if body.openai_base_url is not None else settings.openai_base_url
             if not api_key:
                 raise HTTPException(status_code=400, detail="OpenAI API key required")
             embeddings = OpenAIEmbeddingModel(api_key=api_key, model=model, base_url=base_url or None)
         elif provider == "google":
             from hypomnema.embeddings.google import GoogleEmbeddingModel
 
-            api_key = body.google_api_key if body.google_api_key is not None else settings.google_api_key
             if not api_key:
                 raise HTTPException(status_code=400, detail="Google API key required")
             embeddings = GoogleEmbeddingModel(api_key=api_key, model=model)
@@ -580,7 +578,7 @@ async def check_connection(
 async def get_providers() -> ProvidersResponse:
     """Return available provider metadata (excludes mock)."""
     return ProvidersResponse(
-        llm=_llm_provider_catalog(),
+        llm=_LLM_PROVIDER_CATALOG,
         embedding=[
             EmbeddingProviderInfo(
                 id="local",
