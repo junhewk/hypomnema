@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request, UploadFile
 
 from hypomnema.api.deps import DB
-from hypomnema.api.schemas import DocumentDetail, DocumentOut, DocumentUpdate, PaginatedList, ScribbleCreate
+from hypomnema.api.schemas import DocumentDetail, DocumentOut, DocumentUpdate, PaginatedList, RelatedDocument, ScribbleCreate
 from hypomnema.db.models import Engram
 from hypomnema.ingestion.file_parser import UnsupportedFormatError, ingest_file
 from hypomnema.ingestion.scribble import create_scribble
@@ -166,3 +166,20 @@ async def get_document(document_id: str, db: DB) -> DocumentDetail:
     doc_data = dict(row)
     doc_data["engrams"] = [Engram.from_row(r) for r in engram_rows]
     return DocumentDetail.model_validate(doc_data)
+
+
+@router.get("/{document_id}/related", response_model=list[RelatedDocument])
+async def get_related_documents(document_id: str, db: DB) -> list[RelatedDocument]:
+    """Get documents that share engrams with the given document."""
+    cursor = await db.execute(
+        "SELECT DISTINCT d.id, d.tidy_title, d.title "
+        "FROM document_engrams de1 "
+        "JOIN document_engrams de2 ON de1.engram_id = de2.engram_id "
+        "JOIN documents d ON de2.document_id = d.id "
+        "WHERE de1.document_id = ? AND de2.document_id != ? "
+        "ORDER BY d.created_at DESC",
+        (document_id, document_id),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [RelatedDocument(id=r["id"], title=r["tidy_title"] or r["title"]) for r in rows]

@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { useDocument } from "@/hooks/useDocument";
 import { useEngrams } from "@/hooks/useEngrams";
+import { useRelatedDocuments } from "@/hooks/useRelatedDocuments";
 import { SOURCE_STYLES } from "@/lib/documentStyles";
 import { timeAgo } from "@/lib/timeAgo";
 import { BackButton } from "./BackButton";
@@ -11,6 +13,53 @@ import { StatusDot } from "./StatusDot";
 
 interface DocumentDetailPageProps {
   id: string;
+}
+
+function RelatedNav({ id }: { id: string }) {
+  const { related } = useRelatedDocuments(id);
+  const [index, setIndex] = useState(0);
+
+  if (related.length === 0) return null;
+
+  const current = related[index];
+  const hasPrev = index > 0;
+  const hasNext = index < related.length - 1;
+
+  return (
+    <nav className="mb-4 flex items-center gap-2 font-mono text-[10px] text-muted/60">
+      <span className="uppercase tracking-wider text-muted/40">related</span>
+      <a
+        href={hasPrev ? `/documents/${related[index - 1].id}` : undefined}
+        onClick={(e) => {
+          if (!hasPrev) e.preventDefault();
+        }}
+        className={`px-1.5 py-0.5 rounded border border-border/50 ${hasPrev ? "hover:text-foreground hover:border-border-focus" : "opacity-30 cursor-default"}`}
+        aria-label="Previous related document"
+      >
+        ‹
+      </a>
+      <a
+        href={`/documents/${current.id}`}
+        className="hover:text-foreground truncate max-w-[200px]"
+        title={current.title ?? "Untitled"}
+      >
+        {current.title ?? "Untitled"}
+      </a>
+      <span className="text-muted/30">
+        {index + 1}/{related.length}
+      </span>
+      <a
+        href={hasNext ? `/documents/${related[index + 1].id}` : undefined}
+        onClick={(e) => {
+          if (!hasNext) e.preventDefault();
+        }}
+        className={`px-1.5 py-0.5 rounded border border-border/50 ${hasNext ? "hover:text-foreground hover:border-border-focus" : "opacity-30 cursor-default"}`}
+        aria-label="Next related document"
+      >
+        ›
+      </a>
+    </nav>
+  );
 }
 
 export function DocumentDetailPage({ id }: DocumentDetailPageProps) {
@@ -31,6 +80,7 @@ export function DocumentDetailPage({ id }: DocumentDetailPageProps) {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <BackButton />
+      <RelatedNav id={id} />
 
       {isLoading && (
         <p className="animate-pulse-dot font-mono text-sm text-muted">
@@ -79,18 +129,22 @@ export function DocumentDetailPage({ id }: DocumentDetailPageProps) {
           <div className="mb-8" data-testid="document-text">
             {doc.tidy_text ? (
               <>
-                <div className="tidy-surface">
-                  <p className="font-mono text-sm leading-relaxed whitespace-pre-wrap">
-                    {doc.tidy_text}
-                  </p>
+                <div className="tidy-surface prose-mono">
+                  <ReactMarkdown>{doc.tidy_text}</ReactMarkdown>
                 </div>
                 <details className="mt-6 border-t border-border/50 pt-4">
                   <summary className="raw-text-toggle font-mono text-[10px] uppercase tracking-wider text-muted/40 hover:text-muted/70">
                     Original text
                   </summary>
-                  <p className="mt-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-muted/60">
-                    {doc.text}
-                  </p>
+                  {doc.mime_type === "text/markdown" ? (
+                    <div className="mt-3 prose-mono text-xs text-muted/60">
+                      <ReactMarkdown>{doc.text}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p className="mt-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-muted/60">
+                      {doc.text}
+                    </p>
+                  )}
                 </details>
               </>
             ) : (

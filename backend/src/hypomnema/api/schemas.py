@@ -33,6 +33,11 @@ class EngramDetail(Engram):
     documents: list[DocumentOut] = []
 
 
+class RelatedDocument(BaseModel):
+    id: str
+    title: str | None = None
+
+
 class ScoredDocumentOut(DocumentOut):
     score: float
 

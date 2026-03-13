@@ -198,6 +198,11 @@ export interface EmbeddingChangeStatus {
   error?: string | null;
 }
 
+export interface RelatedDocument {
+  id: string;
+  title: string | null;
+}
+
 export interface SetupPayload {
   embedding_provider: "local" | "openai" | "google";
   llm_provider?: string;

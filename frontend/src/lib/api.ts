@@ -20,6 +20,7 @@ import type {
   EmbeddingChangeStatus,
   ConnectivityCheckPayload,
   ConnectivityCheckResponse,
+  RelatedDocument,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:8073";
@@ -110,6 +111,10 @@ export class ApiClient {
 
   async getDocument(id: string): Promise<DocumentDetail> {
     return this.request(`/api/documents/${id}`);
+  }
+
+  async getRelatedDocuments(id: string): Promise<RelatedDocument[]> {
+    return this.request(`/api/documents/${id}/related`);
   }
 
   async updateDocument(
