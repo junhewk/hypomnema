@@ -55,8 +55,17 @@ async def process_document(
     if doc.processed >= 1:
         return []
 
-    # Extract entities
-    extracted = await extract_entities(llm, doc.text)
+    # Extract entities + tidy memo
+    result = await extract_entities(llm, doc.text)
+
+    # Store tidy memo fields
+    if result.tidy_title or result.tidy_text:
+        await db.execute(
+            "UPDATE documents SET tidy_title = ?, tidy_text = ? WHERE id = ?",
+            (result.tidy_title, result.tidy_text, document_id),
+        )
+
+    extracted = result.entities
     if not extracted:
         await db.execute(
             "UPDATE documents SET processed = 1 WHERE id = ?", (document_id,)

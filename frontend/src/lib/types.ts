@@ -25,6 +25,8 @@ export interface Document {
   metadata: Record<string, unknown> | null;
   triaged: number;
   processed: number;
+  tidy_title: string | null;
+  tidy_text: string | null;
   created_at: string;
   updated_at: string;
 }

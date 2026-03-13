@@ -5,6 +5,10 @@ import { makeEngramDetail, makeEdge } from "../helpers/makeEngram";
 import { makeDoc } from "../helpers/makeDocument";
 import { mockJsonResponse, mockErrorResponse } from "../helpers/mockResponse";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+}));
+
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 

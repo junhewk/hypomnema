@@ -5,17 +5,11 @@ from __future__ import annotations
 import logging
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request, UploadFile
 
-if TYPE_CHECKING:
-    from hypomnema.embeddings.base import EmbeddingModel
-    from hypomnema.llm.base import LLMClient
-
-from hypomnema.api.deps import DB, LLM, AppSettings, Embeddings
+from hypomnema.api.deps import DB
 from hypomnema.api.schemas import DocumentDetail, DocumentOut, DocumentUpdate, PaginatedList, ScribbleCreate
-from hypomnema.db.engine import connect
 from hypomnema.db.models import Engram
 from hypomnema.ingestion.file_parser import UnsupportedFormatError, ingest_file
 from hypomnema.ingestion.scribble import create_scribble
@@ -25,48 +19,46 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 
-async def _run_ontology_pipeline(
-    document_id: str,
-    db_path: Path,
-    sqlite_vec_path: str,
-    llm: LLMClient,
-    embeddings: EmbeddingModel,
-) -> None:
-    """Background task: extract entities and generate edges."""
-    async with connect(db_path, sqlite_vec_path) as bg_db:
-        try:
-            await process_document(bg_db, document_id, llm, embeddings)
-            await link_document(bg_db, document_id, llm)
-        except Exception:
-            logger.exception("Ontology pipeline failed for document %s", document_id)
+async def _run_ontology_pipeline(app: FastAPI, document_id: str) -> None:
+    """Background task: extract entities, generate edges, and compute projections.
+
+    Uses the app's shared database connection to avoid SQLite write-lock contention.
+    """
+    db = app.state.db
+    llm = app.state.llm
+    embeddings = app.state.embeddings
+    try:
+        await process_document(db, document_id, llm, embeddings)
+        await link_document(db, document_id, llm)
+
+        # Auto-compute projections so viz is immediately available
+        from hypomnema.visualization.projection import compute_projections
+
+        await compute_projections(db)
+    except Exception:
+        logger.exception("Ontology pipeline failed for document %s", document_id)
 
 
 @router.post("/scribbles", response_model=DocumentOut, status_code=201)
 async def create_scribble_endpoint(
     body: ScribbleCreate,
+    request: Request,
     db: DB,
-    llm: LLM,
-    embeddings: Embeddings,
-    settings: AppSettings,
     background_tasks: BackgroundTasks,
 ) -> DocumentOut:
     try:
         doc = await create_scribble(db, body.text, title=body.title)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    background_tasks.add_task(
-        _run_ontology_pipeline, doc.id, settings.db_path, settings.sqlite_vec_path, llm, embeddings
-    )
+    background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
     return DocumentOut.model_validate(doc, from_attributes=True)
 
 
 @router.post("/files", response_model=DocumentOut, status_code=201)
 async def upload_file_endpoint(
     file: UploadFile,
+    request: Request,
     db: DB,
-    llm: LLM,
-    embeddings: Embeddings,
-    settings: AppSettings,
     background_tasks: BackgroundTasks,
 ) -> DocumentOut:
     suffix = Path(file.filename or "upload").suffix
@@ -80,9 +72,7 @@ async def upload_file_endpoint(
         raise HTTPException(status_code=400, detail=str(e)) from e
     finally:
         tmp_path.unlink(missing_ok=True)
-    background_tasks.add_task(
-        _run_ontology_pipeline, doc.id, settings.db_path, settings.sqlite_vec_path, llm, embeddings
-    )
+    background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
     return DocumentOut.model_validate(doc, from_attributes=True)
 
 
@@ -90,10 +80,8 @@ async def upload_file_endpoint(
 async def update_document(
     document_id: str,
     body: DocumentUpdate,
+    request: Request,
     db: DB,
-    llm: LLM,
-    embeddings: Embeddings,
-    settings: AppSettings,
     background_tasks: BackgroundTasks,
 ) -> DocumentOut:
     """Update a document's text/title and re-run ontology pipeline."""
@@ -116,8 +104,8 @@ async def update_document(
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values())
     cursor = await db.execute(
-        f"UPDATE documents SET {set_clause}, processed = 0, updated_at = datetime('now') "  # noqa: S608
-        "WHERE id = ? RETURNING *",
+        f"UPDATE documents SET {set_clause}, processed = 0, tidy_title = NULL, tidy_text = NULL, "  # noqa: S608
+        "updated_at = datetime('now') WHERE id = ? RETURNING *",
         (*values, document_id),
     )
     updated_row = await cursor.fetchone()
@@ -130,9 +118,7 @@ async def update_document(
     await db.commit()
 
     # Re-run ontology pipeline in background
-    background_tasks.add_task(
-        _run_ontology_pipeline, document_id, settings.db_path, settings.sqlite_vec_path, llm, embeddings
-    )
+    background_tasks.add_task(_run_ontology_pipeline, request.app, document_id)
 
     return DocumentOut(**dict(updated_row))
 

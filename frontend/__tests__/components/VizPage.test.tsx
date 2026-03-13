@@ -3,6 +3,11 @@ import { render, screen } from "@testing-library/react";
 import { VizPage } from "@/components/VizPage";
 import { makeProjectionPoint, makeCluster, makeVizEdge } from "../helpers/makeViz";
 
+// Mock next/navigation
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+}));
+
 // Mock VizScene — Three.js cannot run in jsdom
 vi.mock("@/components/VizScene", () => ({
   VizScene: () => <div data-testid="viz-scene-mock">VizScene</div>,

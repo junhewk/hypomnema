@@ -370,6 +370,98 @@ body {
   z-index: -1;
 }
 
+/* Back nav — archival reference feel */
+.back-nav {
+  position: relative;
+  transition: all 0.2s ease;
+}
+.back-nav::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 0;
+  height: 1px;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+.back-nav:hover::before {
+  width: 100%;
+}
+
+/* Tidy memo — organized / synthesized text surface */
+.tidy-surface {
+  position: relative;
+}
+.tidy-surface::before {
+  content: "";
+  position: absolute;
+  left: -17px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--accent) 25%, transparent) 0%,
+    color-mix(in srgb, var(--engram) 15%, transparent) 100%
+  );
+  border-radius: 1px;
+  opacity: 0.5;
+}
+
+/* Raw text disclosure — faded manuscript */
+.raw-text-toggle {
+  position: relative;
+  list-style: none;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+.raw-text-toggle::-webkit-details-marker {
+  display: none;
+}
+.raw-text-toggle::before {
+  content: "›";
+  display: inline-block;
+  margin-right: 4px;
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+details[open] > .raw-text-toggle::before {
+  transform: rotate(90deg);
+}
+
+/* Status dot tooltip — custom styled */
+.status-dot {
+  position: relative;
+  cursor: default;
+}
+.status-dot::after {
+  content: attr(data-label);
+  position: absolute;
+  top: -6px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100%);
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--muted);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  transform: translateX(-50%) translateY(-100%) translateY(4px);
+}
+.status-dot:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-100%) translateY(0);
+}
+
 /* Continue button — manuscript annotation feel */
 .continue-btn {
   position: relative;

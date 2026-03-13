@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useEngram } from "@/hooks/useEngram";
 import { useEngrams } from "@/hooks/useEngrams";
+import { BackButton } from "./BackButton";
 import { NetworkPanel } from "./NetworkPanel";
 import { DocumentCard } from "./DocumentCard";
 import { timeAgo } from "@/lib/timeAgo";
@@ -38,6 +39,8 @@ export function EngramDetailPage({ id }: EngramDetailPageProps) {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
+      <BackButton />
+
       {isLoading && (
         <p className="animate-pulse-dot font-mono text-sm text-muted">
           Loading…

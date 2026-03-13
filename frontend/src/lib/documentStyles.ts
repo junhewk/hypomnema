@@ -35,3 +35,9 @@ export const STATUS_ANIM: Record<number, string> = {
   1: "animate-pulse-dot",
   2: "",
 };
+
+export const STATUS_LABEL: Record<number, string> = {
+  0: "Queued",
+  1: "Entities extracted",
+  2: "Complete",
+};

@@ -4,7 +4,8 @@ import { memo, type CSSProperties } from "react";
 import Link from "next/link";
 import type { Document, ScoredDocument } from "@/lib/types";
 import { timeAgo } from "@/lib/timeAgo";
-import { SOURCE_STYLES, STATUS_COLOR, STATUS_ANIM } from "@/lib/documentStyles";
+import { SOURCE_STYLES } from "@/lib/documentStyles";
+import { StatusDot } from "./StatusDot";
 
 interface DocumentCardProps {
   document: Document | ScoredDocument;
@@ -19,8 +20,9 @@ export const DocumentCard = memo(function DocumentCard({
 }: DocumentCardProps) {
   const score = "score" in doc ? doc.score : undefined;
   const source = SOURCE_STYLES[doc.source_type];
+  const displayText = doc.tidy_text ?? doc.text;
   const preview =
-    doc.text.length > 280 ? doc.text.slice(0, 280) + "\u2026" : doc.text;
+    displayText.length > 280 ? displayText.slice(0, 280) + "\u2026" : displayText;
 
   return (
     <Link
@@ -37,11 +39,7 @@ export const DocumentCard = memo(function DocumentCard({
         data-testid="document-card"
       >
         {/* processing status dot */}
-        <div
-          className={`absolute top-3 right-3 h-1.5 w-1.5 rounded-full ${STATUS_COLOR[doc.processed] ?? "bg-gray-400"} ${STATUS_ANIM[doc.processed] ?? ""}`}
-          data-testid="status-dot"
-          aria-label={`processing status ${doc.processed}`}
-        />
+        <StatusDot processed={doc.processed} className="absolute top-3 right-3" />
 
         {/* header row: badge + mime */}
         <div className="mb-1.5 flex items-center gap-2">
@@ -58,9 +56,9 @@ export const DocumentCard = memo(function DocumentCard({
         </div>
 
         {/* title */}
-        {doc.title && (
+        {(doc.tidy_title ?? doc.title) && (
           <h3 className="mb-1 font-sans text-sm font-medium leading-snug">
-            {doc.title}
+            {doc.tidy_title ?? doc.title}
           </h3>
         )}
 

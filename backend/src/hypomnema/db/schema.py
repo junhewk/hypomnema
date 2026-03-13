@@ -158,7 +158,17 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
         END
     """)
 
+    await _migrate_tidy_columns(db)
     await db.commit()
+
+
+async def _migrate_tidy_columns(db: aiosqlite.Connection) -> None:
+    """Add tidy_title and tidy_text columns to documents (idempotent)."""
+    for col in ("tidy_title", "tidy_text"):
+        try:
+            await db.execute(f"ALTER TABLE documents ADD COLUMN {col} TEXT")  # noqa: S608
+        except Exception:  # noqa: BLE001
+            pass  # Column already exists
 
 
 async def create_vec_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> None:

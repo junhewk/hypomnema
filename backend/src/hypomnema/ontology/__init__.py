@@ -8,6 +8,7 @@ from hypomnema.ontology.engram import (
 from hypomnema.ontology.extractor import (
     ExtractedEntity,
     ExtractionError,
+    ExtractionResult,
     extract_entities,
 )
 from hypomnema.ontology.linker import (
@@ -28,6 +29,7 @@ from hypomnema.ontology.pipeline import (
 __all__ = [
     "ExtractedEntity",
     "ExtractionError",
+    "ExtractionResult",
     "ProposedEdge",
     "VALID_PREDICATES",
     "assign_predicates",

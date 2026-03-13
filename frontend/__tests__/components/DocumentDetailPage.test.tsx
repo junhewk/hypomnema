@@ -3,6 +3,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import { DocumentDetailPage } from "@/components/DocumentDetailPage";
 import { makeDocumentDetail } from "../helpers/makeEngram";
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), back: vi.fn() }),
+}));
+
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 

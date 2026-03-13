@@ -492,63 +492,70 @@ async def change_embedding_provider(
 
 
 async def _reprocess_all_documents(app: FastAPI, total: int) -> None:
-    """Background task: reprocess all documents through the ontology pipeline."""
-    from hypomnema.db.engine import get_connection
+    """Background task: reprocess all documents through the ontology pipeline.
+
+    Uses the app's shared database connection (app.state.db) to avoid
+    opening a second connection that would contend for SQLite write locks.
+    """
     from hypomnema.ontology.pipeline import (
         link_document,
         process_document,
     )
 
-    settings = app.state.settings
     try:
-        db = await get_connection(settings.db_path, settings.sqlite_vec_path)
-        try:
-            llm = app.state.llm
-            embeddings = app.state.embeddings
+        db = app.state.db
+        llm = app.state.llm
+        embeddings = app.state.embeddings
 
-            if llm is None or embeddings is None:
-                app.state.embedding_change_status = EmbeddingChangeStatus(
-                    status="failed", total=total, processed=0,
-                    error="LLM or embedding model not configured",
-                )
-                return
-
-            # Phase 1: extract engrams
-            cursor = await db.execute(
-                "SELECT id FROM documents WHERE processed = 0 ORDER BY created_at"
-            )
-            doc_ids = [row["id"] for row in await cursor.fetchall()]
-            await cursor.close()
-
-            processed = 0
-            for doc_id in doc_ids:
-                try:
-                    await process_document(db, doc_id, llm, embeddings)
-                except Exception:
-                    logger.exception("Error processing document %s", doc_id)
-                processed += 1
-                app.state.embedding_change_status = EmbeddingChangeStatus(
-                    status="in_progress", total=total, processed=processed,
-                )
-
-            # Phase 2: link edges
-            cursor = await db.execute(
-                "SELECT id FROM documents WHERE processed = 1 ORDER BY created_at"
-            )
-            link_ids = [row["id"] for row in await cursor.fetchall()]
-            await cursor.close()
-
-            for doc_id in link_ids:
-                try:
-                    await link_document(db, doc_id, llm)
-                except Exception:
-                    logger.exception("Error linking document %s", doc_id)
-
+        if llm is None or embeddings is None:
             app.state.embedding_change_status = EmbeddingChangeStatus(
-                status="complete", total=total, processed=total,
+                status="failed", total=total, processed=0,
+                error="LLM or embedding model not configured",
             )
-        finally:
-            await db.close()
+            return
+
+        # Phase 1: extract engrams
+        cursor = await db.execute(
+            "SELECT id FROM documents WHERE processed = 0 ORDER BY created_at"
+        )
+        doc_ids = [row["id"] for row in await cursor.fetchall()]
+        await cursor.close()
+
+        processed = 0
+        for doc_id in doc_ids:
+            try:
+                await process_document(db, doc_id, llm, embeddings)
+            except Exception:
+                logger.exception("Error processing document %s", doc_id)
+            processed += 1
+            app.state.embedding_change_status = EmbeddingChangeStatus(
+                status="in_progress", total=total, processed=processed,
+            )
+
+        # Phase 2: link edges
+        cursor = await db.execute(
+            "SELECT id FROM documents WHERE processed = 1 ORDER BY created_at"
+        )
+        link_ids = [row["id"] for row in await cursor.fetchall()]
+        await cursor.close()
+
+        for doc_id in link_ids:
+            try:
+                await link_document(db, doc_id, llm)
+            except Exception:
+                logger.exception("Error linking document %s", doc_id)
+
+        # Auto-compute projections so viz is immediately available
+        try:
+            from hypomnema.visualization.projection import compute_projections
+
+            await compute_projections(db)
+        except Exception:
+            logger.exception("Failed to compute projections after reprocessing")
+
+        app.state.embedding_change_status = EmbeddingChangeStatus(
+            status="complete", total=total, processed=total,
+        )
 
     except Exception as exc:
         logger.exception("Embedding change reprocessing failed")

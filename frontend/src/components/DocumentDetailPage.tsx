@@ -3,9 +3,11 @@
 import { useMemo } from "react";
 import { useDocument } from "@/hooks/useDocument";
 import { useEngrams } from "@/hooks/useEngrams";
-import { SOURCE_STYLES, STATUS_COLOR, STATUS_ANIM } from "@/lib/documentStyles";
+import { SOURCE_STYLES } from "@/lib/documentStyles";
 import { timeAgo } from "@/lib/timeAgo";
+import { BackButton } from "./BackButton";
 import { NetworkPanel } from "./NetworkPanel";
+import { StatusDot } from "./StatusDot";
 
 interface DocumentDetailPageProps {
   id: string;
@@ -28,6 +30,8 @@ export function DocumentDetailPage({ id }: DocumentDetailPageProps) {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
+      <BackButton />
+
       {isLoading && (
         <p className="animate-pulse-dot font-mono text-sm text-muted">
           Loading…
@@ -52,10 +56,7 @@ export function DocumentDetailPage({ id }: DocumentDetailPageProps) {
               >
                 {source.label}
               </span>
-              <div
-                className={`h-1.5 w-1.5 rounded-full ${STATUS_COLOR[doc.processed] ?? "bg-gray-400"} ${STATUS_ANIM[doc.processed] ?? ""}`}
-                data-testid="status-dot"
-              />
+              <StatusDot processed={doc.processed} />
               {doc.mime_type && (
                 <span className="font-mono text-[10px] text-muted">
                   {doc.mime_type}
@@ -63,11 +64,9 @@ export function DocumentDetailPage({ id }: DocumentDetailPageProps) {
               )}
             </div>
 
-            {doc.title && (
-              <h1 className="mb-1 font-sans text-lg font-medium">
-                {doc.title}
-              </h1>
-            )}
+            <h1 className="mb-1 font-sans text-lg font-medium">
+              {doc.tidy_title ?? doc.title ?? "Untitled"}
+            </h1>
 
             <time
               className="font-mono text-[10px] text-muted/60"
@@ -78,9 +77,27 @@ export function DocumentDetailPage({ id }: DocumentDetailPageProps) {
           </div>
 
           <div className="mb-8" data-testid="document-text">
-            <p className="font-mono text-sm leading-relaxed whitespace-pre-wrap">
-              {doc.text}
-            </p>
+            {doc.tidy_text ? (
+              <>
+                <div className="tidy-surface">
+                  <p className="font-mono text-sm leading-relaxed whitespace-pre-wrap">
+                    {doc.tidy_text}
+                  </p>
+                </div>
+                <details className="mt-6 border-t border-border/50 pt-4">
+                  <summary className="raw-text-toggle font-mono text-[10px] uppercase tracking-wider text-muted/40 hover:text-muted/70">
+                    Original text
+                  </summary>
+                  <p className="mt-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-muted/60">
+                    {doc.text}
+                  </p>
+                </details>
+              </>
+            ) : (
+              <p className="font-mono text-sm leading-relaxed whitespace-pre-wrap">
+                {doc.text}
+              </p>
+            )}
           </div>
 
           <div className="border-t border-border pt-6">
