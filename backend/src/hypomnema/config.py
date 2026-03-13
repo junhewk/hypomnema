@@ -5,9 +5,10 @@ from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
-_LLM_OVERRIDABLE = {
+_DB_OVERRIDABLE = {
     "llm_provider", "llm_model", "anthropic_api_key", "google_api_key",
     "openai_api_key", "ollama_base_url", "openai_base_url",
+    "embedding_provider", "embedding_model", "embedding_dim",
 }
 
 
@@ -95,12 +96,15 @@ class Settings(BaseSettings):
 
     @classmethod
     def with_db_overrides(cls, base: "Settings", db_settings: dict[str, str]) -> "Settings":
-        """Create a new Settings with LLM-related fields overridden from DB values."""
-        overrides: dict[str, str] = {
-            k: v for k, v in db_settings.items() if k in _LLM_OVERRIDABLE and v
+        """Create a new Settings with DB-overridable fields merged from stored values."""
+        overrides: dict[str, str | int] = {
+            k: v for k, v in db_settings.items() if k in _DB_OVERRIDABLE and v
         }
         if not overrides:
             return base
+        # DB stores everything as strings — convert numeric fields
+        if "embedding_dim" in overrides:
+            overrides["embedding_dim"] = int(overrides["embedding_dim"])
         data = {k: getattr(base, k) for k in cls.model_fields}
         data.update(overrides)
         return cls.model_construct(**data)

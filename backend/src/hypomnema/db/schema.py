@@ -3,8 +3,11 @@
 import aiosqlite
 
 
-async def create_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> None:
-    """Create all tables, virtual tables, indexes, and triggers. Idempotent."""
+async def create_core_tables(db: aiosqlite.Connection) -> None:
+    """Create all core tables, indexes, FTS5, and triggers. Idempotent.
+
+    Does NOT create vec0 virtual tables — call create_vec_tables() separately.
+    """
 
     # ── Core tables ──────────────────────────────────────────
 
@@ -101,20 +104,6 @@ async def create_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> N
     await db.execute("CREATE INDEX IF NOT EXISTS idx_projections_cluster ON projections(cluster_id)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_engram ON document_engrams(engram_id)")
 
-    # ── Virtual tables (vec0 does NOT support IF NOT EXISTS) ─
-
-    if not await _table_exists(db, "engram_embeddings"):
-        await db.execute(
-            f"CREATE VIRTUAL TABLE engram_embeddings USING vec0("
-            f"engram_id TEXT PRIMARY KEY, embedding float[{embedding_dim}])"
-        )
-
-    if not await _table_exists(db, "document_embeddings"):
-        await db.execute(
-            f"CREATE VIRTUAL TABLE document_embeddings USING vec0("
-            f"document_id TEXT PRIMARY KEY, embedding float[{embedding_dim}])"
-        )
-
     # ── FTS5 (external content synced via triggers) ──────────
 
     if not await _table_exists(db, "documents_fts"):
@@ -166,6 +155,30 @@ async def create_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> N
     """)
 
     await db.commit()
+
+
+async def create_vec_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> None:
+    """Create vec0 virtual tables for embeddings. Idempotent."""
+
+    if not await _table_exists(db, "engram_embeddings"):
+        await db.execute(
+            f"CREATE VIRTUAL TABLE engram_embeddings USING vec0("
+            f"engram_id TEXT PRIMARY KEY, embedding float[{embedding_dim}])"
+        )
+
+    if not await _table_exists(db, "document_embeddings"):
+        await db.execute(
+            f"CREATE VIRTUAL TABLE document_embeddings USING vec0("
+            f"document_id TEXT PRIMARY KEY, embedding float[{embedding_dim}])"
+        )
+
+    await db.commit()
+
+
+async def create_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> None:
+    """Create all tables, virtual tables, indexes, and triggers. Idempotent."""
+    await create_core_tables(db)
+    await create_vec_tables(db, embedding_dim)
 
 
 async def _table_exists(db: aiosqlite.Connection, table_name: str) -> bool:

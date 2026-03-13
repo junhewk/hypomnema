@@ -14,6 +14,8 @@ import type {
   AppSettings,
   SettingsUpdatePayload,
   ProvidersResponse,
+  HealthStatus,
+  SetupPayload,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:8000";
@@ -179,6 +181,17 @@ export class ApiClient {
 
   async getProviders(): Promise<ProvidersResponse> {
     return this.request("/api/settings/providers");
+  }
+
+  async checkHealth(): Promise<HealthStatus> {
+    return this.request("/api/health");
+  }
+
+  async completeSetup(payload: SetupPayload): Promise<AppSettings> {
+    return this.request("/api/settings/setup", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   }
 }
 

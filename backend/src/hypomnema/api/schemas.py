@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, field_serializer
 
@@ -118,6 +118,16 @@ class SettingsResponse(BaseModel):
 class SettingsUpdate(BaseModel):
     llm_provider: str | None = None
     llm_model: str | None = None
+    anthropic_api_key: str | None = None
+    google_api_key: str | None = None
+    openai_api_key: str | None = None
+    ollama_base_url: str | None = None
+    openai_base_url: str | None = None
+
+
+class SetupPayload(BaseModel):
+    embedding_provider: Literal["local", "openai", "google"]
+    llm_provider: str | None = None
     anthropic_api_key: str | None = None
     google_api_key: str | None = None
     openai_api_key: str | None = None

@@ -24,6 +24,7 @@ dependencies = [
     "httpx>=0.28,<1",
     "cryptography>=44,<45",
     "openai>=1.60,<2",
+    "platformdirs>=4,<5",
 ]
 
 [dependency-groups]
@@ -33,6 +34,7 @@ dev = [
     "mypy>=1.14,<2",
     "ruff>=0.9,<1",
 ]
+desktop = ["pyinstaller>=6,<7"]
 
 [project.scripts]
 hypomnema = "hypomnema.cli:main"

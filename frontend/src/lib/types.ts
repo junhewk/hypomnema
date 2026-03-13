@@ -149,3 +149,19 @@ export interface ProvidersResponse {
   llm: ProviderInfo[];
   embedding: EmbeddingProviderInfo[];
 }
+
+export interface HealthStatus {
+  status: string;
+  needs_setup: boolean;
+  mode: "local" | "server" | "desktop";
+}
+
+export interface SetupPayload {
+  embedding_provider: "local" | "openai" | "google";
+  llm_provider?: string;
+  anthropic_api_key?: string;
+  google_api_key?: string;
+  openai_api_key?: string;
+  ollama_base_url?: string;
+  openai_base_url?: string;
+}

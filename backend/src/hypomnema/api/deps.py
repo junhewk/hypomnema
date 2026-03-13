@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 
 if TYPE_CHECKING:
     import asyncio
@@ -22,11 +22,17 @@ def get_db(request: Request) -> aiosqlite.Connection:
 
 
 def get_llm(request: Request) -> LLMClient:
-    return request.app.state.llm  # type: ignore[no-any-return]
+    llm = request.app.state.llm
+    if llm is None:
+        raise HTTPException(status_code=503, detail="Setup not complete")
+    return llm  # type: ignore[no-any-return]
 
 
 def get_embeddings(request: Request) -> EmbeddingModel:
-    return request.app.state.embeddings  # type: ignore[no-any-return]
+    emb = request.app.state.embeddings
+    if emb is None:
+        raise HTTPException(status_code=503, detail="Setup not complete")
+    return emb  # type: ignore[no-any-return]
 
 
 def get_scheduler(request: Request) -> FeedScheduler:

@@ -13,8 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from hypomnema.config import Settings
 from hypomnema.crypto import get_or_create_key
 from hypomnema.db.engine import get_connection
-from hypomnema.db.schema import create_tables
+from hypomnema.db.schema import create_core_tables, create_vec_tables
 from hypomnema.db.settings_store import get_all_settings
+from hypomnema.embeddings.factory import build_embeddings
 from hypomnema.llm.factory import api_key_for_provider, base_url_for_provider, build_llm
 
 logger = logging.getLogger(__name__)
@@ -26,8 +27,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Database
     db = await get_connection(settings.db_path, settings.sqlite_vec_path)
-    await create_tables(db, settings.embedding_dim)
     app.state.db = db
+
+    # Always create core tables
+    await create_core_tables(db)
 
     # Fernet key
     data_dir = settings.db_path.parent
@@ -35,75 +38,64 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     fernet_key = get_or_create_key(data_dir)
     app.state.fernet_key = fernet_key
 
-    # Load DB settings and merge with env
-    db_settings = await get_all_settings(db, fernet_key=fernet_key)
-    settings = Settings.with_db_overrides(settings, db_settings)
-    app.state.settings = settings
-
     # LLM lock for hot-swap
     app.state.llm_lock = asyncio.Lock()
 
-    # Embeddings
-    if settings.llm_provider == "mock":
-        from hypomnema.embeddings.mock import MockEmbeddingModel
+    # Check if setup is complete
+    db_settings = await get_all_settings(db, fernet_key=fernet_key)
+    setup_complete = db_settings.get("setup_complete")
 
-        app.state.embeddings = MockEmbeddingModel(dimension=settings.embedding_dim)
-    elif settings.embedding_provider == "openai":
-        from hypomnema.embeddings.openai import OpenAIEmbeddingModel
+    if setup_complete:
+        # Normal startup: merge DB settings, create vec tables, init everything
+        settings = Settings.with_db_overrides(settings, db_settings)
+        app.state.settings = settings
 
-        app.state.embeddings = OpenAIEmbeddingModel(
-            api_key=settings.openai_api_key,
-            model=settings.embedding_model,
-            base_url=settings.openai_base_url or None,
-        )
-    elif settings.embedding_provider == "google":
-        from hypomnema.embeddings.google import GoogleEmbeddingModel
+        await create_vec_tables(db, settings.embedding_dim)
 
-        app.state.embeddings = GoogleEmbeddingModel(
-            api_key=settings.google_api_key,
-            model=settings.embedding_model,
-        )
-    else:
-        try:
-            from hypomnema.embeddings.local_gpu import LocalEmbeddingModel
-
-            app.state.embeddings = LocalEmbeddingModel(model_name=settings.embedding_model)
-        except ImportError:
-            logger.warning("Local embedding model not available (torch missing), falling back to mock")
+        # Embeddings
+        if settings.llm_provider == "mock":
             from hypomnema.embeddings.mock import MockEmbeddingModel
 
             app.state.embeddings = MockEmbeddingModel(dimension=settings.embedding_dim)
+        else:
+            app.state.embeddings = build_embeddings(settings)
 
-    # LLM
-    if settings.llm_provider == "mock":
-        from hypomnema.llm.mock import MockLLMClient
+        # LLM
+        if settings.llm_provider == "mock":
+            from hypomnema.llm.mock import MockLLMClient
 
-        app.state.llm = MockLLMClient()
-    else:
-        app.state.llm = build_llm(
-            settings.llm_provider,
-            api_key=api_key_for_provider(settings.llm_provider, settings),
-            model=settings.llm_model,
-            base_url=base_url_for_provider(settings.llm_provider, settings),
+            app.state.llm = MockLLMClient()
+        else:
+            app.state.llm = build_llm(
+                settings.llm_provider,
+                api_key=api_key_for_provider(settings.llm_provider, settings),
+                model=settings.llm_model,
+                base_url=base_url_for_provider(settings.llm_provider, settings),
+            )
+
+        # Feed scheduler
+        from hypomnema.scheduler.cron import FeedScheduler
+
+        scheduler = FeedScheduler(
+            settings.db_path,
+            sqlite_vec_path=settings.sqlite_vec_path,
+            triage_threshold=settings.triage_threshold,
+            feed_timeout=settings.feed_fetch_timeout,
+            embeddings=app.state.embeddings,
         )
-
-    # Feed scheduler
-    from hypomnema.scheduler.cron import FeedScheduler
-
-    scheduler = FeedScheduler(
-        settings.db_path,
-        sqlite_vec_path=settings.sqlite_vec_path,
-        triage_threshold=settings.triage_threshold,
-        feed_timeout=settings.feed_fetch_timeout,
-        embeddings=app.state.embeddings,
-    )
-    await scheduler.load_jobs()
-    scheduler.start()
-    app.state.scheduler = scheduler
+        await scheduler.load_jobs()
+        scheduler.start()
+        app.state.scheduler = scheduler
+    else:
+        # Setup mode: no embeddings, no LLM, no scheduler
+        app.state.embeddings = None
+        app.state.llm = None
+        app.state.scheduler = None
 
     yield
 
-    scheduler.shutdown(wait=True)
+    if app.state.scheduler:
+        app.state.scheduler.shutdown(wait=True)
     await db.close()
 
 

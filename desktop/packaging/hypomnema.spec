@@ -1,11 +1,23 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for Hypomnema backend sidecar (cloud-only profile)."""
 
+import sys
 import sqlite_vec
 from pathlib import Path
 
 block_cipher = None
 repo_root = Path(SPECPATH).parent.parent
+
+# Frontend static export — bundled as static/ inside the frozen app
+frontend_out = repo_root / "frontend" / "out"
+frontend_datas = [(str(frontend_out), "static")] if frontend_out.exists() else []
+
+# Platform-specific excludes
+platform_excludes = []
+if sys.platform == "linux":
+    platform_excludes += ["AppKit", "CoreFoundation"]
+elif sys.platform == "darwin":
+    platform_excludes += ["gi", "dbus"]
 
 a = Analysis(
     [str(repo_root / "backend" / "src" / "hypomnema" / "desktop.py")],
@@ -13,7 +25,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (sqlite_vec.loadable_path(), "sqlite_vec"),
-    ],
+    ] + frontend_datas,
     hiddenimports=[
         "hypomnema",
         "hypomnema.main",
@@ -40,7 +52,7 @@ a = Analysis(
         "numpy.core._multiarray_tests",
         "tkinter",
         "matplotlib",
-    ],
+    ] + platform_excludes,
     noarchive=False,
 )
 
