@@ -26,6 +26,8 @@ def parse_json_object(text: str) -> dict[str, Any]:
     except json.JSONDecodeError:
         parsed = _decode_first_json_object(stripped)
 
+    if isinstance(parsed, list):
+        parsed = {"items": parsed}
     if not isinstance(parsed, dict):
         raise ValueError(f"Expected JSON object, got {type(parsed).__name__}")
     return dict(parsed)

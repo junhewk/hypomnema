@@ -18,18 +18,20 @@ class OllamaLLMClient:
         """Close the underlying HTTP client."""
         await self._http.aclose()
 
-    async def complete(self, prompt: str, *, system: str = "") -> str:
-        payload: dict[str, Any] = {
-            "model": self._model,
-            "prompt": prompt,
-            "stream": False,
-        }
+    def _payload(self, prompt: str, *, system: str = "", **extra: Any) -> dict[str, Any]:
+        payload: dict[str, Any] = {"model": self._model, "prompt": prompt, "stream": False, **extra}
         if system:
             payload["system"] = system
-        response = await self._http.post("/api/generate", json=payload)
+        return payload
+
+    async def complete(self, prompt: str, *, system: str = "") -> str:
+        response = await self._http.post("/api/generate", json=self._payload(prompt, system=system))
         response.raise_for_status()
         return str(response.json()["response"])
 
     async def complete_json(self, prompt: str, *, system: str = "") -> dict[str, Any]:
-        text = await self.complete(prompt, system=system)
-        return parse_json_object(text)
+        response = await self._http.post(
+            "/api/generate", json=self._payload(prompt, system=system, format="json"),
+        )
+        response.raise_for_status()
+        return parse_json_object(str(response.json()["response"]))

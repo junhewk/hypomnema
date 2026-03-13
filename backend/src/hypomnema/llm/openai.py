@@ -3,6 +3,7 @@
 from typing import Any
 
 from openai import AsyncOpenAI
+from openai.types.responses import Response
 
 from hypomnema.llm.json_utils import parse_json_object
 
@@ -18,21 +19,86 @@ class OpenAILLMClient:
         self._model = model or self.DEFAULT_MODEL
         self._max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
 
-    async def complete(self, prompt: str, *, system: str = "") -> str:
-        messages: list[dict[str, str]] = []
+    async def _create_response(
+        self,
+        prompt: str,
+        *,
+        system: str = "",
+        text_format: dict[str, Any] | None = None,
+        max_output_tokens: int | None = None,
+    ) -> Response:
+        request: dict[str, Any] = {
+            "model": self._model,
+            "input": prompt,
+            "max_output_tokens": max_output_tokens or self._max_tokens,
+        }
         if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-        response = await self._client.chat.completions.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            messages=messages,  # type: ignore[arg-type]
+            request["instructions"] = system
+        if text_format is not None:
+            request["text"] = {"format": text_format}
+        return await self._client.responses.create(**request)
+
+    @staticmethod
+    def _json_instructions(system: str) -> str:
+        json_requirement = "Return a valid JSON object."
+        if system:
+            return f"{system.rstrip()}\n\n{json_requirement}"
+        return json_requirement
+
+    @staticmethod
+    def _json_prompt(prompt: str) -> str:
+        return f"Provide the final answer as a JSON object.\n\n{prompt}"
+
+    def _retry_output_token_budget(self) -> int:
+        return max(self._max_tokens * 2, 8192)
+
+    @staticmethod
+    def _should_retry_empty_response(response: Response) -> bool:
+        return bool(
+            not response.output_text
+            and response.incomplete_details is not None
+            and response.incomplete_details.reason == "max_output_tokens"
         )
-        content = response.choices[0].message.content
-        if content is None:
+
+    @staticmethod
+    def _extract_output_text(response: Response) -> str:
+        if response.error is not None:
+            raise ValueError(f"OpenAI API error: {response.error.message}")
+        content = response.output_text
+        if not content:
+            if response.incomplete_details is not None and response.incomplete_details.reason is not None:
+                raise ValueError(
+                    f"Empty response from OpenAI API (incomplete: {response.incomplete_details.reason})"
+                )
+            if response.status is not None:
+                raise ValueError(f"Empty response from OpenAI API (status: {response.status})")
             raise ValueError("Empty response from OpenAI API")
         return content
 
+    async def _complete_text(
+        self,
+        prompt: str,
+        *,
+        system: str = "",
+        text_format: dict[str, Any] | None = None,
+    ) -> str:
+        response = await self._create_response(prompt, system=system, text_format=text_format)
+        if self._should_retry_empty_response(response):
+            response = await self._create_response(
+                prompt,
+                system=system,
+                text_format=text_format,
+                max_output_tokens=self._retry_output_token_budget(),
+            )
+        return self._extract_output_text(response)
+
+    async def complete(self, prompt: str, *, system: str = "") -> str:
+        return await self._complete_text(prompt, system=system)
+
     async def complete_json(self, prompt: str, *, system: str = "") -> dict[str, Any]:
-        text = await self.complete(prompt, system=system)
-        return parse_json_object(text)
+        content = await self._complete_text(
+            self._json_prompt(prompt),
+            system=self._json_instructions(system),
+            text_format={"type": "json_object"},
+        )
+        return parse_json_object(content)

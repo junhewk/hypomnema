@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from hypomnema.llm.base import LLMClient
 from hypomnema.llm.claude import ClaudeLLMClient
 from hypomnema.llm.google import GoogleLLMClient
+from hypomnema.llm.mock import MockLLMClient
 from hypomnema.llm.ollama import OllamaLLMClient
 from hypomnema.llm.openai import OpenAILLMClient
 
 if TYPE_CHECKING:
     from hypomnema.config import Settings
+    from hypomnema.llm.base import LLMClient
 
 
 def api_key_for_provider(provider: str, settings: Settings) -> str:
@@ -43,6 +44,8 @@ def build_llm(
 ) -> LLMClient:
     """Build an LLM client for the given provider."""
     match provider:
+        case "mock":
+            return MockLLMClient()
         case "claude":
             return ClaudeLLMClient(api_key=api_key, model=model)
         case "google":
