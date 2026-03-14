@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent, type DragEvent } from "react";
-import { Paperclip } from "lucide-react";
 import { api, ApiError } from "@/lib/api";
 import type { Document } from "@/lib/types";
 
@@ -24,7 +23,6 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isEditing = editingDocument != null;
   const trimmed = text.trim();
@@ -197,12 +195,6 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
     if (file) uploadFile(file);
   }
 
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (file) uploadFile(file);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  }
-
   return (
     <form
       onSubmit={handleSubmit}
@@ -265,24 +257,6 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
 
       <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
         <div className="flex items-center gap-2">
-          {!isEditing && (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="attach-btn flex items-center justify-center rounded p-1 text-muted/40 hover:text-[var(--source-file)]"
-              title="Attach file"
-            >
-              <Paperclip size={14} />
-            </button>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx,.md"
-            onChange={handleFileChange}
-            className="hidden"
-            data-testid="file-input"
-          />
           <span className="font-mono text-[10px] text-muted/30">
             {isUploading ? (
               <span className="text-[var(--accent)]/60">Uploading...</span>
@@ -295,7 +269,7 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
                 <><span>{"\u2318\u23CE"} save</span>{!isEditing && <span className="ml-2 text-muted/20">{"\u2318"}D draft</span>}</>
               )
             ) : (
-              ""
+              <span className="text-muted/20">drop <span className="text-[var(--source-file)]/20">.pdf .docx .md</span> · paste a <span className="text-[var(--source-url)]/20">URL</span></span>
             )}
           </span>
         </div>

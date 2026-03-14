@@ -685,6 +685,53 @@ PATCH  /api/documents/{id}          → DocumentOut (edit + reprocess)
 
 ---
 
+## Distribution Notes (2026-03-14)
+
+This is a policy snapshot, not a permanent truth. Re-check platform docs before shipping a public desktop release.
+
+**Current release posture:**
+- Prefer the open-source server/web version on GitHub as the default public distribution path.
+- Prioritize Windows desktop distribution before macOS desktop distribution.
+- Treat macOS desktop distribution as a later investment once the product and installer flow are stable.
+
+**Windows:**
+- Windows does not require an Apple-style annual developer fee for normal direct downloads.
+- Lowest-friction early path: GitHub Releases with a standard installer.
+- `winget` is a package-manager distribution channel, not an approval program and not an app store. Users can install with a command such as `winget install ...`.
+- `winget` does not remove Microsoft Defender SmartScreen warnings by itself. Code signing is a separate trust step.
+- Microsoft Store is optional. As of this snapshot, individual developer accounts are free and company accounts are approximately USD 99 one time, not annual.
+- Practical recommendation: release on GitHub first, add `winget` next, and defer paid code-signing until download volume justifies the cost.
+
+**macOS:**
+- For broad desktop distribution to normal users, the practical path is Apple Developer Program membership plus signing/notarization.
+- Apple Developer Program membership is USD 99 per year as of this snapshot.
+- Without signing/notarization, users can still run the app, but the Gatekeeper flow is much worse and requires manual override.
+- For Hypomnema, this trust cost is amplified because the desktop app packages a local knowledge tool with file ingestion, API-key handling, and a sidecar backend binary.
+- Practical recommendation: do not pay the Apple cost until the macOS desktop release is worth the operational effort.
+
+**Homebrew on macOS:**
+- There is no Homebrew accreditation program and no Homebrew fee.
+- Official `homebrew/cask` inclusion is possible, but it is not an easy substitute for Apple signing.
+- Official casks are expected to run on the latest major macOS and to launch with Gatekeeper enabled. Unsigned apps are a common rejection case.
+- Official casks also face notability and maintenance expectations. Homebrew documents example rejection thresholds below roughly `30 forks / 30 watchers / 75 stars`, with higher thresholds for self-submitted projects below roughly `90 / 90 / 225`.
+- For an individual developer or early-stage project, official Homebrew listing is therefore possible but relatively hard.
+- A personal Homebrew tap is much easier and requires no approval. It is a good option later for power users, but it is not a replacement for signing/notarization if the goal is mainstream macOS installation.
+
+**Resulting strategy for Hypomnema:**
+- Public/open-source distribution: GitHub, centered on the server/web version.
+- Windows desktop: first desktop target.
+- macOS desktop: only after there is enough demand to justify Apple membership, notarization, packaging work, and support burden.
+- Homebrew: consider a personal tap after a signed macOS build exists; do not rely on official `homebrew/cask` for the first macOS release.
+
+**References:**
+- Apple Developer Program: https://developer.apple.com/programs/
+- Homebrew Acceptable Casks: https://docs.brew.sh/Acceptable-Casks
+- Homebrew Taps: https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap
+- WinGet overview: https://learn.microsoft.com/en-us/windows/package-manager/
+- Microsoft Store account FAQ: https://learn.microsoft.com/en-us/windows/apps/publish/faq/open-developer-account
+
+---
+
 ## Verification
 
 After each phase, run:

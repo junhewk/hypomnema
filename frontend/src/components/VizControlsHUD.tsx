@@ -1,23 +1,43 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import type { InputDevice } from "@/hooks/useInputDevice";
 
 const STORAGE_KEY = "hypomnema-viz-hud-dismissed";
 
-const NAV_CONTROLS = [
-  ["drag", "pan"],
-  ["right-click drag", "orbit"],
-  ["scroll", "zoom"],
-  ["opt + scroll", "spread"],
-] as const;
+function getNavControls(device: InputDevice, modKey: string): [string, string][] {
+  if (device === "touch") {
+    return [
+      ["drag", "pan"],
+      ["2-finger rotate", "orbit"],
+      ["pinch", "zoom"],
+    ];
+  }
+  return [
+    ["drag", "pan"],
+    ["right-click drag", "orbit"],
+    ["scroll", "zoom"],
+    [`${modKey} + scroll`, "spread"],
+  ];
+}
 
-const NODE_CONTROLS = [
-  ["drag", "move"],
-  ["shift + drag", "push / pull"],
-  ["click", "focus"],
-  ["double-click", "open"],
-  ["esc", "unfocus"],
-] as const;
+function getNodeControls(device: InputDevice): [string, string][] {
+  if (device === "touch") {
+    return [
+      ["drag", "move"],
+      ["long-press", "focus"],
+      ["double-tap", "open"],
+      ["tap empty", "unfocus"],
+    ];
+  }
+  return [
+    ["drag", "move"],
+    ["shift + drag", "push / pull"],
+    ["click", "focus"],
+    ["double-click", "open"],
+    ["esc", "unfocus"],
+  ];
+}
 
 function ControlRow({ keyLabel, action }: { keyLabel: string; action: string }) {
   return (
@@ -30,7 +50,7 @@ function ControlRow({ keyLabel, action }: { keyLabel: string; action: string }) 
   );
 }
 
-function ControlGroup({ label, controls }: { label: string; controls: ReadonlyArray<readonly [string, string]> }) {
+function ControlGroup({ label, controls }: { label: string; controls: [string, string][] }) {
   return (
     <div>
       <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/50 mb-1">
@@ -45,12 +65,28 @@ function ControlGroup({ label, controls }: { label: string; controls: ReadonlyAr
   );
 }
 
+const SPREAD_MIN = 0.3;
+const SPREAD_MAX = 3.0;
+
 interface VizControlsHUDProps {
   autoOrbit?: boolean;
   onToggleAutoOrbit?: () => void;
+  device?: InputDevice;
+  modKey?: string;
+  explodeFactor?: number;
+  onSpreadChange?: (factor: number) => void;
+  spreadStep?: number;
 }
 
-export function VizControlsHUD({ autoOrbit = false, onToggleAutoOrbit }: VizControlsHUDProps) {
+export function VizControlsHUD({
+  autoOrbit = false,
+  onToggleAutoOrbit,
+  device = "pointer",
+  modKey = "alt",
+  explodeFactor = 1.0,
+  onSpreadChange,
+  spreadStep = 0.15,
+}: VizControlsHUDProps) {
   const [dismissed, setDismissed] = useState(true); // start hidden to avoid flash
 
   useEffect(() => {
@@ -79,6 +115,9 @@ export function VizControlsHUD({ autoOrbit = false, onToggleAutoOrbit }: VizCont
     );
   }
 
+  const navControls = getNavControls(device, modKey);
+  const nodeControls = getNodeControls(device);
+
   return (
     <div className="viz-controls-hud absolute bottom-4 right-4 z-50 rounded-md border px-3 py-2.5 min-w-[180px]">
       <div className="mb-2 flex items-center justify-between">
@@ -94,9 +133,34 @@ export function VizControlsHUD({ autoOrbit = false, onToggleAutoOrbit }: VizCont
         </button>
       </div>
       <div className="space-y-2">
-        <ControlGroup label="navigate" controls={NAV_CONTROLS} />
+        <ControlGroup label="navigate" controls={navControls} />
+        {device === "touch" && onSpreadChange && (
+          <div className="flex items-center justify-between gap-2 mt-1">
+            <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/50">
+              spread
+            </span>
+            <div className="viz-hud-spread-group">
+              <button
+                onClick={() => onSpreadChange(explodeFactor - spreadStep)}
+                disabled={explodeFactor <= SPREAD_MIN}
+                className="viz-hud-spread-btn font-mono text-[13px] text-muted/80 leading-none"
+                aria-label="Decrease spread"
+              >
+                −
+              </button>
+              <button
+                onClick={() => onSpreadChange(explodeFactor + spreadStep)}
+                disabled={explodeFactor >= SPREAD_MAX}
+                className="viz-hud-spread-btn font-mono text-[13px] text-muted/80 leading-none"
+                aria-label="Increase spread"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        )}
         <div className="viz-hud-divider" />
-        <ControlGroup label="nodes" controls={NODE_CONTROLS} />
+        <ControlGroup label="nodes" controls={nodeControls} />
       </div>
       {onToggleAutoOrbit && (
         <>

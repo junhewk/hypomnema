@@ -3,15 +3,22 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useVizDataCtx } from "@/hooks/useVizDataContext";
+import { useInputDevice } from "@/hooks/useInputDevice";
 import { VizScene } from "./VizScene";
 import { VizControlsHUD } from "./VizControlsHUD";
 import type { ProjectionPoint } from "@/lib/types";
+
+const SPREAD_MIN = 0.3;
+const SPREAD_MAX = 3.0;
+const SPREAD_STEP = 0.15;
 
 export function VizPage() {
   const router = useRouter();
   const { points, clusters, edges, isLoading, error } = useVizDataCtx();
   const [focusedNode, setFocusedNode] = useState<ProjectionPoint | null>(null);
   const [autoOrbit, setAutoOrbit] = useState(false);
+  const [explodeFactor, setExplodeFactor] = useState(1.0);
+  const { device, modKey } = useInputDevice();
 
   const handleNavigateNode = useCallback(
     (engramId: string) => {
@@ -26,6 +33,10 @@ export function VizPage() {
 
   const handleAutoOrbitStop = useCallback(() => {
     setAutoOrbit(false);
+  }, []);
+
+  const handleSpreadChange = useCallback((newFactor: number) => {
+    setExplodeFactor(Math.max(SPREAD_MIN, Math.min(SPREAD_MAX, newFactor)));
   }, []);
 
   useEffect(() => {
@@ -85,6 +96,9 @@ export function VizPage() {
             onNavigateNode={handleNavigateNode}
             autoOrbit={autoOrbit}
             onAutoOrbitStop={handleAutoOrbitStop}
+            explodeFactor={explodeFactor}
+            onSpreadChange={handleSpreadChange}
+            device={device}
           />
         </div>
       )}
@@ -92,6 +106,11 @@ export function VizPage() {
       <VizControlsHUD
         autoOrbit={autoOrbit}
         onToggleAutoOrbit={handleToggleAutoOrbit}
+        device={device}
+        modKey={modKey}
+        explodeFactor={explodeFactor}
+        onSpreadChange={handleSpreadChange}
+        spreadStep={SPREAD_STEP}
       />
     </div>
   );

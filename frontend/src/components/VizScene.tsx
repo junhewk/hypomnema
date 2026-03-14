@@ -6,6 +6,7 @@ import { OrbitControls, Html } from "@react-three/drei";
 import { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import * as THREE from "three";
 import type { ProjectionPoint, Cluster, VizEdge } from "@/lib/types";
+import type { InputDevice } from "@/hooks/useInputDevice";
 import {
   buildPositionBuffer,
   buildColorBuffer,
@@ -85,6 +86,9 @@ interface VizSceneProps {
   onNavigateNode: (engramId: string) => void;
   autoOrbit: boolean;
   onAutoOrbitStop: () => void;
+  explodeFactor: number;
+  onSpreadChange: (factor: number) => void;
+  device: InputDevice;
 }
 
 function getClusterLabel(node: ProjectionPoint | null, clusterMap: Map<number, string | null>): string | null {
@@ -253,11 +257,19 @@ function SpringAnimator({
   return null;
 }
 
-export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, onNavigateNode, autoOrbit, onAutoOrbitStop }: VizSceneProps) {
+export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, onNavigateNode, autoOrbit, onAutoOrbitStop, explodeFactor, onSpreadChange, device }: VizSceneProps) {
   const [hovered, setHovered] = useState<ProjectionPoint | null>(null);
-  const [explodeFactor, setExplodeFactor] = useState(1.0);
   const canvasRef = useRef<HTMLDivElement>(null);
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+  const longPressStartPos = useRef<{ x: number; y: number } | null>(null);
+
+  // Refs for stable closure access (avoids dep-array churn in event handlers)
+  const explodeFactorRef = useRef(explodeFactor);
+  explodeFactorRef.current = explodeFactor;
+  const pointsRef = useRef(points);
+  pointsRef.current = points;
   const orbitRef = useRef<OrbitControlsImpl>(null);
   const dragState = useRef<DragState | null>(null);
   const dragOffsets = useRef<Map<number, THREE.Vector3>>(new Map());
@@ -427,6 +439,11 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   const handleClick = useCallback(() => {
     // Don't fire click if we were dragging
     if (dragState.current?.active) return;
+    // Don't fire click if long-press already triggered focus
+    if (longPressTriggered.current) {
+      longPressTriggered.current = false;
+      return;
+    }
 
     if (clickTimerRef.current) {
       clearTimeout(clickTimerRef.current);
@@ -447,7 +464,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     }, 250);
   }, [hovered, onFocusNode, onNavigateNode]);
 
-  // Node dragging — pointer down on points
+  // Node dragging — pointer down on points (with long-press for touch focus)
   const handlePointsPointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
     // Only left button for node drag
     if (e.nativeEvent.button !== 0) return;
@@ -456,6 +473,22 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     if (idx == null) return;
 
     e.stopPropagation();
+
+    // Track start position for long-press threshold
+    longPressStartPos.current = { x: e.nativeEvent.clientX, y: e.nativeEvent.clientY };
+    longPressTriggered.current = false;
+
+    // Start long-press timer for touch focus
+    if (device === "touch") {
+      const pt = pointAtIndex(pointsRef.current, idx);
+      longPressTimerRef.current = setTimeout(() => {
+        longPressTimerRef.current = null;
+        if (pt) {
+          longPressTriggered.current = true;
+          onFocusNode(pt);
+        }
+      }, 400);
+    }
 
     const geo = geometryRef.current;
     if (!geo) return;
@@ -494,11 +527,21 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
 
     if (orbitRef.current) orbitRef.current.enabled = false;
     if (canvasRef.current) canvasRef.current.style.cursor = "grabbing";
-  }, []);
+  }, [device, onFocusNode]);
 
   // Window-level pointer move/up for dragging
   useEffect(() => {
     const handleWindowPointerMove = (e: PointerEvent) => {
+      // Cancel long-press if pointer moves >10px
+      if (longPressTimerRef.current && longPressStartPos.current) {
+        const dx = e.clientX - longPressStartPos.current.x;
+        const dy = e.clientY - longPressStartPos.current.y;
+        if (dx * dx + dy * dy > 100) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+      }
+
       // Track sweep buffer for right-drag
       if (isRightDragging.current) {
         const buf = sweepBuffer.current;
@@ -549,6 +592,12 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     };
 
     const handleWindowPointerUp = (e: PointerEvent) => {
+      // Cancel any pending long-press
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+
       // Sweep detection on right button release
       if (e.button === 2 && isRightDragging.current) {
         isRightDragging.current = false;
@@ -632,11 +681,11 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
       let dy = e.deltaY;
       if (e.deltaMode === 1) dy *= 40;
       if (e.deltaMode === 2) dy *= 800;
-      setExplodeFactor(prev => Math.max(0.3, Math.min(3.0, prev + dy * -0.005)));
+      onSpreadChange(explodeFactorRef.current + dy * -0.005);
     };
     el.addEventListener("wheel", handler, { capture: true, passive: false });
     return () => el.removeEventListener("wheel", handler, { capture: true });
-  }, []);
+  }, [onSpreadChange]);
 
   // Edge material with vertex colors
   const edgeMaterial = useMemo(() => {
