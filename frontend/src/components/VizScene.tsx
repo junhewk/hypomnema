@@ -15,6 +15,7 @@ import {
   buildPointIndex,
   buildSizeBuffer,
   computeNetworkMetrics,
+  computeDataBounds,
   pointAtIndex,
 } from "@/lib/vizTransforms";
 import { VizTooltip } from "./VizTooltip";
@@ -26,14 +27,16 @@ const VERTEX_SHADER = `
   attribute float size;
   uniform float uReveal;
   uniform float uTime;
+  uniform vec3 uCentroid;
+  uniform float uDataRadius;
   varying vec3 vColor;
   varying float vVisible;
   void main() {
     vColor = color;
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
 
-    // Radial reveal
-    float dist = length(position.xyz) / 30.0;
+    // Radial reveal from data centroid
+    float dist = length(position.xyz - uCentroid) / uDataRadius;
     vVisible = smoothstep(dist - 0.05, dist + 0.05, uReveal);
 
     // Base size with breathing
@@ -149,10 +152,12 @@ function AutoOrbitController({
   orbitRef,
   active,
   onStop,
+  sweepSuppressed,
 }: {
   orbitRef: React.RefObject<OrbitControlsImpl | null>;
   active: boolean;
   onStop: () => void;
+  sweepSuppressed: React.MutableRefObject<boolean>;
 }) {
   useEffect(() => {
     if (!active) {
@@ -169,8 +174,11 @@ function AutoOrbitController({
       controls.autoRotateSpeed = 0.5;
     }
 
+    let suppressTimer: ReturnType<typeof setTimeout> | null = null;
     const stopOnInteraction = () => {
       onStop();
+      sweepSuppressed.current = true;
+      suppressTimer = setTimeout(() => { sweepSuppressed.current = false; }, 500);
     };
 
     window.addEventListener("pointerdown", stopOnInteraction, { once: true });
@@ -178,8 +186,9 @@ function AutoOrbitController({
     return () => {
       window.removeEventListener("pointerdown", stopOnInteraction);
       window.removeEventListener("wheel", stopOnInteraction);
+      if (suppressTimer) clearTimeout(suppressTimer);
     };
-  }, [active, orbitRef, onStop]);
+  }, [active, orbitRef, onStop, sweepSuppressed]);
 
   return null;
 }
@@ -209,6 +218,19 @@ function ShaderAnimator({
     mat.uniforms.uTime.value = clock.getElapsedTime();
   });
 
+  return null;
+}
+
+/** One-shot camera fitter — positions camera to frame the data on first render. */
+function DataFitter({ centroid, radius }: { centroid: [number, number, number]; radius: number }) {
+  const { camera } = useThree();
+  const fitted = useRef(false);
+  useEffect(() => {
+    if (fitted.current) return;
+    fitted.current = true;
+    camera.position.set(centroid[0], centroid[1], centroid[2] + Math.max(radius * 2.5, 15));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   return null;
 }
 
@@ -283,8 +305,10 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   // Sweep velocity tracking (ring buffer of last 5 right-drag pointer events)
   const sweepBuffer = useRef<Array<{ x: number; y: number; t: number }>>([]);
   const isRightDragging = useRef(false);
+  const sweepSuppressed = useRef(false);
 
   const pointIndex = useMemo(() => buildPointIndex(points), [points]);
+  const bounds = useMemo(() => computeDataBounds(points), [points]);
 
   // Map node index → edge vertex indices (for real-time edge updates during drag)
   const nodeToEdgeVerts = useMemo(() => {
@@ -373,6 +397,11 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     return new THREE.Vector3(focusedNode.x, focusedNode.y, focusedNode.z);
   }, [focusedNode]);
 
+  const orbitTarget = useMemo(
+    () => new THREE.Vector3(...bounds.centroid),
+    [bounds],
+  );
+
   const shaderMaterial = useMemo(() => {
     return new THREE.ShaderMaterial({
       vertexShader: VERTEX_SHADER,
@@ -383,9 +412,19 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
       uniforms: {
         uReveal: { value: 0.0 },
         uTime: { value: 0.0 },
+        uCentroid: { value: new THREE.Vector3(0, 0, 0) },
+        uDataRadius: { value: 1.0 },
       },
     });
   }, []);
+
+  // Update shader uniforms when data bounds change
+  useEffect(() => {
+    const mat = materialRef.current ?? shaderMaterial;
+    if (!mat?.uniforms) return;
+    mat.uniforms.uCentroid.value.set(...bounds.centroid);
+    mat.uniforms.uDataRadius.value = Math.max(bounds.radius, 1.0);
+  }, [bounds]);
 
   // Update color buffer when it changes
   useEffect(() => {
@@ -610,7 +649,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
             const vx = (last.x - first.x) / dt;
             const vy = (last.y - first.y) / dt;
             const speed = Math.sqrt(vx * vx + vy * vy);
-            if (speed > 0.5 && orbitRef.current) {
+            if (speed > 1.5 && orbitRef.current && !sweepSuppressed.current) {
               orbitRef.current.autoRotate = true;
               orbitRef.current.autoRotateSpeed = speed * 15 * (vx > 0 ? 1 : -1);
             }
@@ -716,14 +755,16 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
         {/* Atmosphere */}
         <ambientLight intensity={0.6} />
 
+        <DataFitter centroid={bounds.centroid} radius={bounds.radius} />
         <CameraController target={cameraTarget} />
         <SweepDecay orbitRef={orbitRef} />
         <SpringAnimator springs={springs} geometryRef={geometryRef} />
-        <AutoOrbitController orbitRef={orbitRef} active={autoOrbit} onStop={onAutoOrbitStop} />
+        <AutoOrbitController orbitRef={orbitRef} active={autoOrbit} onStop={onAutoOrbitStop} sweepSuppressed={sweepSuppressed} />
         <ShaderAnimator materialRef={materialRef} />
 
         <OrbitControls
           ref={orbitRef}
+          target={orbitTarget}
           enableDamping
           dampingFactor={0.12}
           screenSpacePanning

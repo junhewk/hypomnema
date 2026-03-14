@@ -123,6 +123,24 @@ export function computeNetworkMetrics(
   return result;
 }
 
+/** Compute centroid and bounding radius of projection points. */
+export function computeDataBounds(points: ProjectionPoint[]): {
+  centroid: [number, number, number];
+  radius: number;
+} {
+  if (points.length === 0) return { centroid: [0, 0, 0], radius: 15 };
+  let cx = 0, cy = 0, cz = 0;
+  for (const p of points) { cx += p.x; cy += p.y; cz += p.z; }
+  const n = points.length;
+  cx /= n; cy /= n; cz /= n;
+  let maxDistSq = 0;
+  for (const p of points) {
+    const dx = p.x - cx, dy = p.y - cy, dz = p.z - cz;
+    maxDistSq = Math.max(maxDistSq, dx * dx + dy * dy + dz * dz);
+  }
+  return { centroid: [cx, cy, cz], radius: Math.sqrt(maxDistSq) || 15 };
+}
+
 /** Build Float32Array of positions from points (x, y, z triples). */
 export function buildPositionBuffer(points: ProjectionPoint[]): Float32Array {
   const buf = new Float32Array(points.length * 3);
