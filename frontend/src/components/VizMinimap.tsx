@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { useRef, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useVizDataCtx } from "@/hooks/useVizDataContext";
 import { clusterColor, buildPointIndex } from "@/lib/vizTransforms";
@@ -8,22 +8,9 @@ import { clusterColor, buildPointIndex } from "@/lib/vizTransforms";
 export function VizMinimap() {
   const router = useRouter();
   const { points, edges, isLoading } = useVizDataCtx();
-  const [visible, setVisible] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pointIndex = useMemo(() => buildPointIndex(points), [points]);
-
-  // Only render when minimap is in viewport
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => setVisible(entry.isIntersecting),
-      { threshold: 0.1 },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   const draw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -109,13 +96,11 @@ export function VizMinimap() {
     ctx.shadowBlur = 0;
   }, [points, edges, pointIndex]);
 
-  // Re-render when data changes and visible
+  // Re-render when data changes
   useEffect(() => {
-    if (visible) {
-      // requestAnimationFrame ensures the canvas ref is attached after conditional render
-      requestAnimationFrame(draw);
-    }
-  }, [visible, draw]);
+    // requestAnimationFrame ensures canvas ref is attached after render
+    requestAnimationFrame(draw);
+  }, [draw]);
 
   if (isLoading || points.length === 0) return null;
 
@@ -128,12 +113,10 @@ export function VizMinimap() {
       title="Open full visualization"
       data-testid="viz-minimap"
     >
-      {visible && (
-        <canvas
-          ref={canvasRef}
-          style={{ width: "100%", height: "100%", pointerEvents: "none" }}
-        />
-      )}
+      <canvas
+        ref={canvasRef}
+        style={{ width: "100%", height: "100%", pointerEvents: "none" }}
+      />
     </div>
   );
 }

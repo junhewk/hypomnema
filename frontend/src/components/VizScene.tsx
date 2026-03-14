@@ -9,7 +9,7 @@ import type { ProjectionPoint, Cluster, VizEdge } from "@/lib/types";
 import {
   buildPositionBuffer,
   buildColorBuffer,
-  buildEdgeBuffer,
+  buildEdgeBufferFromPositions,
   buildEdgeColorBuffer,
   buildPointIndex,
   buildSizeBuffer,
@@ -99,7 +99,11 @@ function CameraController({ target }: { target: THREE.Vector3 | null }) {
   const cameraTarget = useRef(new THREE.Vector3());
 
   useFrame(({ camera }) => {
-    if (target && !target.equals(targetRef.current ?? new THREE.Vector3())) {
+    if (!target) {
+      targetRef.current = null;
+      return;
+    }
+    if (!target.equals(targetRef.current ?? new THREE.Vector3())) {
       targetRef.current = target.clone();
       cameraTarget.current.copy(target).add(new THREE.Vector3(0, 0, 12));
     }
@@ -250,6 +254,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const orbitRef = useRef<OrbitControlsImpl>(null);
   const dragState = useRef<DragState | null>(null);
+  const dragOffsets = useRef<Map<number, THREE.Vector3>>(new Map());
   const geometryRef = useRef<THREE.BufferGeometry>(null);
   const edgeGeometryRef = useRef<THREE.BufferGeometry>(null);
   const springs = useRef<Map<number, SpringState>>(new Map());
@@ -276,18 +281,25 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
 
   const basePositionBuffer = useMemo(() => buildPositionBuffer(points), [points]);
 
-  // Apply explode transform on top of cached base buffer
+  // Apply explode transform and drag offsets on top of cached base buffer
   const positionBuffer = useMemo(() => {
-    if (explodeFactor === 1.0) return basePositionBuffer;
     const buf = new Float32Array(basePositionBuffer);
-    for (let i = 0; i < points.length; i++) {
-      const pt = points[i];
-      const centroid = pt.cluster_id != null ? clusterCentroidMap.get(pt.cluster_id) : null;
-      if (centroid) {
-        buf[i * 3] = centroid.x + (buf[i * 3] - centroid.x) * explodeFactor;
-        buf[i * 3 + 1] = centroid.y + (buf[i * 3 + 1] - centroid.y) * explodeFactor;
-        buf[i * 3 + 2] = centroid.z + (buf[i * 3 + 2] - centroid.z) * explodeFactor;
+    if (explodeFactor !== 1.0) {
+      for (let i = 0; i < points.length; i++) {
+        const pt = points[i];
+        const centroid = pt.cluster_id != null ? clusterCentroidMap.get(pt.cluster_id) : null;
+        if (centroid) {
+          buf[i * 3] = centroid.x + (buf[i * 3] - centroid.x) * explodeFactor;
+          buf[i * 3 + 1] = centroid.y + (buf[i * 3 + 1] - centroid.y) * explodeFactor;
+          buf[i * 3 + 2] = centroid.z + (buf[i * 3 + 2] - centroid.z) * explodeFactor;
+        }
       }
+    }
+    // Apply persistent drag offsets
+    for (const [idx, offset] of dragOffsets.current) {
+      buf[idx * 3] += offset.x;
+      buf[idx * 3 + 1] += offset.y;
+      buf[idx * 3 + 2] += offset.z;
     }
     return buf;
   }, [basePositionBuffer, explodeFactor, points, clusterCentroidMap]);
@@ -297,8 +309,8 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   const colorBuffer = useMemo(() => buildColorBuffer(points, activeClusterId), [points, activeClusterId]);
   const sizeBuffer = useMemo(() => buildSizeBuffer(points, metrics), [points, metrics]);
   const edgeBuffer = useMemo(
-    () => buildEdgeBuffer(edges, pointIndex),
-    [edges, pointIndex],
+    () => buildEdgeBufferFromPositions(edges, pointIndex, points, positionBuffer),
+    [edges, pointIndex, points, positionBuffer],
   );
 
   // Edge colors — highlight connected edges on focus (opacity baked into color)
@@ -518,11 +530,25 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
       const ds = dragState.current;
       if (!ds?.active) return;
 
-      // Spring back to original position
-      springs.current.set(ds.nodeIndex, {
-        vx: 0, vy: 0, vz: 0,
-        tx: ds.originalPos.x, ty: ds.originalPos.y, tz: ds.originalPos.z,
-      });
+      // Persist drag offset so position survives re-renders
+      const geo = geometryRef.current;
+      if (geo) {
+        const arr = (geo.attributes.position as THREE.BufferAttribute).array as Float32Array;
+        const currentPos = new THREE.Vector3(
+          arr[ds.nodeIndex * 3],
+          arr[ds.nodeIndex * 3 + 1],
+          arr[ds.nodeIndex * 3 + 2],
+        );
+        const delta = currentPos.clone().sub(ds.originalPos);
+        if (delta.lengthSq() > 0.0001) {
+          const existing = dragOffsets.current.get(ds.nodeIndex);
+          if (existing) {
+            existing.add(delta);
+          } else {
+            dragOffsets.current.set(ds.nodeIndex, delta);
+          }
+        }
+      }
 
       dragState.current = null;
       if (orbitRef.current) orbitRef.current.enabled = true;
@@ -567,6 +593,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
       vertexColors: true,
       transparent: true,
       depthWrite: false,
+      linewidth: 2,
     });
   }, []);
 

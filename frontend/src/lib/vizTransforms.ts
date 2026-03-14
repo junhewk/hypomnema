@@ -204,6 +204,29 @@ export function buildEdgeBuffer(
   return buf;
 }
 
+/** Build edge positions from a pre-computed position buffer (for exploded/offset views). */
+export function buildEdgeBufferFromPositions(
+  edges: Array<{ source_engram_id: string; target_engram_id: string }>,
+  pointIndex: Map<string, ProjectionPoint>,
+  points: ProjectionPoint[],
+  positions: Float32Array,
+): Float32Array {
+  const idToIdx = new Map<string, number>();
+  for (let i = 0; i < points.length; i++) idToIdx.set(points[i].engram_id, i);
+
+  const buf = new Float32Array(countValidEdges(edges, pointIndex) * 6);
+  let idx = 0;
+  for (const e of edges) {
+    const si = idToIdx.get(e.source_engram_id);
+    const ti = idToIdx.get(e.target_engram_id);
+    if (si == null || ti == null) continue;
+    if (!pointIndex.has(e.source_engram_id) || !pointIndex.has(e.target_engram_id)) continue;
+    buf[idx++] = positions[si * 3]; buf[idx++] = positions[si * 3 + 1]; buf[idx++] = positions[si * 3 + 2];
+    buf[idx++] = positions[ti * 3]; buf[idx++] = positions[ti * 3 + 1]; buf[idx++] = positions[ti * 3 + 2];
+  }
+  return buf;
+}
+
 /** Find point at raycaster intersection index. */
 export function pointAtIndex(
   points: ProjectionPoint[],
