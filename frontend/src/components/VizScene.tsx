@@ -620,11 +620,12 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   const focusedClusterLabel = useMemo(() => getClusterLabel(focusedNode, clusterMap), [focusedNode, clusterMap]);
 
   // Explode/contract on shift+scroll
+  // macOS swaps scroll axis when shift is held: deltaY→0, deltaX gets the value
   const handleWheel = useCallback((e: React.WheelEvent) => {
     if (!e.shiftKey) return;
     e.preventDefault();
     e.stopPropagation();
-    let dy = e.deltaY;
+    let dy = e.deltaY || e.deltaX;
     if (e.deltaMode === 1) dy *= 40;
     if (e.deltaMode === 2) dy *= 800;
     setExplodeFactor(prev => Math.max(0.3, Math.min(3.0, prev + dy * -0.005)));
