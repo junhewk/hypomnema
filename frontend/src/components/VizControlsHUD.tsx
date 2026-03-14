@@ -5,7 +5,7 @@ import type { InputDevice } from "@/hooks/useInputDevice";
 
 const STORAGE_KEY = "hypomnema-viz-hud-dismissed";
 
-function getNavControls(device: InputDevice, modKey: string): [string, string][] {
+function getNavControls(device: InputDevice, modKey: "opt" | "shift"): [string, string][] {
   if (device === "touch") {
     return [
       ["drag", "pan"],
@@ -21,7 +21,7 @@ function getNavControls(device: InputDevice, modKey: string): [string, string][]
   ];
 }
 
-function getNodeControls(device: InputDevice): [string, string][] {
+function getNodeControls(device: InputDevice, modKey: "opt" | "shift"): [string, string][] {
   if (device === "touch") {
     return [
       ["drag", "move"],
@@ -31,8 +31,8 @@ function getNodeControls(device: InputDevice): [string, string][] {
     ];
   }
   return [
-    ["drag", "move"],
-    ["shift + drag", "push / pull"],
+    [`${modKey} + drag`, "move"],
+    [`${modKey} + right-drag`, "push / pull"],
     ["click", "focus"],
     ["double-click", "open"],
     ["esc", "unfocus"],
@@ -72,7 +72,7 @@ interface VizControlsHUDProps {
   autoOrbit?: boolean;
   onToggleAutoOrbit?: () => void;
   device?: InputDevice;
-  modKey?: string;
+  modKey?: "opt" | "shift";
   explodeFactor?: number;
   onSpreadChange?: (factor: number) => void;
   spreadStep?: number;
@@ -82,7 +82,7 @@ export function VizControlsHUD({
   autoOrbit = false,
   onToggleAutoOrbit,
   device = "pointer",
-  modKey = "alt",
+  modKey = "shift",
   explodeFactor = 1.0,
   onSpreadChange,
   spreadStep = 0.15,
@@ -116,7 +116,7 @@ export function VizControlsHUD({
   }
 
   const navControls = getNavControls(device, modKey);
-  const nodeControls = getNodeControls(device);
+  const nodeControls = getNodeControls(device, modKey);
 
   return (
     <div className="viz-controls-hud absolute bottom-4 right-4 z-50 rounded-md border px-3 py-2.5 min-w-[180px]">

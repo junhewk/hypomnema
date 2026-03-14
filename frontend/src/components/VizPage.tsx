@@ -18,7 +18,7 @@ export function VizPage() {
   const [focusedNode, setFocusedNode] = useState<ProjectionPoint | null>(null);
   const [autoOrbit, setAutoOrbit] = useState(false);
   const [explodeFactor, setExplodeFactor] = useState(1.0);
-  const { device, modKey } = useInputDevice();
+  const { device, modKey, modEventKey } = useInputDevice();
 
   const handleNavigateNode = useCallback(
     (engramId: string) => {
@@ -99,6 +99,7 @@ export function VizPage() {
             explodeFactor={explodeFactor}
             onSpreadChange={handleSpreadChange}
             device={device}
+            modEventKey={modEventKey}
           />
         </div>
       )}

@@ -76,7 +76,6 @@ interface DragState {
   nodeIndex: number;
   plane: THREE.Plane;
   offset: THREE.Vector3;
-  shiftKey: boolean;
   originalPos: THREE.Vector3;
 }
 
@@ -92,6 +91,7 @@ interface VizSceneProps {
   explodeFactor: number;
   onSpreadChange: (factor: number) => void;
   device: InputDevice;
+  modEventKey: "altKey" | "shiftKey";
 }
 
 function getClusterLabel(node: ProjectionPoint | null, clusterMap: Map<number, string | null>): string | null {
@@ -279,7 +279,7 @@ function SpringAnimator({
   return null;
 }
 
-export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, onNavigateNode, autoOrbit, onAutoOrbitStop, explodeFactor, onSpreadChange, device }: VizSceneProps) {
+export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, onNavigateNode, autoOrbit, onAutoOrbitStop, explodeFactor, onSpreadChange, device, modEventKey }: VizSceneProps) {
   const [hovered, setHovered] = useState<ProjectionPoint | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -288,6 +288,8 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   const longPressStartPos = useRef<{ x: number; y: number } | null>(null);
 
   // Refs for stable closure access (avoids dep-array churn in event handlers)
+  const modEventKeyRef = useRef(modEventKey);
+  modEventKeyRef.current = modEventKey;
   const explodeFactorRef = useRef(explodeFactor);
   explodeFactorRef.current = explodeFactor;
   const pointsRef = useRef(points);
@@ -505,11 +507,18 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
 
   // Node dragging — pointer down on points (with long-press for touch focus)
   const handlePointsPointerDown = useCallback((e: ThreeEvent<PointerEvent>) => {
-    // Only left button for node drag
-    if (e.nativeEvent.button !== 0) return;
+    const button = e.nativeEvent.button;
+    // Only left (0) and right (2) buttons
+    if (button !== 0 && button !== 2) return;
     if (e.intersections.length === 0) return;
     const idx = e.intersections[0].index;
     if (idx == null) return;
+
+    // Pointer devices: require modifier for any node manipulation
+    if (device === "pointer" && !e.nativeEvent[modEventKeyRef.current]) return;
+
+    // Right-button drag = depth (Z-yank), left-button = planar
+    const isDepthDrag = button === 2;
 
     e.stopPropagation();
 
@@ -536,10 +545,9 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     const nodePos = new THREE.Vector3(arr[idx * 3], arr[idx * 3 + 1], arr[idx * 3 + 2]);
 
     const camera = e.camera;
-    const shiftKey = e.nativeEvent.shiftKey;
 
     let plane: THREE.Plane;
-    if (shiftKey) {
+    if (isDepthDrag) {
       // Z-yank: plane perpendicular to camera's right vector (so Y mouse movement = depth)
       const camDir = new THREE.Vector3();
       camera.getWorldDirection(camDir);
@@ -559,7 +567,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     ray.intersectPlane(plane, intersection);
     const offset = new THREE.Vector3().subVectors(nodePos, intersection);
 
-    dragState.current = { active: true, nodeIndex: idx, plane, offset, shiftKey, originalPos: nodePos.clone() };
+    dragState.current = { active: true, nodeIndex: idx, plane, offset, originalPos: nodePos.clone() };
 
     // Clear any spring on this node
     springs.current.delete(idx);
@@ -688,6 +696,8 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
 
     const handleRightDown = (e: PointerEvent) => {
       if (e.button === 2) {
+        // Don't start sweep tracking if modifier held (depth drag mode)
+        if (e[modEventKeyRef.current]) return;
         isRightDragging.current = true;
         sweepBuffer.current = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
       }
@@ -713,7 +723,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     const el = canvasRef.current;
     if (!el) return;
     const handler = (e: WheelEvent) => {
-      if (!e.altKey) return;
+      if (!e[modEventKeyRef.current]) return;
       e.preventDefault();
       e.stopPropagation();
       e.stopImmediatePropagation();
@@ -770,7 +780,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
           screenSpacePanning
           mouseButtons={{ LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE }}
           touches={{ ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE }}
-          minDistance={3}
+          minDistance={1}
           maxDistance={100}
         />
 

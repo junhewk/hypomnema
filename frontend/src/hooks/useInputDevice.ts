@@ -6,7 +6,8 @@ export type Platform = "mac" | "windows" | "linux";
 interface InputDeviceInfo {
   device: InputDevice;
   platform: Platform;
-  modKey: "opt" | "alt";
+  modKey: "opt" | "shift";
+  modEventKey: "altKey" | "shiftKey";
 }
 
 function detectPlatform(): Platform {
@@ -43,6 +44,7 @@ export function useInputDevice(): InputDeviceInfo {
   return {
     device,
     platform,
-    modKey: platform === "mac" ? "opt" : "alt",
+    modKey: platform === "mac" ? "opt" : "shift",
+    modEventKey: platform === "mac" ? "altKey" : "shiftKey",
   };
 }
