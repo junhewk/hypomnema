@@ -1,0 +1,22 @@
+{"id":"choi_honorific_gloss","set":"smoke","category":"honorific","expected":"merge","left_name":"최지연 (prof. choi ji-yeon)","right_name":"최지연 교수님 (professor choi ji-yeon)"}
+{"id":"jang_honorific","set":"smoke","category":"honorific","expected":"merge","left_name":"장숙랑","right_name":"장숙랑 교수님"}
+{"id":"safety_gloss","set":"smoke","category":"gloss","expected":"merge","left_name":"안전성","right_name":"안전성 (safety)"}
+{"id":"spacing_acceptability","set":"smoke","category":"spacing","expected":"merge","left_name":"기술 수용성","right_name":"기술수용성"}
+{"id":"korean_act_gloss","set":"smoke","category":"gloss","expected":"merge","left_name":"한국 연명의료결정법 (korean act on decisions on life-sustaining treatment)","right_name":"한국 연명의료결정법 (south korean end-of-life decisions act)"}
+{"id":"mdro_gloss","set":"smoke","category":"gloss","expected":"merge","left_name":"다제내성균 (multi-drug resistant organisms, mdros)","right_name":"다제내성균 (multidrug-resistant bacteria)"}
+{"id":"bioethics_law_short_full","set":"smoke","category":"legal-shortform","expected":"merge","left_name":"생명윤리법","right_name":"생명윤리및안전에관한법률"}
+{"id":"bioethics_law_gloss_english","set":"smoke","category":"bilingual-gloss","expected":"merge","left_name":"생명윤리및안전에관한법률 (bioethics and safety law)","right_name":"bioethics and safety law"}
+{"id":"safety_english_bridge","set":"smoke","category":"bilingual-bridge","expected":"merge","left_name":"안전성","right_name":"safety","seed_names":["안전성 (safety)","safety_bridge_distractor_01","safety_bridge_distractor_02","safety_bridge_distractor_03","safety_bridge_distractor_04","safety_bridge_distractor_05","safety_bridge_distractor_06","safety_bridge_distractor_07","safety_bridge_distractor_08","safety_bridge_distractor_09","safety_bridge_distractor_10","safety_bridge_distractor_11"]}
+{"id":"life_treatment_vs_plan","set":"smoke","category":"negative-near-miss","expected":"separate","left_name":"연명의료","right_name":"연명의료계획서"}
+{"id":"arpa_goal","set":"smoke","category":"negative-near-miss","expected":"separate","left_name":"arpa-h 과제","right_name":"arpa-h 과제 목표"}
+{"id":"patient_vs_provider_barriers","set":"smoke","category":"negative-near-miss","expected":"separate","left_name":"환자 장애물","right_name":"의료진 장애물"}
+{"id":"directive_vs_plan","set":"smoke","category":"negative-near-miss","expected":"separate","left_name":"사전연명의료의향서","right_name":"연명의료계획서"}
+{"id":"shared_ethics_gloss","set":"full","category":"gloss","expected":"merge","left_name":"공용윤리위원회 (institutional review board / ethics committee for shared use)","right_name":"공용윤리위원회 (shared ethics committee)"}
+{"id":"unbefriended_gloss","set":"full","category":"gloss","expected":"merge","left_name":"무연고 환자 (unaccompanied patients)","right_name":"무연고 환자 (unbefriended patients)"}
+{"id":"reliability_gloss","set":"full","category":"gloss","expected":"merge","left_name":"신뢰도","right_name":"신뢰도 (reliability)"}
+{"id":"unmet_need_spacing","set":"full","category":"spacing","expected":"merge","left_name":"미충족 의료 수요","right_name":"미충족의료수요"}
+{"id":"kim_honorific_gloss","set":"full","category":"honorific","expected":"merge","left_name":"김도경 (prof. kim do-kyung)","right_name":"김도경 교수님"}
+{"id":"bioethics_law_short_english_bridge","set":"full","category":"bilingual-bridge","expected":"merge","left_name":"생명윤리법","right_name":"bioethics and safety law","seed_names":["생명윤리및안전에관한법률 (bioethics and safety law)","bioethics_bridge_distractor_01","bioethics_bridge_distractor_02","bioethics_bridge_distractor_03","bioethics_bridge_distractor_04","bioethics_bridge_distractor_05","bioethics_bridge_distractor_06","bioethics_bridge_distractor_07","bioethics_bridge_distractor_08","bioethics_bridge_distractor_09","bioethics_bridge_distractor_10","bioethics_bridge_distractor_11"]}
+{"id":"bioethics_law_vs_medical_law","set":"full","category":"negative-near-miss","expected":"separate","left_name":"생명윤리법","right_name":"의료법"}
+{"id":"bioethics_law_vs_guideline","set":"full","category":"negative-near-miss","expected":"separate","left_name":"bioethics and safety law","right_name":"bioethics and safety guideline"}
+{"id":"goal_vs_choice","set":"full","category":"negative-near-miss","expected":"separate","left_name":"치료 목표","right_name":"치료 선택"}

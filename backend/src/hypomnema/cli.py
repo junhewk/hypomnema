@@ -245,6 +245,10 @@ def _default_eval_output_dir(settings: Settings) -> Path:
     return settings.db_path.parent / "evals" / "tidy-text"
 
 
+def _default_engram_dedupe_output_dir(settings: Settings) -> Path:
+    return settings.db_path.parent / "evals" / "engram-dedupe"
+
+
 def cmd_eval_tidy_text(args: argparse.Namespace) -> None:
     from hypomnema.evals.tidy_text import run_tidy_text_eval, write_eval_report
 
@@ -270,6 +274,37 @@ def cmd_eval_tidy_text(args: argparse.Namespace) -> None:
         f"{report.aggregate.overall:.2f}",
         f"({report.aggregate.passed_count}/{report.aggregate.case_count} passed,",
         f"{report.aggregate.hard_fail_count} hard fails)",
+    )
+
+
+def cmd_eval_engram_dedupe(args: argparse.Namespace) -> None:
+    from hypomnema.evals.engram_dedupe import run_engram_dedupe_eval, write_eval_report
+
+    settings = _load_settings("local")
+    report = asyncio.run(
+        run_engram_dedupe_eval(
+            dataset=args.dataset,
+            base_settings=settings,
+        )
+    )
+    output_dir = args.output_dir or _default_engram_dedupe_output_dir(settings)
+    json_path, md_path = write_eval_report(report, output_dir)
+    print(f"JSON report: {json_path}")
+    print(f"Markdown summary: {md_path}")
+    print(
+        "Baseline:",
+        f"{report.baseline.passed_count}/{report.baseline.case_count} passed",
+        f"(missed merges {report.baseline.missed_merge_count}, false merges {report.baseline.false_merge_count})",
+    )
+    print(
+        "Adjusted:",
+        f"{report.adjusted.passed_count}/{report.adjusted.case_count} passed",
+        f"(missed merges {report.adjusted.missed_merge_count}, false merges {report.adjusted.false_merge_count})",
+    )
+    print(
+        "Hardened:",
+        f"{report.hardened.passed_count}/{report.hardened.case_count} passed",
+        f"(missed merges {report.hardened.missed_merge_count}, false merges {report.hardened.false_merge_count})",
     )
 
 
@@ -301,6 +336,10 @@ def main() -> None:
     tidy_p.add_argument("--no-judge", action="store_true", help="Skip LLM judge scoring")
     tidy_p.add_argument("--output-dir", type=Path, default=None)
 
+    engram_p = eval_sub.add_parser("engram-dedupe", help="Run the engram dedupe eval corpus")
+    engram_p.add_argument("--dataset", choices=("smoke", "full"), default="smoke")
+    engram_p.add_argument("--output-dir", type=Path, default=None)
+
     args = parser.parse_args()
     if args.command is None:
         args.command = "dev"
@@ -311,5 +350,7 @@ def main() -> None:
         cmd_serve(args)
     elif args.command == "eval" and args.eval_command == "tidy-text":
         cmd_eval_tidy_text(args)
+    elif args.command == "eval" and args.eval_command == "engram-dedupe":
+        cmd_eval_engram_dedupe(args)
     elif args.command == "eval":
         parser.error("eval requires a subcommand")

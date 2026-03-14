@@ -1,6 +1,7 @@
 """Database schema — all DDL statements."""
 
 import re
+from contextlib import suppress
 
 import aiosqlite
 
@@ -39,6 +40,15 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
             concept_hash TEXT NOT NULL UNIQUE,
             description TEXT,
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS engram_aliases (
+            engram_id TEXT NOT NULL REFERENCES engrams(id) ON DELETE CASCADE,
+            alias_key TEXT NOT NULL,
+            alias_kind TEXT NOT NULL,
+            PRIMARY KEY (engram_id, alias_key)
         )
     """)
 
@@ -108,6 +118,7 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
     await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_uri ON documents(source_uri)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_projections_cluster ON projections(cluster_id)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_engram ON document_engrams(engram_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_engram_aliases_key ON engram_aliases(alias_key)")
 
     # ── FTS5 (external content synced via triggers) ──────────
 
@@ -160,6 +171,9 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
     """)
 
     await _migrate_add_columns(db)
+    from hypomnema.ontology.engram import backfill_engram_aliases
+
+    await backfill_engram_aliases(db)
     await db.commit()
 
 
@@ -171,10 +185,8 @@ async def _migrate_add_columns(db: aiosqlite.Connection) -> None:
         "revision": "INTEGER NOT NULL DEFAULT 1",
     }
     for col, definition in columns.items():
-        try:
+        with suppress(Exception):
             await db.execute(f"ALTER TABLE documents ADD COLUMN {col} {definition}")  # noqa: S608
-        except Exception:  # noqa: BLE001
-            pass  # Column already exists
 
 
 async def create_vec_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> None:
@@ -274,6 +286,7 @@ async def reset_knowledge_graph(db: aiosqlite.Connection) -> None:
     await db.execute("DELETE FROM edges")
     await db.execute("DELETE FROM document_engrams")
     await db.execute("DELETE FROM projections")
+    await db.execute("DELETE FROM engram_aliases")
     await db.execute("DELETE FROM engrams")
     await db.execute("UPDATE documents SET processed = 0, triaged = 0")
     await db.commit()

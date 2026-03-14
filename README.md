@@ -45,6 +45,8 @@ When you add material, Hypomnema:
 - saves the original text in a local SQLite database
 - generates embeddings so related material can be found semantically
 - creates concept nodes called "engrams"
+- stores deterministic alias keys for those engrams
+- deduplicates new entities by exact name, alias lookup, and embedding similarity
 - links those engrams with relationship types such as support, contradiction, critique, or extension
 - builds projection data for the visualization view
 

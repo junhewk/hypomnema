@@ -20,10 +20,37 @@ class TestIdempotency:
         await create_tables(tmp_db)  # second call
 
     async def test_all_tables_exist(self, tmp_db):
-        for table in ["documents", "engrams", "edges", "document_engrams", "feed_sources", "projections"]:
+        for table in [
+            "documents",
+            "engrams",
+            "engram_aliases",
+            "edges",
+            "document_engrams",
+            "feed_sources",
+            "projections",
+        ]:
             cursor = await tmp_db.execute(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", (table,))
             assert (await cursor.fetchone())[0] == 1, f"Table '{table}' not found"
+
+    async def test_create_tables_backfills_engram_aliases(self, tmp_db):
+        await tmp_db.execute(
+            "INSERT INTO engrams (id, canonical_name, concept_hash) VALUES (?, ?, ?)",
+            ("eng_alias", "생명윤리및안전에관한법률", "hash_alias"),
+        )
+        await tmp_db.commit()
+        await tmp_db.execute("DELETE FROM engram_aliases WHERE engram_id = ?", ("eng_alias",))
+        await tmp_db.commit()
+
+        await create_tables(tmp_db)
+
+        cursor = await tmp_db.execute(
+            "SELECT alias_key FROM engram_aliases WHERE engram_id = ? ORDER BY alias_key",
+            ("eng_alias",),
+        )
+        alias_keys = {row["alias_key"] for row in await cursor.fetchall()}
+        assert "생명윤리및안전에관한법률" in alias_keys
+        assert "생명윤리법" in alias_keys
 
     async def test_virtual_tables_exist(self, tmp_db):
         for vt in ["engram_embeddings", "document_embeddings", "documents_fts"]:

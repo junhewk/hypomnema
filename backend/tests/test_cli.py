@@ -259,3 +259,26 @@ class TestMain:
         assert len(calls) == 1
         assert calls[0].provider == "openai"
         assert calls[0].model == "gpt-5-mini"
+
+    def test_dispatches_eval_engram_dedupe(self, monkeypatch: Any) -> None:
+        calls: list[argparse.Namespace] = []
+
+        def fake_eval(args: argparse.Namespace) -> None:
+            calls.append(args)
+
+        monkeypatch.setattr(cli_mod, "cmd_dev", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_serve", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_eval_tidy_text", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_eval_engram_dedupe", fake_eval)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["hypomnema", "eval", "engram-dedupe", "--dataset", "full"],
+        )
+
+        cli_mod.main()
+
+        assert len(calls) == 1
+        assert calls[0].command == "eval"
+        assert calls[0].eval_command == "engram-dedupe"
+        assert calls[0].dataset == "full"

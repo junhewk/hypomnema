@@ -46,12 +46,12 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **RETURNING * for row retrieval:** Confirmed working with aiosqlite + SQLite 3.41+. Avoids separate SELECT after INSERT.
 - **Test fixtures programmatic:** PDF fixtures created via `pypdf.PdfWriter` with raw content streams (no `fpdf2` dep). DOCX via `python-docx`. MD is plaintext. All in `tests/test_ingestion/conftest.py`.
 - **No TOCTOU in file parsing:** `parse_file()` lets underlying libraries raise `FileNotFoundError` naturally rather than pre-checking `path.exists()`.
-- **Multi-tier engram dedup:** 3-tier approach inspired by `email-bot/kgengram.py`: (1) exact canonical_name match, (2) cosine similarity via sqlite-vec KNN (threshold 0.92, auto-merge), (3) concept hash as belt-and-suspenders UNIQUE safeguard. LLM verification for ambiguous range (0.80–0.92) deferred to future phase.
-- **Cosine from L2 distance:** sqlite-vec returns L2 distance; unit-normalized embeddings allow conversion via `cosine_sim = 1 - (l2² / 2)`. Threshold 0.92 corresponds to L2 ≈ 0.40.
+- **Multi-tier engram dedup:** Production path is now: (1) exact `canonical_name`, (2) direct alias-index lookup via persisted `engram_aliases`, (3) lexical alias overlap on sqlite-vec KNN candidates, (4) cosine similarity via sqlite-vec KNN (threshold `0.91`, `k=10`), (5) concept hash as a UNIQUE-safety fallback. Persisted alias keys include conservative normalization plus English gloss extraction for `한글명 (latin gloss)` and Korean legal shortforms such as `생명윤리및안전에관한법률 → 생명윤리법`. Eval-only labels remain `baseline`, `adjusted`, and `hardened`; in product docs and code discussion, refer to the production behavior as `engram dedupe` or `alias-index dedupe`.
+- **Cosine from L2 distance:** sqlite-vec returns L2 distance; unit-normalized embeddings allow conversion via `cosine_sim = 1 - (l2² / 2)`. Production threshold `0.91` corresponds to L2 ≈ `0.424`; eval baseline threshold `0.92` corresponds to L2 ≈ `0.40`.
 - **Cursor lifecycle with aiosqlite:** `RETURNING *` and `SELECT` cursors must be explicitly closed (`await cursor.close()`) before `db.commit()` to avoid `OperationalError: cannot commit transaction - SQL statements in progress`. Existing ingestion code (scribble.py, file_parser.py) avoids this by fetching before committing without intermediate queries; ontology code requires explicit closes due to multi-query-then-commit patterns.
 - **Embedding binary serialization:** `np.asarray(embedding, dtype="<f4").tobytes()` — explicit little-endian float32, direct memory copy (no intermediate Python list). Same binary format as `struct.pack("<Nf", ...)` but faster.
 - **Atomic per-document processing:** Single `db.commit()` after all engrams created + document marked `processed=1`. If LLM fails mid-extraction, document stays `processed=0` for retry. Empty documents (no extractable entities) still get `processed=1`.
-- **Synonym resolution:** Two-step normalization: sync `normalize()` (lowercase, strip, collapse whitespace, strip trailing punctuation) always applied; async `resolve_synonyms()` uses LLM to merge synonyms within a single extraction batch. Cross-document dedup handled by embedding cosine similarity in `get_or_create_engram`.
+- **Synonym resolution:** Two-step normalization: sync `normalize()` (lowercase, strip, collapse whitespace, strip trailing punctuation) always applied; async `resolve_synonyms()` uses LLM to merge synonyms within a single extraction batch. Cross-document dedup is handled by persisted alias lookup plus embedding-based matching in `get_or_create_engram`.
 - **Text truncation:** Extractor truncates input to 12000 chars (configurable) to protect against context window overflow.
 - **Edge generation separated from extraction:** `ontology/linker.py` owns neighbor retrieval, predicate assignment, and edge creation. Pipeline orchestrates. This keeps phases testable and allows re-running edge generation independently.
 - **Controlled predicate vocabulary:** 12 predicates in `VALID_PREDICATES` frozenset. LLM system prompt generated from the constant to avoid drift. Invalid predicates silently dropped.
@@ -273,9 +273,16 @@ CREATE TABLE documents (
 CREATE TABLE engrams (
     id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
     canonical_name TEXT NOT NULL UNIQUE,
-    concept_hash TEXT NOT NULL UNIQUE,     -- LSH of embedding for O(1) dedup
+    concept_hash TEXT NOT NULL UNIQUE,     -- sign-hash fallback safeguard
     description TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE engram_aliases (
+    engram_id TEXT NOT NULL REFERENCES engrams(id) ON DELETE CASCADE,
+    alias_key TEXT NOT NULL,
+    alias_kind TEXT NOT NULL,
+    PRIMARY KEY (engram_id, alias_key)
 );
 
 CREATE TABLE edges (
@@ -337,7 +344,9 @@ CREATE TABLE settings (
 
 **LLM Hot-Swap:** Settings API acquires `asyncio.Lock`, builds new LLM client via factory, replaces `app.state.llm` in-place. No restart needed. DB settings override env vars for LLM-related fields only.
 
-**Concept Hash (O(1) dedup):** Binarize embedding by sign → SHA-256 hash the bit-string. Similar embeddings collide = dedup.
+**Engram Dedupe:** Exact name first, then persisted alias-index lookup (`engram_aliases`), then KNN alias overlap, then vector threshold, then concept-hash fallback. Alias rows are backfilled during schema creation so older DBs gain direct alias lookup without a separate migration step.
+
+**Concept Hash (fallback safeguard):** Binarize embedding by sign → SHA-256 hash the bit-string. Similar embeddings can collide, so this is no longer treated as the primary dedupe mechanism; it is the last safety net after lexical and vector checks.
 
 **Predicate Vocabulary:** Enum — `contradicts`, `supports`, `extends`, `provides_methodology_for`, `is_example_of`, `is_prerequisite_for`, `generalizes`, `specializes`, `is_analogous_to`, `critiques`, `applies_to`, `derives_from`. LLM prompt constrained to this set.
 
@@ -440,12 +449,12 @@ P0 (Scaffold)
 
 ### Phase 4 — Entity Extraction & Engram Creation
 
-**Goal:** LLM extracts entities → normalize → embed → concept hash → dedup → store Engrams.
+**Goal:** LLM extracts entities → normalize → embed → alias/vector dedup → store Engrams.
 
 **Tests first:**
 - `test_ontology/test_extractor.py` — mock LLM returns entity list; empty text → empty list; JSON parsing correct
 - `test_ontology/test_normalizer.py` — whitespace stripped; lowercased; LLM maps synonyms to same canonical form
-- `test_ontology/test_engram.py` — concept hash deterministic; similar embeddings collide; distant differ; new concept creates engram + embedding row; duplicate returns existing; `document_engrams` junction created
+- `test_ontology/test_engram.py` — alias keys generated correctly; direct alias lookup works for bilingual/legal variants; concept hash deterministic; new concept creates engram + embedding row; duplicate returns existing; `document_engrams` junction created
 - `test_ontology/test_pipeline.py` — end-to-end: text → engrams, doc marked `processed=1`; idempotent
 
 **Build:** `ontology/extractor.py`, `ontology/normalizer.py`, `ontology/engram.py`, `ontology/pipeline.py`

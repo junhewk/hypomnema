@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Hypomnema** (plural: *hypomnemata*) — from the Greek term for a personal note, reminder, draft, or commentary, used in classical antiquity for compiling notes on readings or experiences.
 
-This is an Automated Ontological Synthesizer — a research tool that builds a knowledge graph from zero-friction inputs (text "scribbles", file uploads, automated feeds). It extracts entities ("Engrams"), normalizes and deduplicates them via embeddings, and generates relational edges with typed predicates. The UI visualizes clusters and structural gaps rather than file trees.
+This is an Automated Ontological Synthesizer — a research tool that builds a knowledge graph from zero-friction inputs (text "scribbles", file uploads, automated feeds). It extracts entities ("Engrams"), normalizes them, deduplicates them via deterministic alias matching plus embeddings, and generates relational edges with typed predicates. The UI visualizes clusters and structural gaps rather than file trees.
 
 This is **not** a PKM/note-taking tool. It is an active knowledge network with no folders or manual organization.
 
@@ -22,7 +22,7 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 
 1. **Ingestion** — manual scribbles, file throws (PDF/DOCX/MD), or automated periodic feeds (RSS, scrapes, transcripts)
 2. **Triage ("The Bouncer")** — cheap LLM/embedding filter gates automated feeds to protect API budget
-3. **Ontology Engine** — capable LLM extracts entities, normalizes to canonical strings, generates embeddings, deduplicates via concept hash (Engram). Top-K vector retrieval limits edge generation to avoid O(N²) API calls. Targeted LLM call assigns typed predicates (contradicts, provides methodology for, etc.)
+3. **Ontology Engine** — capable LLM extracts entities, normalizes to canonical strings, generates embeddings, then deduplicates engrams in this order: exact canonical name, direct alias-index lookup, lexical alias overlap on KNN candidates, vector similarity, and concept-hash fallback. Targeted LLM call assigns typed predicates (contradicts, provides methodology for, etc.)
 4. **Storage** — raw text stored in central `text` column; structure lives entirely in Engram nodes and edges
 5. **Visualization** — UMAP/t-SNE projection, spatial clustering, gap highlighting
 
@@ -93,8 +93,13 @@ LLM provider and API keys can also be configured at runtime via the Settings UI 
 - Single `.db` file, no PostgreSQL — optional Docker for deployment
 - Flat database: no file/folder hierarchy, all structure is dynamic from graph edges
 - Frontend does no heavy compute — pure rendering client
-- Entity deduplication uses embedding-based concept hashes for O(1) lookup
+- Entity deduplication is multi-stage: exact name, persisted alias index, KNN alias overlap, vector similarity, then concept-hash fallback
 - Edge generation uses Top-K retrieval to bound LLM API costs
 - Embedding provider changeable at runtime — triggers full knowledge graph rebuild (documents preserved)
 - LLM provider hot-swappable at runtime via Settings API (no restart needed)
 - API keys encrypted at rest via Fernet with auto-generated local keyfile
+
+## Naming
+
+- Use `engram dedupe` or `alias-index dedupe` for the production functionality.
+- Do not describe the production path as `hardened`; that label is only useful inside eval comparisons (`baseline`, `adjusted`, `hardened`).

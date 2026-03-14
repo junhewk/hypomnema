@@ -11,11 +11,7 @@ from datetime import UTC, datetime
 from importlib.resources import files
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-import aiosqlite
-
-from hypomnema.config import Settings
-from hypomnema.crypto import get_or_create_key
-from hypomnema.db.settings_store import get_all_settings
+from hypomnema.evals.common import load_effective_settings
 from hypomnema.llm.factory import api_key_for_provider, base_url_for_provider, build_llm
 from hypomnema.ontology.extractor import (
     DEFAULT_PROMPT_VARIANT,
@@ -28,6 +24,7 @@ from hypomnema.ontology.extractor import (
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from hypomnema.config import Settings
     from hypomnema.llm.base import LLMClient
 
 DatasetName = Literal["smoke", "full"]
@@ -210,21 +207,6 @@ def prompt_hash(variant: str) -> str:
         ).encode("utf-8")
     ).hexdigest()
     return digest[:12]
-
-
-async def load_effective_settings(base_settings: Settings | None = None) -> Settings:
-    """Merge DB-backed runtime settings into a base Settings instance when available."""
-    settings = base_settings or Settings()
-    if not settings.db_path.exists():
-        return settings
-
-    key = get_or_create_key(settings.db_path.parent)
-    async with aiosqlite.connect(settings.db_path) as db:
-        db.row_factory = aiosqlite.Row
-        db_settings = await get_all_settings(db, fernet_key=key)
-    if db_settings.get("setup_complete"):
-        return Settings.with_db_overrides(settings, db_settings)
-    return settings
 
 
 def build_eval_llm(
