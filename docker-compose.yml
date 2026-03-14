@@ -7,4 +7,5 @@ services:
       - ./data:/app/data
     environment:
       - HYPOMNEMA_EMBEDDING_PROVIDER=local
+      - HYPOMNEMA_PASSPHRASE=${HYPOMNEMA_PASSPHRASE:-}
     restart: unless-stopped

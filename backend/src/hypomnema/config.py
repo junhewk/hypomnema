@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     # Embedding provider (fixed at install time — not changeable at runtime)
     embedding_provider: Literal["local", "openai", "google"] = "local"
 
+    # Auth (server mode only)
+    passphrase: str = ""
+
     # Server
     host: str = "127.0.0.1"
     port: int = 8073

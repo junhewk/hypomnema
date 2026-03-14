@@ -22,6 +22,7 @@ import type {
   ConnectivityCheckPayload,
   ConnectivityCheckResponse,
   RelatedDocument,
+  AuthStatus,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:8073";
@@ -78,7 +79,7 @@ export class ApiClient {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...options.headers,
     };
-    const response = await fetch(url, { ...options, headers });
+    const response = await fetch(url, { ...options, headers, credentials: "include" });
     if (!response.ok) {
       const errorBody = await response.text().catch(() => "");
       throw new ApiError(response.status, response.statusText, errorBody);
@@ -252,6 +253,24 @@ export class ApiClient {
 
   async getEmbeddingChangeStatus(): Promise<EmbeddingChangeStatus> {
     return this.request("/api/settings/embedding-status");
+  }
+
+  async getAuthStatus(): Promise<AuthStatus> {
+    return this.request("/api/auth/status");
+  }
+
+  async authSetup(passphrase: string): Promise<void> {
+    return this.request("/api/auth/setup", {
+      method: "POST",
+      body: JSON.stringify({ passphrase }),
+    });
+  }
+
+  async authLogin(passphrase: string): Promise<void> {
+    return this.request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ passphrase }),
+    });
   }
 }
 

@@ -198,6 +198,12 @@ export interface EmbeddingChangeStatus {
   error?: string | null;
 }
 
+export interface AuthStatus {
+  auth_required: boolean;
+  authenticated: boolean;
+  has_passphrase: boolean;
+}
+
 export interface RelatedDocument {
   id: string;
   title: string | null;

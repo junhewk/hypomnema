@@ -1,6 +1,8 @@
 """Fernet encryption for API keys at rest."""
 
+import hashlib
 import os
+import secrets
 from pathlib import Path
 
 from cryptography.fernet import Fernet
@@ -25,6 +27,20 @@ def encrypt(plaintext: str, key: bytes) -> str:
 def decrypt(ciphertext: str, key: bytes) -> str:
     """Decrypt a Fernet-encrypted string."""
     return Fernet(key).decrypt(ciphertext.encode()).decode()
+
+
+def hash_passphrase(passphrase: str) -> str:
+    """Hash with PBKDF2-SHA256, 600k iterations (OWASP recommendation)."""
+    salt = secrets.token_hex(16)
+    derived = hashlib.pbkdf2_hmac("sha256", passphrase.encode(), salt.encode(), 600_000)
+    return f"{salt}:{derived.hex()}"
+
+
+def verify_passphrase(passphrase: str, stored_hash: str) -> bool:
+    """Verify a passphrase against a PBKDF2 hash."""
+    salt, expected = stored_hash.split(":", 1)
+    derived = hashlib.pbkdf2_hmac("sha256", passphrase.encode(), salt.encode(), 600_000)
+    return secrets.compare_digest(derived.hex(), expected)
 
 
 def mask_key(value: str) -> str:
