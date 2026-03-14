@@ -3,9 +3,11 @@
 import json
 import struct
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
+from hypomnema.db.engine import get_connection
 from hypomnema.db.models import Document, Edge, Engram, FeedSource, Projection
 from hypomnema.db.schema import create_tables, ensure_vec_tables, get_vec_table_embedding_dim
 
@@ -13,6 +15,223 @@ from hypomnema.db.schema import create_tables, ensure_vec_tables, get_vec_table_
 def _float_list_to_bytes(floats: list[float]) -> bytes:
     """Pack floats into little-endian binary blob for sqlite-vec."""
     return struct.pack(f"<{len(floats)}f", *floats)
+
+
+async def _fetch_table_sql(db, table_name: str) -> str | None:
+    cursor = await db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        return None
+    return str(row["sql"]) if row["sql"] is not None else None
+
+
+async def _fetch_trigger_table(db, trigger_name: str) -> str | None:
+    cursor = await db.execute(
+        "SELECT tbl_name FROM sqlite_master WHERE type = 'trigger' AND name = ?",
+        (trigger_name,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        return None
+    return str(row["tbl_name"])
+
+
+async def _fetch_index_table(db, index_name: str) -> str | None:
+    cursor = await db.execute(
+        "SELECT tbl_name FROM sqlite_master WHERE type = 'index' AND name = ?",
+        (index_name,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        return None
+    return str(row["tbl_name"])
+
+
+async def _fetch_fk_parents(db, table_name: str) -> set[str]:
+    cursor = await db.execute(f"PRAGMA foreign_key_list({table_name})")  # noqa: S608
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return {str(row["table"]) for row in rows}
+
+
+async def _count_rows(db, table_name: str) -> int:
+    cursor = await db.execute(f"SELECT count(*) FROM {table_name}")  # noqa: S608
+    row = await cursor.fetchone()
+    await cursor.close()
+    assert row is not None
+    return int(row[0])
+
+
+async def _create_legacy_documents_schema(db) -> None:
+    await db.execute("""
+        CREATE TABLE documents (
+            id TEXT PRIMARY KEY,
+            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed')),
+            title TEXT,
+            text TEXT NOT NULL,
+            mime_type TEXT,
+            source_uri TEXT,
+            metadata TEXT,
+            triaged INTEGER NOT NULL DEFAULT 0,
+            processed INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE engrams (
+            id TEXT PRIMARY KEY,
+            canonical_name TEXT NOT NULL UNIQUE,
+            concept_hash TEXT NOT NULL UNIQUE,
+            description TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE edges (
+            id TEXT PRIMARY KEY,
+            source_engram_id TEXT NOT NULL REFERENCES engrams(id),
+            target_engram_id TEXT NOT NULL REFERENCES engrams(id),
+            predicate TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 1.0,
+            source_document_id TEXT REFERENCES documents(id),
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            UNIQUE(source_engram_id, target_engram_id, predicate)
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE document_engrams (
+            document_id TEXT NOT NULL REFERENCES documents(id),
+            engram_id TEXT NOT NULL REFERENCES engrams(id),
+            PRIMARY KEY (document_id, engram_id)
+        )
+    """)
+    await db.execute(
+        "INSERT INTO documents (id, source_type, title, text, processed, triaged) VALUES (?, ?, ?, ?, ?, ?)",
+        ("doc_legacy", "file", "Legacy", "legacy text", 1, 1),
+    )
+    await db.execute(
+        "INSERT INTO engrams (id, canonical_name, concept_hash) VALUES (?, ?, ?)",
+        ("eng_legacy", "Legacy concept", "legacy-hash"),
+    )
+    await db.execute(
+        "INSERT INTO edges (id, source_engram_id, target_engram_id, predicate, source_document_id) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("edge_legacy", "eng_legacy", "eng_legacy", "self", "doc_legacy"),
+    )
+    await db.execute(
+        "INSERT INTO document_engrams (document_id, engram_id) VALUES (?, ?)",
+        ("doc_legacy", "eng_legacy"),
+    )
+    await db.commit()
+
+
+async def _create_half_migrated_documents_schema(db) -> None:
+    await db.execute("""
+        CREATE TABLE documents (
+            id TEXT PRIMARY KEY,
+            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed', 'url')),
+            title TEXT,
+            text TEXT NOT NULL,
+            mime_type TEXT,
+            source_uri TEXT,
+            metadata TEXT,
+            triaged INTEGER NOT NULL DEFAULT 0,
+            processed INTEGER NOT NULL DEFAULT 0,
+            revision INTEGER NOT NULL DEFAULT 1,
+            tidy_title TEXT,
+            tidy_text TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE "_documents_old" (
+            id TEXT PRIMARY KEY,
+            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed')),
+            title TEXT,
+            text TEXT NOT NULL,
+            mime_type TEXT,
+            source_uri TEXT,
+            metadata TEXT,
+            triaged INTEGER NOT NULL DEFAULT 0,
+            processed INTEGER NOT NULL DEFAULT 0,
+            revision INTEGER NOT NULL DEFAULT 1,
+            tidy_title TEXT,
+            tidy_text TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE engrams (
+            id TEXT PRIMARY KEY,
+            canonical_name TEXT NOT NULL UNIQUE,
+            concept_hash TEXT NOT NULL UNIQUE,
+            description TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE edges (
+            id TEXT PRIMARY KEY,
+            source_engram_id TEXT NOT NULL REFERENCES engrams(id),
+            target_engram_id TEXT NOT NULL REFERENCES engrams(id),
+            predicate TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 1.0,
+            source_document_id TEXT REFERENCES "_documents_old"(id),
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            UNIQUE(source_engram_id, target_engram_id, predicate)
+        )
+    """)
+    await db.execute("""
+        CREATE TABLE document_engrams (
+            document_id TEXT NOT NULL REFERENCES "_documents_old"(id),
+            engram_id TEXT NOT NULL REFERENCES engrams(id),
+            PRIMARY KEY (document_id, engram_id)
+        )
+    """)
+    await db.execute("""
+        CREATE VIRTUAL TABLE documents_fts USING fts5(
+            title, text,
+            content='documents',
+            content_rowid='rowid'
+        )
+    """)
+    await db.execute(
+        'CREATE INDEX idx_documents_source_type ON "_documents_old"(source_type)'
+    )
+    await db.execute("""
+        CREATE TRIGGER documents_fts_insert
+        AFTER INSERT ON "_documents_old" BEGIN
+            INSERT INTO documents_fts(rowid, title, text)
+            VALUES (new.rowid, new.title, new.text);
+        END
+    """)
+    await db.execute(
+        "INSERT INTO _documents_old (id, source_type, title, text, processed, triaged) VALUES (?, ?, ?, ?, ?, ?)",
+        ("doc_broken", "scribble", "Broken", "broken text", 1, 1),
+    )
+    await db.execute(
+        "INSERT INTO engrams (id, canonical_name, concept_hash) VALUES (?, ?, ?)",
+        ("eng_broken", "Broken concept", "broken-hash"),
+    )
+    await db.execute(
+        "INSERT INTO edges (id, source_engram_id, target_engram_id, predicate, source_document_id) "
+        "VALUES (?, ?, ?, ?, ?)",
+        ("edge_broken", "eng_broken", "eng_broken", "self", "doc_broken"),
+    )
+    await db.execute(
+        "INSERT INTO document_engrams (document_id, engram_id) VALUES (?, ?)",
+        ("doc_broken", "eng_broken"),
+    )
+    await db.commit()
 
 
 class TestIdempotency:
@@ -88,6 +307,44 @@ class TestIdempotency:
         row = await cursor.fetchone()
         assert row["processed"] == 0
         assert row["triaged"] == 0
+
+
+class TestDocumentSchemaMigration:
+    async def test_migrates_legacy_documents_table_with_child_rows(self, tmp_path: Path):
+        db = await get_connection(tmp_path / "legacy.db")
+        try:
+            await _create_legacy_documents_schema(db)
+
+            await create_tables(db)
+
+            documents_sql = await _fetch_table_sql(db, "documents")
+            assert documents_sql is not None
+            assert "'url'" in documents_sql
+            assert await _fetch_table_sql(db, "_documents_old") is None
+            assert await _fetch_fk_parents(db, "edges") == {"documents", "engrams"}
+            assert await _fetch_fk_parents(db, "document_engrams") == {"documents", "engrams"}
+            assert await _count_rows(db, "documents") == 1
+            assert await _count_rows(db, "documents_fts") == 1
+            assert await _fetch_trigger_table(db, "documents_fts_insert") == "documents"
+        finally:
+            await db.close()
+
+    async def test_repairs_half_migrated_documents_schema(self, tmp_path: Path):
+        db = await get_connection(tmp_path / "half-migrated.db")
+        try:
+            await _create_half_migrated_documents_schema(db)
+
+            await create_tables(db)
+
+            assert await _fetch_table_sql(db, "_documents_old") is None
+            assert await _fetch_fk_parents(db, "edges") == {"documents", "engrams"}
+            assert await _fetch_fk_parents(db, "document_engrams") == {"documents", "engrams"}
+            assert await _fetch_index_table(db, "idx_documents_source_type") == "documents"
+            assert await _fetch_trigger_table(db, "documents_fts_insert") == "documents"
+            assert await _count_rows(db, "documents") == 1
+            assert await _count_rows(db, "documents_fts") == 1
+        finally:
+            await db.close()
 
 
 class TestDocumentsCRUD:

@@ -106,20 +106,12 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
         )
     """)
 
+    await _migrate_add_columns(db)
+    documents_rebuilt = await _migrate_source_type_url(db)
+
     # ── Indexes ──────────────────────────────────────────────
 
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_type ON documents(source_type)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_processed ON documents(processed)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_edges_source_engram ON edges(source_engram_id)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_edges_target_engram ON edges(target_engram_id)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_edges_predicate ON edges(predicate)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_triaged ON documents(triaged)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_uri ON documents(source_uri)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_projections_cluster ON projections(cluster_id)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_engram ON document_engrams(engram_id)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_document ON document_engrams(document_id)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_engram_aliases_key ON engram_aliases(alias_key)")
+    await _ensure_core_indexes(db)
 
     # ── FTS5 (external content synced via triggers) ──────────
 
@@ -132,47 +124,12 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
             )
         """)
 
-    # ── FTS5 sync triggers (DELETE+INSERT pattern for safety) ─
+    # ── FTS5 sync triggers + updated_at trigger ──────────────
 
-    await db.execute("""
-        CREATE TRIGGER IF NOT EXISTS documents_fts_insert
-        AFTER INSERT ON documents BEGIN
-            INSERT INTO documents_fts(rowid, title, text)
-            VALUES (new.rowid, new.title, new.text);
-        END
-    """)
+    await _ensure_documents_triggers(db)
+    if documents_rebuilt:
+        await db.execute("INSERT INTO documents_fts(documents_fts) VALUES ('rebuild')")
 
-    await db.execute("""
-        CREATE TRIGGER IF NOT EXISTS documents_fts_update
-        AFTER UPDATE OF title, text ON documents BEGIN
-            INSERT INTO documents_fts(documents_fts, rowid, title, text)
-            VALUES ('delete', old.rowid, old.title, old.text);
-            INSERT INTO documents_fts(rowid, title, text)
-            VALUES (new.rowid, new.title, new.text);
-        END
-    """)
-
-    await db.execute("""
-        CREATE TRIGGER IF NOT EXISTS documents_fts_delete
-        BEFORE DELETE ON documents BEGIN
-            INSERT INTO documents_fts(documents_fts, rowid, title, text)
-            VALUES ('delete', old.rowid, old.title, old.text);
-        END
-    """)
-
-    # ── Auto-update updated_at on documents ──────────────────
-    # Safe: PRAGMA recursive_triggers defaults OFF, preventing infinite recursion
-
-    await db.execute("""
-        CREATE TRIGGER IF NOT EXISTS documents_updated_at
-        AFTER UPDATE ON documents BEGIN
-            UPDATE documents SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-            WHERE id = new.id;
-        END
-    """)
-
-    await _migrate_add_columns(db)
-    await _migrate_source_type_url(db)
     from hypomnema.ontology.engram import backfill_engram_aliases
 
     await backfill_engram_aliases(db)
@@ -191,48 +148,94 @@ async def _migrate_add_columns(db: aiosqlite.Connection) -> None:
             await db.execute(f"ALTER TABLE documents ADD COLUMN {col} {definition}")  # noqa: S608
 
 
-async def _migrate_source_type_url(db: aiosqlite.Connection) -> None:
-    """Add 'url' to the documents source_type CHECK constraint (idempotent)."""
+async def _migrate_source_type_url(db: aiosqlite.Connection) -> bool:
+    """Repair the documents schema and migrate it to accept the 'url' source type."""
     cursor = await db.execute(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'documents'"
     )
     row = await cursor.fetchone()
     await cursor.close()
     if row is None:
-        return
+        return False
     ddl = str(row["sql"]) if row["sql"] else ""
-    if "'url'" in ddl:
-        return  # Already migrated
+    needs_url_upgrade = "'url'" not in ddl
+    has_legacy_documents = await _table_exists(db, "_documents_old")
+    has_legacy_document_refs = (
+        await _table_references_parent(db, "edges", "_documents_old")
+        or await _table_references_parent(db, "document_engrams", "_documents_old")
+    )
+    has_legacy_document_objects = await _objects_bound_to_table(
+        db,
+        names=[
+            "idx_documents_source_type",
+            "idx_documents_processed",
+            "idx_documents_created_at",
+            "idx_documents_triaged",
+            "idx_documents_source_uri",
+            "documents_fts_insert",
+            "documents_fts_update",
+            "documents_fts_delete",
+            "documents_updated_at",
+        ],
+        table_name="_documents_old",
+    )
 
-    # Rebuild table with updated CHECK constraint
-    await db.execute("ALTER TABLE documents RENAME TO _documents_old")
-    await db.execute("""
-        CREATE TABLE documents (
-            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed', 'url')),
-            title TEXT,
-            text TEXT NOT NULL,
-            mime_type TEXT,
-            source_uri TEXT,
-            metadata TEXT,
-            triaged INTEGER NOT NULL DEFAULT 0,
-            processed INTEGER NOT NULL DEFAULT 0,
-            revision INTEGER NOT NULL DEFAULT 1,
-            tidy_title TEXT,
-            tidy_text TEXT,
-            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    if not (
+        needs_url_upgrade
+        or has_legacy_documents
+        or has_legacy_document_refs
+        or has_legacy_document_objects
+    ):
+        return False
+
+    await db.commit()
+    await db.execute("PRAGMA foreign_keys=OFF")
+
+    try:
+        documents_source_table = await _move_table_aside(
+            db,
+            table_name="documents",
+            temp_base="_documents_migration_source",
         )
-    """)
-    await db.execute("INSERT INTO documents SELECT * FROM _documents_old")
-    await db.execute("DROP TABLE _documents_old")
+        legacy_documents_table = (
+            "_documents_old"
+            if has_legacy_documents and documents_source_table != "_documents_old"
+            else None
+        )
 
-    # Recreate indexes
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_type ON documents(source_type)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_processed ON documents(processed)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_triaged ON documents(triaged)")
-    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_uri ON documents(source_uri)")
+        await _drop_documents_objects(db)
+        await db.execute(_documents_table_sql("documents"))
+        if documents_source_table is not None:
+            await _copy_documents_rows(
+                db,
+                source_table=documents_source_table,
+                destination_table="documents",
+                or_ignore=False,
+            )
+        if legacy_documents_table is not None:
+            await _copy_documents_rows(
+                db,
+                source_table=legacy_documents_table,
+                destination_table="documents",
+                or_ignore=True,
+            )
+
+        await _rebuild_edges_table(db)
+        await _rebuild_document_engrams_table(db)
+
+        if documents_source_table is not None:
+            await db.execute(f"DROP TABLE {documents_source_table}")  # noqa: S608
+        if legacy_documents_table is not None:
+            await db.execute(f"DROP TABLE {legacy_documents_table}")  # noqa: S608
+
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    finally:
+        await db.execute("PRAGMA foreign_keys=ON")
+
+    return True
 
 
 async def create_vec_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> None:
@@ -352,3 +355,202 @@ async def _table_exists(db: aiosqlite.Connection, table_name: str) -> bool:
     if row is None:
         return False
     return bool(row[0] > 0)
+
+
+async def _ensure_core_indexes(db: aiosqlite.Connection) -> None:
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_type ON documents(source_type)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_processed ON documents(processed)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_triaged ON documents(triaged)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_uri ON documents(source_uri)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_edges_source_engram ON edges(source_engram_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_edges_target_engram ON edges(target_engram_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_edges_predicate ON edges(predicate)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_projections_cluster ON projections(cluster_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_engram ON document_engrams(engram_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_document ON document_engrams(document_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_engram_aliases_key ON engram_aliases(alias_key)")
+
+
+async def _ensure_documents_triggers(db: aiosqlite.Connection) -> None:
+    await db.execute("""
+        CREATE TRIGGER IF NOT EXISTS documents_fts_insert
+        AFTER INSERT ON documents BEGIN
+            INSERT INTO documents_fts(rowid, title, text)
+            VALUES (new.rowid, new.title, new.text);
+        END
+    """)
+    await db.execute("""
+        CREATE TRIGGER IF NOT EXISTS documents_fts_update
+        AFTER UPDATE OF title, text ON documents BEGIN
+            INSERT INTO documents_fts(documents_fts, rowid, title, text)
+            VALUES ('delete', old.rowid, old.title, old.text);
+            INSERT INTO documents_fts(rowid, title, text)
+            VALUES (new.rowid, new.title, new.text);
+        END
+    """)
+    await db.execute("""
+        CREATE TRIGGER IF NOT EXISTS documents_fts_delete
+        BEFORE DELETE ON documents BEGIN
+            INSERT INTO documents_fts(documents_fts, rowid, title, text)
+            VALUES ('delete', old.rowid, old.title, old.text);
+        END
+    """)
+    # Safe: PRAGMA recursive_triggers defaults OFF, preventing infinite recursion
+    await db.execute("""
+        CREATE TRIGGER IF NOT EXISTS documents_updated_at
+        AFTER UPDATE ON documents BEGIN
+            UPDATE documents SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = new.id;
+        END
+    """)
+
+
+def _documents_table_sql(table_name: str) -> str:
+    return f"""
+        CREATE TABLE {table_name} (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed', 'url')),
+            title TEXT,
+            text TEXT NOT NULL,
+            mime_type TEXT,
+            source_uri TEXT,
+            metadata TEXT,
+            triaged INTEGER NOT NULL DEFAULT 0,
+            processed INTEGER NOT NULL DEFAULT 0,
+            revision INTEGER NOT NULL DEFAULT 1,
+            tidy_title TEXT,
+            tidy_text TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """
+
+
+async def _table_references_parent(
+    db: aiosqlite.Connection,
+    child_table: str,
+    parent_table: str,
+) -> bool:
+    cursor = await db.execute(f"PRAGMA foreign_key_list({child_table})")  # noqa: S608
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return any(str(row["table"]) == parent_table for row in rows)
+
+
+async def _objects_bound_to_table(
+    db: aiosqlite.Connection,
+    *,
+    names: list[str],
+    table_name: str,
+) -> bool:
+    placeholders = ",".join("?" for _ in names)
+    cursor = await db.execute(
+        f"SELECT count(*) FROM sqlite_master WHERE name IN ({placeholders}) AND tbl_name = ?",  # noqa: S608
+        (*names, table_name),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return bool(row and row[0] > 0)
+
+
+async def _drop_documents_objects(db: aiosqlite.Connection) -> None:
+    for trigger_name in (
+        "documents_fts_insert",
+        "documents_fts_update",
+        "documents_fts_delete",
+        "documents_updated_at",
+    ):
+        await db.execute(f"DROP TRIGGER IF EXISTS {trigger_name}")  # noqa: S608
+    for index_name in (
+        "idx_documents_source_type",
+        "idx_documents_processed",
+        "idx_documents_created_at",
+        "idx_documents_triaged",
+        "idx_documents_source_uri",
+    ):
+        await db.execute(f"DROP INDEX IF EXISTS {index_name}")  # noqa: S608
+
+
+async def _move_table_aside(
+    db: aiosqlite.Connection,
+    *,
+    table_name: str,
+    temp_base: str,
+) -> str | None:
+    if not await _table_exists(db, table_name):
+        return None
+    temp_name = temp_base
+    suffix = 0
+    while await _table_exists(db, temp_name):
+        suffix += 1
+        temp_name = f"{temp_base}_{suffix}"
+    await db.execute(f"ALTER TABLE {table_name} RENAME TO {temp_name}")  # noqa: S608
+    return temp_name
+
+
+async def _copy_documents_rows(
+    db: aiosqlite.Connection,
+    *,
+    source_table: str,
+    destination_table: str,
+    or_ignore: bool,
+) -> None:
+    insert_mode = "INSERT OR IGNORE" if or_ignore else "INSERT"
+    await db.execute(
+        f"{insert_mode} INTO {destination_table} ("  # noqa: S608
+        "id, source_type, title, text, mime_type, source_uri, metadata, "
+        "triaged, processed, revision, tidy_title, tidy_text, created_at, updated_at"
+        f") SELECT id, source_type, title, text, mime_type, source_uri, metadata, "  # noqa: S608
+        "triaged, processed, revision, tidy_title, tidy_text, created_at, updated_at "
+        f"FROM {source_table}"  # noqa: S608
+    )
+
+
+async def _rebuild_document_engrams_table(db: aiosqlite.Connection) -> None:
+    temp_name = await _move_table_aside(
+        db,
+        table_name="document_engrams",
+        temp_base="_document_engrams_migration_source",
+    )
+    await db.execute("""
+        CREATE TABLE document_engrams (
+            document_id TEXT NOT NULL REFERENCES documents(id),
+            engram_id TEXT NOT NULL REFERENCES engrams(id),
+            PRIMARY KEY (document_id, engram_id)
+        )
+    """)
+    if temp_name is not None:
+        await db.execute(
+            f"INSERT INTO document_engrams (document_id, engram_id) "  # noqa: S608
+            f"SELECT document_id, engram_id FROM {temp_name}"  # noqa: S608
+        )
+        await db.execute(f"DROP TABLE {temp_name}")  # noqa: S608
+
+
+async def _rebuild_edges_table(db: aiosqlite.Connection) -> None:
+    temp_name = await _move_table_aside(
+        db,
+        table_name="edges",
+        temp_base="_edges_migration_source",
+    )
+    await db.execute("""
+        CREATE TABLE edges (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            source_engram_id TEXT NOT NULL REFERENCES engrams(id),
+            target_engram_id TEXT NOT NULL REFERENCES engrams(id),
+            predicate TEXT NOT NULL,
+            confidence REAL NOT NULL DEFAULT 1.0,
+            source_document_id TEXT REFERENCES documents(id),
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            UNIQUE(source_engram_id, target_engram_id, predicate)
+        )
+    """)
+    if temp_name is not None:
+        await db.execute(
+            f"INSERT INTO edges ("  # noqa: S608
+            "id, source_engram_id, target_engram_id, predicate, confidence, source_document_id, created_at"
+            f") SELECT id, source_engram_id, target_engram_id, predicate, confidence, source_document_id, created_at "  # noqa: S608
+            f"FROM {temp_name}"  # noqa: S608
+        )
+        await db.execute(f"DROP TABLE {temp_name}")  # noqa: S608
