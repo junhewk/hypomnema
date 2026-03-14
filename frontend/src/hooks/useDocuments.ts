@@ -2,62 +2,52 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "@/lib/api";
-import type { Document } from "@/lib/types";
-
-const PAGE_SIZE = 20;
+import type { DocumentWithEngrams } from "@/lib/types";
 
 export interface UseDocumentsReturn {
-  documents: Document[];
-  total: number;
+  documents: DocumentWithEngrams[];
   isLoading: boolean;
   error: string | null;
-  hasMore: boolean;
-  loadMore: () => void;
   refresh: () => void;
 }
 
 export function useDocuments(): UseDocumentsReturn {
-  const [documents, setDocuments] = useState<Document[]>([]);
-  const [total, setTotal] = useState(0);
+  const [documents, setDocuments] = useState<DocumentWithEngrams[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const offsetRef = useRef(0);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasFetchedRef = useRef(false);
 
-  const fetchPage = useCallback(
-    async (offset: number, replace: boolean) => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const result = await api.listDocuments(offset, PAGE_SIZE);
-        setTotal(result.total);
-        if (replace) {
-          setDocuments((prev) => {
-            if (
-              prev.length === result.items.length &&
-              prev.every((d, i) => d.id === result.items[i].id && d.processed === result.items[i].processed)
-            ) {
-              return prev; // same reference — skip re-render
-            }
-            return result.items;
-          });
-        } else {
-          setDocuments((prev) => [...prev, ...result.items]);
+  const fetchDocuments = useCallback(async () => {
+    const isInitial = !hasFetchedRef.current;
+    if (isInitial) setIsLoading(true);
+    setError(null);
+    try {
+      const result = await api.listDocuments();
+      setDocuments((prev) => {
+        if (
+          prev.length === result.length &&
+          prev.every(
+            (d, i) =>
+              d.id === result[i].id && d.processed === result[i].processed,
+          )
+        ) {
+          return prev;
         }
-        offsetRef.current = offset + result.items.length;
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "Unknown error");
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [],
-  );
+        return result;
+      });
+      hasFetchedRef.current = true;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      if (isInitial) setIsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    fetchPage(0, true);
-  }, [fetchPage]);
+    fetchDocuments();
+  }, [fetchDocuments]);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -74,31 +64,23 @@ export function useDocuments(): UseDocumentsReturn {
     return stopPolling;
   }, [stopPolling]);
 
-  const loadMore = useCallback(() => {
-    fetchPage(offsetRef.current, false);
-  }, [fetchPage]);
-
   const refresh = useCallback(() => {
     stopPolling();
-    offsetRef.current = 0;
-    fetchPage(0, true);
+    fetchDocuments();
 
     pollTimerRef.current = setInterval(() => {
-      fetchPage(0, true);
+      fetchDocuments();
     }, 5000);
 
     pollTimeoutRef.current = setTimeout(() => {
       stopPolling();
     }, 30000);
-  }, [fetchPage, stopPolling]);
+  }, [fetchDocuments, stopPolling]);
 
   return {
     documents,
-    total,
     isLoading,
     error,
-    hasMore: documents.length < total,
-    loadMore,
     refresh,
   };
 }

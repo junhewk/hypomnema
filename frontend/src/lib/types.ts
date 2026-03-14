@@ -203,6 +203,15 @@ export interface RelatedDocument {
   title: string | null;
 }
 
+export interface EngramSummary {
+  id: string;
+  canonical_name: string;
+}
+
+export interface DocumentWithEngrams extends Document {
+  engrams: EngramSummary[];
+}
+
 export interface SetupPayload {
   embedding_provider: "local" | "openai" | "google";
   llm_provider?: string;

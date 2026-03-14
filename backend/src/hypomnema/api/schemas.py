@@ -78,9 +78,19 @@ class VizEdge(BaseModel):
 # ── Request bodies ──────────────────────────────────────────
 
 
+class EngramSummary(BaseModel):
+    id: str
+    canonical_name: str
+
+
+class DocumentWithEngrams(DocumentOut):
+    engrams: list[EngramSummary] = []
+
+
 class ScribbleCreate(BaseModel):
     text: str
     title: str | None = None
+    draft: bool = False
 
 
 class DocumentUpdate(BaseModel):

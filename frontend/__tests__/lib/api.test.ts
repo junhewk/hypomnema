@@ -44,11 +44,11 @@ describe("ApiClient", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ items: [], total: 0, offset: 0, limit: 20 }),
+        json: async () => [],
       });
       c.listDocuments();
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8073/api/documents?offset=0&limit=20",
+        "http://localhost:8073/api/documents?days=14",
         expect.any(Object),
       );
     });
@@ -65,13 +65,13 @@ describe("ApiClient", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ items: [], total: 0, offset: 0, limit: 20 }),
+        json: async () => [],
       });
 
       c.listDocuments();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://100.122.169.13:9000/api/documents?offset=0&limit=20",
+        "http://100.122.169.13:9000/api/documents?days=14",
         expect.any(Object),
       );
     });
@@ -83,13 +83,13 @@ describe("ApiClient", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ items: [], total: 0, offset: 0, limit: 20 }),
+        json: async () => [],
       });
 
       c.listDocuments();
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "/api/documents?offset=0&limit=20",
+        "/api/documents?days=14",
         expect.any(Object),
       );
     });
@@ -99,11 +99,11 @@ describe("ApiClient", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ items: [], total: 0, offset: 0, limit: 20 }),
+        json: async () => [],
       });
       c.listDocuments();
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://192.168.1.50:9000/api/documents?offset=0&limit=20",
+        "http://192.168.1.50:9000/api/documents?days=14",
         expect.any(Object),
       );
     });
@@ -146,14 +146,14 @@ describe("ApiClient", () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         status: 200,
-        json: async () => ({ items: [], total: 0, offset: 0, limit: 20 }),
+        json: async () => [],
       });
       const result = await client.listDocuments();
       expect(mockFetch).toHaveBeenCalledWith(
-        "http://localhost:8073/api/documents?offset=0&limit=20",
+        "http://localhost:8073/api/documents?days=14",
         expect.any(Object),
       );
-      expect(result.items).toEqual([]);
+      expect(result).toEqual([]);
     });
   });
 

@@ -2,19 +2,21 @@
 
 import { memo, type CSSProperties } from "react";
 import Link from "next/link";
-import type { Document, ScoredDocument } from "@/lib/types";
+import type { Document, ScoredDocument, EngramSummary } from "@/lib/types";
 import { timeAgo } from "@/lib/timeAgo";
 import { SOURCE_STYLES } from "@/lib/documentStyles";
 import { StatusDot } from "./StatusDot";
 
 interface DocumentCardProps {
   document: Document | ScoredDocument;
+  engrams?: EngramSummary[];
   style?: CSSProperties;
   onEdit?: (doc: Document) => void;
 }
 
 export const DocumentCard = memo(function DocumentCard({
   document: doc,
+  engrams = [],
   style,
   onEdit,
 }: DocumentCardProps) {
@@ -64,6 +66,27 @@ export const DocumentCard = memo(function DocumentCard({
 
         {/* text preview */}
         <p className="font-mono text-xs leading-relaxed text-muted">{preview}</p>
+
+        {/* engram pills */}
+        {engrams.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {engrams.slice(0, 3).map((eg) => (
+              <Link
+                key={eg.id}
+                href={`/engrams/${eg.id}`}
+                onClick={(e) => e.stopPropagation()}
+                className="engram-pill rounded-sm bg-[var(--engram)]/8 px-1.5 py-0.5 font-mono text-[10px] text-[var(--engram)] no-underline"
+              >
+                {eg.canonical_name}
+              </Link>
+            ))}
+            {engrams.length > 3 && (
+              <span className="rounded-sm bg-[var(--engram)]/5 px-1.5 py-0.5 font-mono text-[10px] text-[var(--engram)]/60">
+                +{engrams.length - 3}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* timestamp + score */}
         <div className="mt-2 flex items-center gap-2">

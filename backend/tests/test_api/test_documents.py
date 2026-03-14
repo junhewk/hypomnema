@@ -56,28 +56,68 @@ class TestUploadFile:
 
 @pytest.mark.asyncio
 class TestListDocuments:
-    async def test_empty_returns_paginated(self, client: AsyncClient):
+    async def test_empty_returns_list(self, client: AsyncClient):
         resp = await client.get("/api/documents")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data == {"items": [], "total": 0, "offset": 0, "limit": 20}
+        assert resp.json() == []
 
-    async def test_pagination(self, client: AsyncClient):
-        # Create 3 documents
+    async def test_returns_recent_documents(self, client: AsyncClient):
         for i in range(3):
             await client.post("/api/documents/scribbles", json={"text": f"Doc {i}"})
 
-        resp = await client.get("/api/documents", params={"offset": 1, "limit": 1})
+        resp = await client.get("/api/documents")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["total"] == 3
-        assert data["offset"] == 1
-        assert data["limit"] == 1
-        assert len(data["items"]) == 1
+        assert len(data) == 3
+        # Each doc should have engrams list
+        assert "engrams" in data[0]
 
-    async def test_default_limit(self, client: AsyncClient):
+    async def test_excludes_drafts(self, client: AsyncClient):
+        await client.post("/api/documents/scribbles", json={"text": "Normal doc"})
+        await client.post("/api/documents/scribbles", json={"text": "Draft doc", "draft": True})
+
         resp = await client.get("/api/documents")
-        assert resp.json()["limit"] == 20
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["text"] == "Normal doc"
+
+    async def test_days_param(self, client: AsyncClient):
+        await client.post("/api/documents/scribbles", json={"text": "Recent doc"})
+        resp = await client.get("/api/documents", params={"days": 1})
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+
+
+@pytest.mark.asyncio
+class TestDrafts:
+    async def test_create_draft(self, client: AsyncClient):
+        resp = await client.post(
+            "/api/documents/scribbles", json={"text": "My draft", "draft": True}
+        )
+        assert resp.status_code == 201
+        data = resp.json()
+        assert data["processed"] == 0
+
+    async def test_list_drafts(self, client: AsyncClient):
+        await client.post("/api/documents/scribbles", json={"text": "Draft 1", "draft": True})
+        await client.post("/api/documents/scribbles", json={"text": "Draft 2", "draft": True})
+        await client.post("/api/documents/scribbles", json={"text": "Normal"})
+
+        resp = await client.get("/api/documents/drafts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 2
+
+
+@pytest.mark.asyncio
+class TestDocumentCount:
+    async def test_count_excludes_drafts(self, client: AsyncClient):
+        await client.post("/api/documents/scribbles", json={"text": "Normal"})
+        await client.post("/api/documents/scribbles", json={"text": "Draft", "draft": True})
+
+        resp = await client.get("/api/documents/count")
+        assert resp.status_code == 200
+        assert resp.json()["total"] == 1
 
 
 @pytest.mark.asyncio

@@ -1,15 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useDocuments } from "@/hooks/useDocuments";
 import { ScribbleInput } from "./ScribbleInput";
 import { FileDropZone } from "./FileDropZone";
 import { DocumentCard } from "./DocumentCard";
+import { DraftBar } from "./DraftBar";
+import { StreamFooter } from "./StreamFooter";
 import type { Document } from "@/lib/types";
 
 export function StreamPage() {
-  const { documents, isLoading, hasMore, loadMore, refresh } = useDocuments();
+  const { documents, isLoading, refresh } = useDocuments();
   const [editing, setEditing] = useState<Document | null>(null);
+  const [draftSignal, setDraftSignal] = useState(0);
+
+  const bumpDrafts = useCallback(() => {
+    setDraftSignal((n) => n + 1);
+  }, []);
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
@@ -17,30 +24,26 @@ export function StreamPage() {
         onSubmit={() => {
           setEditing(null);
           refresh();
+          bumpDrafts();
         }}
+        onDraft={bumpDrafts}
         editingDocument={editing}
         onCancelEdit={() => setEditing(null)}
       />
       <FileDropZone onUpload={refresh} />
+
+      <DraftBar onEdit={setEditing} refreshSignal={draftSignal} />
 
       <section>
         {documents.map((doc, i) => (
           <DocumentCard
             key={doc.id}
             document={doc}
+            engrams={doc.engrams}
             onEdit={setEditing}
             style={{ animationDelay: `${i * 50}ms` }}
           />
         ))}
-
-        {hasMore && (
-          <button
-            onClick={loadMore}
-            className="mt-6 w-full rounded border border-border py-2.5 text-center font-mono text-xs text-muted transition-colors hover:border-border-focus hover:text-foreground"
-          >
-            load more
-          </button>
-        )}
 
         {isLoading && (
           <p className="py-8 text-center font-mono text-xs text-muted animate-pulse-dot">
@@ -59,6 +62,10 @@ export function StreamPage() {
           </div>
         )}
       </section>
+
+      {!isLoading && documents.length > 0 && (
+        <StreamFooter visibleCount={documents.length} />
+      )}
     </div>
   );
 }

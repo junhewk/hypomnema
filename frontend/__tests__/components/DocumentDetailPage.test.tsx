@@ -10,12 +10,22 @@ vi.mock("next/navigation", () => ({
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
 
-function mockDocResponse(doc: object) {
+function mockJsonResponse(data: unknown) {
   return {
     ok: true,
     status: 200,
-    json: async () => doc,
+    json: async () => data,
   };
+}
+
+/** Mock fetch for DocumentDetailPage: document detail + related docs */
+function mockDocumentPageFetches(doc: object) {
+  mockFetch.mockImplementation((url: string) => {
+    if (typeof url === "string" && url.includes("/related")) {
+      return Promise.resolve(mockJsonResponse([]));
+    }
+    return Promise.resolve(mockJsonResponse(doc));
+  });
 }
 
 describe("DocumentDetailPage", () => {
@@ -32,7 +42,7 @@ describe("DocumentDetailPage", () => {
   it("renders full document text (not truncated)", async () => {
     const longText = "a".repeat(500);
     const doc = makeDocumentDetail({ id: "doc-1", text: longText });
-    mockFetch.mockResolvedValueOnce(mockDocResponse(doc));
+    mockDocumentPageFetches(doc);
 
     render(<DocumentDetailPage id="doc-1" />);
     await waitFor(() =>
@@ -44,7 +54,7 @@ describe("DocumentDetailPage", () => {
 
   it("renders document title", async () => {
     const doc = makeDocumentDetail({ id: "doc-1", title: "My Research" });
-    mockFetch.mockResolvedValueOnce(mockDocResponse(doc));
+    mockDocumentPageFetches(doc);
 
     render(<DocumentDetailPage id="doc-1" />);
     await waitFor(() =>
@@ -54,7 +64,7 @@ describe("DocumentDetailPage", () => {
 
   it("shows source type badge", async () => {
     const doc = makeDocumentDetail({ id: "doc-1", source_type: "file" });
-    mockFetch.mockResolvedValueOnce(mockDocResponse(doc));
+    mockDocumentPageFetches(doc);
 
     render(<DocumentDetailPage id="doc-1" />);
     await waitFor(() =>
@@ -64,7 +74,7 @@ describe("DocumentDetailPage", () => {
 
   it("renders without back link (sidebar provides navigation)", async () => {
     const doc = makeDocumentDetail({ id: "doc-1" });
-    mockFetch.mockResolvedValueOnce(mockDocResponse(doc));
+    mockDocumentPageFetches(doc);
 
     render(<DocumentDetailPage id="doc-1" />);
     await waitFor(() =>
@@ -74,12 +84,14 @@ describe("DocumentDetailPage", () => {
   });
 
   it("shows error state on API failure", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      statusText: "Internal Server Error",
-      text: async () => "crash",
-    });
+    mockFetch.mockImplementation(() =>
+      Promise.resolve({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        text: async () => "crash",
+      }),
+    );
 
     render(<DocumentDetailPage id="doc-1" />);
     await waitFor(() =>

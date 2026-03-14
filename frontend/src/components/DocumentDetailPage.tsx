@@ -19,7 +19,7 @@ function RelatedNav({ id }: { id: string }) {
   const { related } = useRelatedDocuments(id);
   const [index, setIndex] = useState(0);
 
-  if (related.length === 0) return null;
+  if (!Array.isArray(related) || related.length === 0) return null;
 
   const current = related[index];
   const hasPrev = index > 0;

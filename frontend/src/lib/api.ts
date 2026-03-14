@@ -1,6 +1,7 @@
 import type {
   Document,
   DocumentDetail,
+  DocumentWithEngrams,
   Engram,
   EngramDetail,
   Edge,
@@ -86,10 +87,10 @@ export class ApiClient {
     return response.json() as Promise<T>;
   }
 
-  async createScribble(text: string, title?: string): Promise<Document> {
+  async createScribble(text: string, title?: string, draft?: boolean): Promise<Document> {
     return this.request("/api/documents/scribbles", {
       method: "POST",
-      body: JSON.stringify({ text, title }),
+      body: JSON.stringify({ text, title, ...(draft ? { draft: true } : {}) }),
     });
   }
 
@@ -102,11 +103,16 @@ export class ApiClient {
     });
   }
 
-  async listDocuments(
-    offset = 0,
-    limit = 20,
-  ): Promise<PaginatedList<Document>> {
-    return this.request(`/api/documents?offset=${offset}&limit=${limit}`);
+  async listDocuments(days = 14): Promise<DocumentWithEngrams[]> {
+    return this.request(`/api/documents?days=${days}`);
+  }
+
+  async listDrafts(): Promise<Document[]> {
+    return this.request("/api/documents/drafts");
+  }
+
+  async getDocumentCount(): Promise<{ total: number }> {
+    return this.request("/api/documents/count");
   }
 
   async getDocument(id: string): Promise<DocumentDetail> {

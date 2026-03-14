@@ -8,11 +8,12 @@ const DRAFT_KEY = "hypomnema_draft";
 
 interface ScribbleInputProps {
   onSubmit: (doc: Document) => void;
+  onDraft?: (doc: Document) => void;
   editingDocument?: Document | null;
   onCancelEdit?: () => void;
 }
 
-export function ScribbleInput({ onSubmit, editingDocument, onCancelEdit }: ScribbleInputProps) {
+export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit }: ScribbleInputProps) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -116,10 +117,31 @@ export function ScribbleInput({ onSubmit, editingDocument, onCancelEdit }: Scrib
     onCancelEdit?.();
   }
 
+  async function handleDraft() {
+    if (!canSubmit) return;
+    setIsSubmitting(true);
+    setError(null);
+    try {
+      const doc = await api.createScribble(text.trim(), title.trim() || undefined, true);
+      setTitle("");
+      setText("");
+      localStorage.removeItem(DRAFT_KEY);
+      onDraft?.(doc);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save draft");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   function handleKeyDown(e: KeyboardEvent) {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
       handleSubmit();
+    }
+    if ((e.metaKey || e.ctrlKey) && e.key === "d" && !isEditing) {
+      e.preventDefault();
+      handleDraft();
     }
   }
 
@@ -187,7 +209,7 @@ export function ScribbleInput({ onSubmit, editingDocument, onCancelEdit }: Scrib
           {draftStatus ? (
             <span className="draft-status text-[var(--engram)]/60">{draftStatus}</span>
           ) : canSubmit ? (
-            "\u2318\u23CE to save"
+            <><span>{"\u2318\u23CE"} save</span>{!isEditing && <span className="ml-2 text-muted/20">{"\u2318"}D draft</span>}</>
           ) : (
             ""
           )}
@@ -200,6 +222,16 @@ export function ScribbleInput({ onSubmit, editingDocument, onCancelEdit }: Scrib
               className="rounded border border-border px-3 py-1.5 font-mono text-[11px] text-muted transition-colors hover:border-border-focus hover:text-foreground"
             >
               Cancel
+            </button>
+          )}
+          {!isEditing && (
+            <button
+              type="button"
+              onClick={handleDraft}
+              disabled={!canSubmit}
+              className="draft-save-btn rounded border px-3 py-1.5 font-mono text-[11px] text-muted disabled:opacity-15"
+            >
+              Draft
             </button>
           )}
           <button

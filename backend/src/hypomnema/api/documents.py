@@ -9,7 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request, UploadFile
 
 from hypomnema.api.deps import DB
-from hypomnema.api.schemas import DocumentDetail, DocumentOut, DocumentUpdate, PaginatedList, RelatedDocument, ScribbleCreate
+from hypomnema.api.schemas import DocumentDetail, DocumentOut, DocumentUpdate, DocumentWithEngrams, EngramSummary, RelatedDocument, ScribbleCreate
 from hypomnema.db.models import Engram
 from hypomnema.ingestion.file_parser import UnsupportedFormatError, ingest_file
 from hypomnema.ingestion.scribble import create_scribble
@@ -17,6 +17,9 @@ from hypomnema.ontology.pipeline import link_document, process_document
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/documents", tags=["documents"])
+
+# Draft = scribble that was never processed (no tidy_text yet)
+_DRAFT_FILTER = "source_type = 'scribble' AND processed = 0 AND tidy_text IS NULL"
 
 
 async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int | None = None) -> None:
@@ -50,7 +53,8 @@ async def create_scribble_endpoint(
         doc = await create_scribble(db, body.text, title=body.title)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
+    if not body.draft:
+        background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
     return DocumentOut.model_validate(doc, from_attributes=True)
 
 
@@ -124,26 +128,55 @@ async def update_document(
     return DocumentOut(**dict(updated_row))
 
 
-@router.get("", response_model=PaginatedList[DocumentOut])
-async def list_documents(db: DB, offset: int = 0, limit: int = 20) -> PaginatedList[DocumentOut]:
-    cursor = await db.execute("SELECT COUNT(*) FROM documents")
-    row = await cursor.fetchone()
-    await cursor.close()
-    total = row[0] if row else 0
-
+@router.get("", response_model=list[DocumentWithEngrams])
+async def list_documents(db: DB, days: int = 14) -> list[DocumentWithEngrams]:
     cursor = await db.execute(
-        "SELECT * FROM documents ORDER BY created_at DESC LIMIT ? OFFSET ?",
-        (limit, offset),
+        "SELECT d.*, group_concat(e.id || '\x1f' || e.canonical_name, '\x1e') AS engram_agg "
+        "FROM documents d "
+        "LEFT JOIN document_engrams de ON d.id = de.document_id "
+        "LEFT JOIN engrams e ON de.engram_id = e.id "
+        "WHERE d.created_at >= datetime('now', ? || ' days') "
+        f"AND NOT ({_DRAFT_FILTER}) "
+        "GROUP BY d.id "
+        "ORDER BY d.created_at DESC",
+        (str(-days),),
     )
     rows = await cursor.fetchall()
     await cursor.close()
 
-    return PaginatedList[DocumentOut](
-        items=[DocumentOut(**dict(r)) for r in rows],
-        total=total,
-        offset=offset,
-        limit=limit,
+    result: list[DocumentWithEngrams] = []
+    for r in rows:
+        data = dict(r)
+        engram_agg = data.pop("engram_agg", None)
+        engrams: list[EngramSummary] = []
+        if engram_agg:
+            for pair in engram_agg.split("\x1e"):
+                eid, cname = pair.split("\x1f", 1)
+                engrams.append(EngramSummary(id=eid, canonical_name=cname))
+        data["engrams"] = engrams
+        result.append(DocumentWithEngrams(**data))
+    return result
+
+
+@router.get("/count")
+async def get_document_count(db: DB) -> dict[str, int]:
+    """Return total document count excluding drafts."""
+    cursor = await db.execute(
+        f"SELECT COUNT(*) FROM documents WHERE NOT ({_DRAFT_FILTER})"
     )
+    row = await cursor.fetchone()
+    await cursor.close()
+    return {"total": row[0] if row else 0}
+
+
+@router.get("/drafts", response_model=list[DocumentOut])
+async def list_drafts(db: DB) -> list[DocumentOut]:
+    cursor = await db.execute(
+        f"SELECT * FROM documents WHERE {_DRAFT_FILTER} ORDER BY updated_at DESC"
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [DocumentOut(**dict(r)) for r in rows]
 
 
 @router.get("/{document_id}", response_model=DocumentDetail)

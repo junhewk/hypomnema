@@ -118,6 +118,7 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
     await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_uri ON documents(source_uri)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_projections_cluster ON projections(cluster_id)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_engram ON document_engrams(engram_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_document ON document_engrams(document_id)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_engram_aliases_key ON engram_aliases(alias_key)")
 
     # ── FTS5 (external content synced via triggers) ──────────

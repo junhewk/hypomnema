@@ -502,6 +502,138 @@ article:hover .continue-btn {
   opacity: 0.5;
 }
 
+/* ── Draft bar ─────────────────────────────────────── */
+.draft-bar {
+  position: relative;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  background:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--accent) 3%, transparent) 0%,
+      transparent 60%
+    );
+}
+.draft-bar-toggle {
+  position: relative;
+  transition: color 0.2s ease;
+}
+.draft-bar-toggle::before {
+  content: "";
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  margin-right: 6px;
+  transition: transform 0.2s ease;
+  transform: rotate(-45deg);
+  vertical-align: 1px;
+}
+.draft-bar-toggle[data-open="true"]::before {
+  transform: rotate(45deg);
+  vertical-align: 2px;
+}
+.draft-item {
+  position: relative;
+  transition: all 0.15s ease;
+}
+.draft-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 0;
+  height: 1px;
+  background: var(--accent);
+  opacity: 0.3;
+  transition: width 0.2s ease;
+  transform: translateY(-50%);
+}
+.draft-item:hover::before {
+  width: 8px;
+}
+.draft-items-enter {
+  animation: draft-expand 0.2s ease-out both;
+}
+@keyframes draft-expand {
+  from {
+    opacity: 0;
+    max-height: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    max-height: 300px;
+    transform: translateY(0);
+  }
+}
+
+/* ── Stream footer bridge ──────────────────────────── */
+.stream-footer {
+  position: relative;
+  padding-top: 24px;
+}
+.stream-footer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 120px;
+  height: 1px;
+  background:
+    linear-gradient(
+      to right,
+      transparent 0%,
+      color-mix(in srgb, var(--border) 60%, transparent) 30%,
+      color-mix(in srgb, var(--engram) 15%, transparent) 50%,
+      color-mix(in srgb, var(--border) 60%, transparent) 70%,
+      transparent 100%
+    );
+}
+.stream-footer-link {
+  position: relative;
+  transition: all 0.2s ease;
+}
+.stream-footer-link::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  width: 0;
+  height: 1px;
+  background: var(--accent);
+  transition: all 0.25s ease;
+  transform: translateX(-50%);
+}
+.stream-footer-link:hover::after {
+  width: 100%;
+}
+
+/* ── Engram pills ──────────────────────────────────── */
+.engram-pill {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--engram) 15%, transparent);
+  transition: all 0.15s ease;
+}
+.engram-pill:hover {
+  border-color: color-mix(in srgb, var(--engram) 30%, transparent);
+  background: color-mix(in srgb, var(--engram) 12%, transparent);
+  transform: translateY(-1px);
+}
+
+/* ── Draft save button ─────────────────────────────── */
+.draft-save-btn {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--border) 60%, transparent);
+  transition: all 0.2s ease;
+}
+.draft-save-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
 /* Draft status subtle fade */
 @keyframes draft-fade {
   0% { opacity: 0; transform: translateY(2px); }
