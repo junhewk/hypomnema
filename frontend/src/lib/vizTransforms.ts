@@ -218,7 +218,7 @@ export function buildSizeBuffer(
   points: ProjectionPoint[],
   metrics: Map<string, NetworkMetrics>,
 ): Float32Array {
-  const BASE = 4;
+  const BASE = 0.4;
   const n = points.length;
   if (n === 0) return new Float32Array(0);
 

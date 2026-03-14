@@ -111,7 +111,10 @@ export function VizMinimap() {
 
   // Re-render when data changes and visible
   useEffect(() => {
-    if (visible) draw();
+    if (visible) {
+      // requestAnimationFrame ensures the canvas ref is attached after conditional render
+      requestAnimationFrame(draw);
+    }
   }, [visible, draw]);
 
   if (isLoading || points.length === 0) return null;
