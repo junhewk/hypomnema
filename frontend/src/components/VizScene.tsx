@@ -93,24 +93,30 @@ function getClusterLabel(node: ProjectionPoint | null, clusterMap: Map<number, s
   return label ?? `Cluster ${node.cluster_id}`;
 }
 
-/** Smooth camera animation to a target position. */
+/** One-shot camera animation to a target position. Animates once then releases. */
 function CameraController({ target }: { target: THREE.Vector3 | null }) {
-  const targetRef = useRef<THREE.Vector3 | null>(null);
-  const cameraTarget = useRef(new THREE.Vector3());
+  const animatingTo = useRef<THREE.Vector3 | null>(null);
+  const cameraGoal = useRef(new THREE.Vector3());
+  const lastTargetId = useRef<string | null>(null);
 
   useFrame(({ camera }) => {
-    if (!target) {
-      targetRef.current = null;
-      return;
+    // Detect new target (compare serialized to avoid object identity issues)
+    const targetId = target ? `${target.x},${target.y},${target.z}` : null;
+    if (targetId !== lastTargetId.current) {
+      lastTargetId.current = targetId;
+      if (target) {
+        animatingTo.current = target.clone();
+        cameraGoal.current.copy(target).add(new THREE.Vector3(0, 0, 12));
+      } else {
+        animatingTo.current = null;
+      }
     }
-    if (!target.equals(targetRef.current ?? new THREE.Vector3())) {
-      targetRef.current = target.clone();
-      cameraTarget.current.copy(target).add(new THREE.Vector3(0, 0, 12));
-    }
-    if (targetRef.current) {
-      camera.position.lerp(cameraTarget.current, 0.06);
-      if (camera.position.distanceTo(cameraTarget.current) < 0.01) {
-        targetRef.current = null;
+
+    // Animate toward goal, then stop (don't hold the camera)
+    if (animatingTo.current) {
+      camera.position.lerp(cameraGoal.current, 0.06);
+      if (camera.position.distanceTo(cameraGoal.current) < 0.01) {
+        animatingTo.current = null;
       }
     }
   });
@@ -609,6 +615,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
         camera={{ position: [0, 0, 30], fov: 60 }}
         raycaster={{ params: { Points: { threshold: 0.3 } } as unknown as RaycasterParameters }}
         gl={{ antialias: true, alpha: true }}
+        onPointerMissed={() => onFocusNode(null)}
       >
         {/* Store camera ref for window-level drag raycasting */}
         <CameraStorer cameraRef={cameraRef} />
