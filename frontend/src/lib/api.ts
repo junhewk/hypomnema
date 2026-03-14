@@ -103,6 +103,13 @@ export class ApiClient {
     });
   }
 
+  async fetchUrl(url: string): Promise<Document> {
+    return this.request("/api/documents/urls", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    });
+  }
+
   async listDocuments(days = 14): Promise<DocumentWithEngrams[]> {
     return this.request(`/api/documents?days=${days}`);
   }

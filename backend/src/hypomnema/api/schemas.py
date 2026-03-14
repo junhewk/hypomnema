@@ -93,6 +93,10 @@ class ScribbleCreate(BaseModel):
     draft: bool = False
 
 
+class UrlFetch(BaseModel):
+    url: str
+
+
 class DocumentUpdate(BaseModel):
     text: str | None = None
     title: str | None = None

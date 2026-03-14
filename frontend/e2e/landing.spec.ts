@@ -13,7 +13,7 @@ test("ScribbleInput textarea is visible and focusable", async ({ page }) => {
   await expect(textarea).toBeFocused();
 });
 
-test("FileDropZone is visible", async ({ page }) => {
+test("file attach button is visible", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Drop PDF, DOCX, or MD")).toBeVisible();
+  await expect(page.getByTitle("Attach file")).toBeVisible();
 });

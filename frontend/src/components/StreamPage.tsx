@@ -3,7 +3,6 @@
 import { useState, useCallback } from "react";
 import { useDocuments } from "@/hooks/useDocuments";
 import { ScribbleInput } from "./ScribbleInput";
-import { FileDropZone } from "./FileDropZone";
 import { DocumentCard } from "./DocumentCard";
 import { DraftBar } from "./DraftBar";
 import { StreamFooter } from "./StreamFooter";
@@ -30,8 +29,6 @@ export function StreamPage() {
         editingDocument={editing}
         onCancelEdit={() => setEditing(null)}
       />
-      <FileDropZone onUpload={refresh} />
-
       <DraftBar onEdit={setEditing} refreshSignal={draftSignal} />
 
       <section>

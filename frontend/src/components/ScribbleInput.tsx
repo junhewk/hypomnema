@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent } from "react";
-import { api } from "@/lib/api";
+import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent, type DragEvent } from "react";
+import { Paperclip } from "lucide-react";
+import { api, ApiError } from "@/lib/api";
 import type { Document } from "@/lib/types";
 
 const DRAFT_KEY = "hypomnema_draft";
+const URL_RE = /^https?:\/\/\S+$/;
 
 interface ScribbleInputProps {
   onSubmit: (doc: Document) => void;
@@ -19,10 +21,15 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draftStatus, setDraftStatus] = useState<string | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canSubmit = text.trim().length > 0 && !isSubmitting;
   const isEditing = editingDocument != null;
+  const trimmed = text.trim();
+  const canSubmit = trimmed.length > 0 && !isSubmitting;
+  const isUrl = canSubmit && URL_RE.test(trimmed) && !trimmed.includes("\n") && !isEditing;
 
   function syncTextareaHeight(nextText: string) {
     const el = textareaRef.current;
@@ -80,6 +87,19 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
     syncTextareaHeight(text);
   }, [text]);
 
+  async function uploadFile(file: File) {
+    setIsUploading(true);
+    setError(null);
+    try {
+      const doc = await api.uploadFile(file);
+      onSubmit(doc);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
   async function handleSubmit(e?: FormEvent) {
     e?.preventDefault();
     if (!canSubmit) return;
@@ -93,6 +113,8 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
           text: text.trim(),
           title: title.trim() || undefined,
         });
+      } else if (isUrl) {
+        doc = await api.fetchUrl(trimmed);
       } else {
         doc = await api.createScribble(text.trim(), title.trim() || undefined);
       }
@@ -104,7 +126,11 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
         onCancelEdit();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      if (err instanceof ApiError && err.status === 409) {
+        setError("This URL has already been fetched.");
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to save");
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -139,7 +165,7 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
       e.preventDefault();
       handleSubmit();
     }
-    if ((e.metaKey || e.ctrlKey) && e.key === "d" && !isEditing) {
+    if ((e.metaKey || e.ctrlKey) && e.key === "d" && !isEditing && !isUrl) {
       e.preventDefault();
       handleDraft();
     }
@@ -154,11 +180,44 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
     }
   }
 
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (!isDragOver) setIsDragOver(true);
+  }
+
+  function handleDragLeave(e: DragEvent) {
+    e.preventDefault();
+    setIsDragOver(false);
+  }
+
+  function handleDrop(e: DragEvent) {
+    e.preventDefault();
+    setIsDragOver(false);
+    const file = e.dataTransfer.files[0];
+    if (file) uploadFile(file);
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) uploadFile(file);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   return (
     <form
       onSubmit={handleSubmit}
-      className="editor-surface mb-8 rounded-lg border border-border p-5 transition-shadow focus-within:shadow-[0_0_0_1px_var(--border-focus)]"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      data-url-mode={isUrl || undefined}
+      className="editor-surface relative mb-8 rounded-lg border border-border p-5 transition-shadow focus-within:shadow-[0_0_0_1px_var(--border-focus)]"
     >
+      {isDragOver && (
+        <div className="drop-overlay absolute inset-0 z-10 flex items-center justify-center">
+          <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--accent)]">Drop file</span>
+        </div>
+      )}
+
       {isEditing && (
         <div className="mb-4 flex items-center gap-2">
           <span className="editing-badge rounded bg-[var(--accent)]/10 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-[var(--accent)]">
@@ -205,15 +264,41 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
       )}
 
       <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-        <span className="font-mono text-[10px] text-muted/30">
-          {draftStatus ? (
-            <span className="draft-status text-[var(--engram)]/60">{draftStatus}</span>
-          ) : canSubmit ? (
-            <><span>{"\u2318\u23CE"} save</span>{!isEditing && <span className="ml-2 text-muted/20">{"\u2318"}D draft</span>}</>
-          ) : (
-            ""
+        <div className="flex items-center gap-2">
+          {!isEditing && (
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="attach-btn flex items-center justify-center rounded p-1 text-muted/40 hover:text-[var(--source-file)]"
+              title="Attach file"
+            >
+              <Paperclip size={14} />
+            </button>
           )}
-        </span>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.docx,.md"
+            onChange={handleFileChange}
+            className="hidden"
+            data-testid="file-input"
+          />
+          <span className="font-mono text-[10px] text-muted/30">
+            {isUploading ? (
+              <span className="text-[var(--accent)]/60">Uploading...</span>
+            ) : draftStatus ? (
+              <span className="draft-status text-[var(--engram)]/60">{draftStatus}</span>
+            ) : canSubmit ? (
+              isUrl ? (
+                <span>{"\u2318\u23CE"} fetch</span>
+              ) : (
+                <><span>{"\u2318\u23CE"} save</span>{!isEditing && <span className="ml-2 text-muted/20">{"\u2318"}D draft</span>}</>
+              )
+            ) : (
+              ""
+            )}
+          </span>
+        </div>
         <div className="flex items-center gap-2">
           {isEditing && (
             <button
@@ -224,7 +309,7 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
               Cancel
             </button>
           )}
-          {!isEditing && (
+          {!isEditing && !isUrl && (
             <button
               type="button"
               onClick={handleDraft}
@@ -237,13 +322,19 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
           <button
             type="submit"
             disabled={!canSubmit}
-            className="rounded bg-foreground px-4 py-1.5 font-mono text-[11px] font-medium text-background transition-opacity disabled:opacity-15"
+            className={`rounded px-4 py-1.5 font-mono text-[11px] font-medium disabled:opacity-15 ${
+              isUrl
+                ? "fetch-btn"
+                : "bg-foreground text-background transition-opacity"
+            }`}
           >
             {isSubmitting
-              ? "Saving..."
+              ? isUrl ? "Fetching..." : "Saving..."
               : isEditing
                 ? "Save & Reprocess"
-                : "Save"}
+                : isUrl
+                  ? "Fetch"
+                  : "Save"}
           </button>
         </div>
       </div>

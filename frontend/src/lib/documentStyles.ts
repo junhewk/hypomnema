@@ -22,6 +22,12 @@ export const SOURCE_STYLES: Record<
       "text-[var(--source-feed)] bg-[var(--source-feed)]/10",
     borderColor: "var(--source-feed)",
   },
+  url: {
+    label: "url",
+    className:
+      "text-[var(--source-url)] bg-[var(--source-url)]/10",
+    borderColor: "var(--source-url)",
+  },
 };
 
 export const STATUS_COLOR: Record<number, string> = {

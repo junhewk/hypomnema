@@ -19,7 +19,7 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
     await db.execute("""
         CREATE TABLE IF NOT EXISTS documents (
             id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed')),
+            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed', 'url')),
             title TEXT,
             text TEXT NOT NULL,
             mime_type TEXT,
@@ -172,6 +172,7 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
     """)
 
     await _migrate_add_columns(db)
+    await _migrate_source_type_url(db)
     from hypomnema.ontology.engram import backfill_engram_aliases
 
     await backfill_engram_aliases(db)
@@ -188,6 +189,50 @@ async def _migrate_add_columns(db: aiosqlite.Connection) -> None:
     for col, definition in columns.items():
         with suppress(Exception):
             await db.execute(f"ALTER TABLE documents ADD COLUMN {col} {definition}")  # noqa: S608
+
+
+async def _migrate_source_type_url(db: aiosqlite.Connection) -> None:
+    """Add 'url' to the documents source_type CHECK constraint (idempotent)."""
+    cursor = await db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'documents'"
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        return
+    ddl = str(row["sql"]) if row["sql"] else ""
+    if "'url'" in ddl:
+        return  # Already migrated
+
+    # Rebuild table with updated CHECK constraint
+    await db.execute("ALTER TABLE documents RENAME TO _documents_old")
+    await db.execute("""
+        CREATE TABLE documents (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed', 'url')),
+            title TEXT,
+            text TEXT NOT NULL,
+            mime_type TEXT,
+            source_uri TEXT,
+            metadata TEXT,
+            triaged INTEGER NOT NULL DEFAULT 0,
+            processed INTEGER NOT NULL DEFAULT 0,
+            revision INTEGER NOT NULL DEFAULT 1,
+            tidy_title TEXT,
+            tidy_text TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+    await db.execute("INSERT INTO documents SELECT * FROM _documents_old")
+    await db.execute("DROP TABLE _documents_old")
+
+    # Recreate indexes
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_type ON documents(source_type)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_processed ON documents(processed)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_triaged ON documents(triaged)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_source_uri ON documents(source_uri)")
 
 
 async def create_vec_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> None:

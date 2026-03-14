@@ -16,6 +16,7 @@
   --source-scribble: #1d4ed8;
   --source-file: #7c3aed;
   --source-feed: #b45309;
+  --source-url: #0891b2;
   --engram: #0d9488;
 }
 
@@ -48,6 +49,7 @@
     --source-scribble: #60a5fa;
     --source-file: #a78bfa;
     --source-feed: #fbbf24;
+    --source-url: #22d3ee;
     --engram: #2dd4bf;
   }
 }
@@ -377,6 +379,74 @@ body {
 }
 .editor-surface:focus-within::before {
   opacity: 1;
+}
+
+/* URL-detected mode — left edge shifts to cyan */
+.editor-surface[data-url-mode="true"]::before {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    color-mix(in srgb, var(--source-url) 30%, transparent) 50%,
+    transparent 100%
+  );
+  opacity: 1;
+}
+
+/* Drop overlay — atmospheric manuscript-receiving feel */
+.drop-overlay {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 6%, transparent) 0%,
+      color-mix(in srgb, var(--source-file) 4%, transparent) 100%
+    );
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: inherit;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: drop-ready 0.2s ease-out both;
+}
+@keyframes drop-ready {
+  from { opacity: 0; transform: scale(0.99); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Attach button — archival clip feel */
+.attach-btn {
+  position: relative;
+  transition: all 0.2s ease;
+}
+.attach-btn::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  width: 0;
+  height: 1px;
+  background: var(--source-file);
+  transform: translateX(-50%);
+  transition: width 0.2s ease;
+}
+.attach-btn:hover::after {
+  width: 12px;
+}
+
+/* Fetch button — URL-mode action */
+.fetch-btn {
+  background: var(--source-url);
+  color: #fff;
+  transition: all 0.2s ease;
+}
+.fetch-btn:disabled {
+  opacity: 0.15;
+}
+.fetch-btn:not(:disabled):hover {
+  box-shadow: 0 0 12px color-mix(in srgb, var(--source-url) 25%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  .fetch-btn {
+    color: #0c0d12;
+  }
 }
 
 /* Editing badge glow */

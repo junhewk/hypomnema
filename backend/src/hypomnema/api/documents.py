@@ -8,11 +8,14 @@ from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request, UploadFile
 
+import httpx
+
 from hypomnema.api.deps import DB
-from hypomnema.api.schemas import DocumentDetail, DocumentOut, DocumentUpdate, DocumentWithEngrams, EngramSummary, RelatedDocument, ScribbleCreate
+from hypomnema.api.schemas import DocumentDetail, DocumentOut, DocumentUpdate, DocumentWithEngrams, EngramSummary, RelatedDocument, ScribbleCreate, UrlFetch
 from hypomnema.db.models import Engram
 from hypomnema.ingestion.file_parser import UnsupportedFormatError, ingest_file
 from hypomnema.ingestion.scribble import create_scribble
+from hypomnema.ingestion.url_fetch import DuplicateUrlError, fetch_url
 from hypomnema.ontology.pipeline import link_document, process_document
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,27 @@ async def create_scribble_endpoint(
         raise HTTPException(status_code=400, detail=str(e)) from e
     if not body.draft:
         background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
+    return DocumentOut.model_validate(doc, from_attributes=True)
+
+
+@router.post("/urls", response_model=DocumentOut, status_code=201)
+async def fetch_url_endpoint(
+    body: UrlFetch,
+    request: Request,
+    db: DB,
+    background_tasks: BackgroundTasks,
+) -> DocumentOut:
+    if not body.url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
+    try:
+        doc = await fetch_url(db, body.url)
+    except DuplicateUrlError as e:
+        raise HTTPException(status_code=409, detail=f"URL already fetched (doc {e.existing_id})") from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {e}") from e
+    background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
     return DocumentOut.model_validate(doc, from_attributes=True)
 
 

@@ -22,6 +22,7 @@ dependencies = [
     "umap-learn>=0.5,<1",
     "scikit-learn>=1.6,<2",
     "httpx>=0.28,<1",
+    "trafilatura>=2.0,<3",
     "cryptography>=44,<45",
     "openai>=1.60,<2",
     "platformdirs>=4,<5",
@@ -79,6 +80,10 @@ ignore_missing_imports = true
 module = ["feedparser"]
 ignore_missing_imports = true
 follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+module = ["trafilatura"]
+ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["apscheduler.*"]
