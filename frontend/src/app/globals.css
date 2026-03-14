@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafaf9;
-  --foreground: #1c1917;
-  --surface: #f5f5f4;
+  --background: #f8f9fc;
+  --foreground: #161824;
+  --surface: #f0f2f7;
   --surface-raised: #ffffff;
-  --border: #e7e5e4;
-  --border-focus: #a8a29e;
-  --muted: #78716c;
+  --border: #dde0ea;
+  --border-focus: #9da2b4;
+  --muted: #6a6f85;
   --accent: #b45309;
   --accent-soft: #fef3c7;
   --processing: #d97706;
@@ -36,13 +36,13 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0b;
-    --foreground: #e7e5e4;
-    --surface: #141415;
-    --surface-raised: #1c1c1e;
-    --border: #262627;
-    --border-focus: #525253;
-    --muted: #78716c;
+    --background: #0c0d12;
+    --foreground: #e0e3ed;
+    --surface: #131520;
+    --surface-raised: #1a1c28;
+    --border: #252738;
+    --border-focus: #4a4d65;
+    --muted: #6a6f85;
     --accent: #f59e0b;
     --accent-soft: #451a0320;
     --source-scribble: #60a5fa;
@@ -232,24 +232,23 @@ body {
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
   /* Force dark surface — tooltips always float over dark viz canvas */
   background: rgba(28, 28, 30, 0.88);
-  color: #e7e5e4;
-  border: 1px solid rgba(38, 38, 39, 0.6);
+  color: #e0e3ed;
+  border: 1px solid rgba(37, 39, 56, 0.6);
   box-shadow:
     0 4px 16px rgba(0, 0, 0, 0.35),
     0 0 0 0.5px rgba(255, 255, 255, 0.06) inset;
 }
 .viz-tooltip-cluster {
-  color: #a8a29e;
+  color: #c8c3bc;
 }
 
 .viz-cluster-label {
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  background: color-mix(in srgb, var(--background) 50%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 30%, transparent);
-  padding: 1px 6px;
+  background: rgba(20, 20, 24, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 2px 7px;
   border-radius: 3px;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  color: #d4d0cb;
 }
 
 @keyframes viz-fade-in {

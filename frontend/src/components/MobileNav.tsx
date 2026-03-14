@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Network } from "lucide-react";
 import { NAV_ITEMS, isNavActive } from "./Sidebar";
@@ -53,7 +54,8 @@ export function MobileNav() {
             <line className="hamburger-bot" x1="3" y1="13.5" x2="15" y2="13.5" />
           </svg>
         </button>
-        <Link href="/" className="no-underline">
+        <Link href="/" className="no-underline flex items-center gap-1.5">
+          <Image src="/hypomnema.png" width={18} height={18} alt="Hypomnema" unoptimized />
           <span className="sidebar-logo font-mono text-[10px] font-bold uppercase">
             hypomnema
           </span>
@@ -78,7 +80,8 @@ export function MobileNav() {
           >
             {/* Logo */}
             <div className="px-4 pt-6 pb-6">
-              <Link href="/" className="no-underline" onClick={close}>
+              <Link href="/" className="no-underline flex items-center gap-2" onClick={close}>
+                <Image src="/hypomnema.png" width={22} height={22} alt="" unoptimized />
                 <h1 className="sidebar-logo font-mono text-[11px] font-bold uppercase">
                   hypomnema
                 </h1>

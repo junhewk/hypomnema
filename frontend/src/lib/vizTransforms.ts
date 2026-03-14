@@ -2,8 +2,8 @@ import type { ProjectionPoint } from "./types";
 
 type RGB = [number, number, number];
 
-const COLOR_NEUTRAL: RGB = [0.83, 0.81, 0.78];
-const COLOR_EDGE_DEFAULT: RGB = [0.77, 0.71, 0.66];
+const COLOR_NEUTRAL: RGB = [0.82, 0.84, 0.88];
+const COLOR_EDGE_DEFAULT: RGB = [0.68, 0.72, 0.80];
 const COLOR_VIZ_BG: RGB = [0.031, 0.031, 0.039];
 
 /** Convert HSL (h: 0–360, s: 0–1, l: 0–1) to RGB (each 0–1). */
@@ -240,7 +240,7 @@ export function buildEdgeColorBuffer(
       (e.source_engram_id === focusedEngramId || e.target_engram_id === focusedEngramId);
 
     const c = connected ? focusColor : COLOR_EDGE_DEFAULT;
-    const opacity = connected ? 0.6 : (focusedEngramId != null ? 0.08 : 0.2);
+    const opacity = connected ? 0.7 : (focusedEngramId != null ? 0.18 : 0.45);
 
     // Pre-multiply: mix color toward background at given opacity
     const r = COLOR_VIZ_BG[0] + (c[0] - COLOR_VIZ_BG[0]) * opacity;

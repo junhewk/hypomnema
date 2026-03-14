@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { Rows3, Search, Settings, Network, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useSidebar } from "@/hooks/useSidebarContext";
@@ -58,10 +59,9 @@ export function Sidebar() {
     <aside data-collapsed={collapsed} className={`sidebar flex shrink-0 flex-col border-r border-border sidebar-transition ${collapsed ? "w-14" : "w-56"}`}>
       {/* Logo */}
       <div className={`pt-6 pb-6 ${collapsed ? "px-2 flex justify-center" : "px-4"}`}>
-        <Link href="/" className="no-underline">
-          {collapsed ? (
-            <span className="sidebar-logo font-mono text-[13px] font-bold uppercase">H</span>
-          ) : (
+        <Link href="/" className={`no-underline ${collapsed ? "" : "flex items-center gap-2"}`}>
+          <Image src="/hypomnema.png" width={collapsed ? 28 : 22} height={collapsed ? 28 : 22} alt="Hypomnema" unoptimized />
+          {!collapsed && (
             <h1 className="sidebar-logo font-mono text-[11px] font-bold uppercase">
               hypomnema
             </h1>

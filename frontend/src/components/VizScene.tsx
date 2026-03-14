@@ -33,7 +33,7 @@ const VERTEX_SHADER = `
 
     // Radial reveal
     float dist = length(position.xyz) / 30.0;
-    vVisible = smoothstep(uReveal - 0.05, uReveal + 0.05, 1.0 - dist);
+    vVisible = smoothstep(dist - 0.05, dist + 0.05, uReveal);
 
     // Base size with breathing
     float breath = 1.0 + sin(uTime * 0.8 + position.x * 0.5) * 0.06;
@@ -572,6 +572,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   const edgeMaterial = useMemo(() => {
     return new THREE.LineBasicMaterial({
       vertexColors: true,
+      transparent: true,
       depthWrite: false,
     });
   }, []);
@@ -661,7 +662,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
             position={[c.centroid_x, c.centroid_y, c.centroid_z]}
             center
           >
-            <span className="viz-cluster-label font-mono text-[11px] text-muted/85 pointer-events-none select-none whitespace-nowrap">
+            <span className="viz-cluster-label font-mono text-[12px] pointer-events-none select-none whitespace-nowrap">
               {c.label ?? `Cluster ${c.cluster_id}`}
             </span>
           </Html>
