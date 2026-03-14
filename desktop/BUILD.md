@@ -51,6 +51,30 @@ python desktop/packaging/build.py
 
 Output: `desktop/src-tauri/target/release/bundle/appimage/Hypomnema_0.1.0_amd64.AppImage`
 
+## Code signing
+
+The app is distributed unsigned. Each platform shows a warning on first launch.
+
+### macOS
+
+Gatekeeper blocks unsigned apps. After installing, run:
+
+```bash
+xattr -cr /Applications/Hypomnema.app
+```
+
+To sign properly: enroll in Apple Developer Program ($99/yr), then set `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID` env vars before running `cargo tauri build`. Tauri handles notarization automatically with these set.
+
+### Windows
+
+SmartScreen warns on first launch. Click "More info" then "Run anyway".
+
+To sign: purchase a code signing certificate from a CA ($200-400/yr), then use `signtool.exe` on the MSI output.
+
+### Linux
+
+AppImage works unsigned. No action needed.
+
 ## Build flags
 
 - `--skip-frontend` — skip Next.js static export

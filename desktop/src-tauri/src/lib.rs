@@ -20,7 +20,7 @@ async fn wait_for_backend(port: u16, timeout: Duration) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let port: u16 = 8000;
+    let port: u16 = 8073;
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
