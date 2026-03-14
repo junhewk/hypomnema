@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 
-async def _run_ontology_pipeline(app: FastAPI, document_id: str) -> None:
+async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int | None = None) -> None:
     """Background task: extract entities, generate edges, and compute projections.
 
     Uses the app's shared database connection to avoid SQLite write-lock contention.
@@ -28,8 +28,8 @@ async def _run_ontology_pipeline(app: FastAPI, document_id: str) -> None:
     llm = app.state.llm
     embeddings = app.state.embeddings
     try:
-        await process_document(db, document_id, llm, embeddings)
-        await link_document(db, document_id, llm)
+        await process_document(db, document_id, llm, embeddings, expected_revision=revision)
+        await link_document(db, document_id, llm, expected_revision=revision)
 
         # Auto-compute projections so viz is immediately available
         from hypomnema.visualization.projection import compute_projections
@@ -105,7 +105,7 @@ async def update_document(
     values = list(updates.values())
     cursor = await db.execute(
         f"UPDATE documents SET {set_clause}, processed = 0, tidy_title = NULL, tidy_text = NULL, "  # noqa: S608
-        "updated_at = datetime('now') WHERE id = ? RETURNING *",
+        "revision = revision + 1, updated_at = datetime('now') WHERE id = ? RETURNING *",
         (*values, document_id),
     )
     updated_row = await cursor.fetchone()
@@ -117,8 +117,9 @@ async def update_document(
     await db.execute("DELETE FROM edges WHERE source_document_id = ?", (document_id,))
     await db.commit()
 
-    # Re-run ontology pipeline in background
-    background_tasks.add_task(_run_ontology_pipeline, request.app, document_id)
+    # Re-run ontology pipeline in background with current revision
+    revision = updated_row["revision"]
+    background_tasks.add_task(_run_ontology_pipeline, request.app, document_id, revision)
 
     return DocumentOut(**dict(updated_row))
 

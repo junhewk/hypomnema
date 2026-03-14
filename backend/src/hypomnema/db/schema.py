@@ -26,6 +26,7 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
             metadata TEXT,
             triaged INTEGER NOT NULL DEFAULT 0,
             processed INTEGER NOT NULL DEFAULT 0,
+            revision INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
             updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
         )
@@ -158,15 +159,20 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
         END
     """)
 
-    await _migrate_tidy_columns(db)
+    await _migrate_add_columns(db)
     await db.commit()
 
 
-async def _migrate_tidy_columns(db: aiosqlite.Connection) -> None:
-    """Add tidy_title and tidy_text columns to documents (idempotent)."""
-    for col in ("tidy_title", "tidy_text"):
+async def _migrate_add_columns(db: aiosqlite.Connection) -> None:
+    """Add columns introduced after initial schema (idempotent)."""
+    columns = {
+        "tidy_title": "TEXT",
+        "tidy_text": "TEXT",
+        "revision": "INTEGER NOT NULL DEFAULT 1",
+    }
+    for col, definition in columns.items():
         try:
-            await db.execute(f"ALTER TABLE documents ADD COLUMN {col} TEXT")  # noqa: S608
+            await db.execute(f"ALTER TABLE documents ADD COLUMN {col} {definition}")  # noqa: S608
         except Exception:  # noqa: BLE001
             pass  # Column already exists
 

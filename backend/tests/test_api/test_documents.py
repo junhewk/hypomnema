@@ -131,6 +131,21 @@ class TestUpdateDocument:
         resp = await client.patch(f"/api/documents/{doc_id}", json={})
         assert resp.status_code == 400
 
+    async def test_new_document_has_revision_1(self, client: AsyncClient):
+        create_resp = await client.post("/api/documents/scribbles", json={"text": "Test"})
+        assert create_resp.status_code == 201
+        assert create_resp.json()["revision"] == 1
+
+    async def test_update_increments_revision(self, client: AsyncClient):
+        create_resp = await client.post("/api/documents/scribbles", json={"text": "Original"})
+        doc_id = create_resp.json()["id"]
+
+        resp1 = await client.patch(f"/api/documents/{doc_id}", json={"text": "Update 1"})
+        assert resp1.json()["revision"] == 2
+
+        resp2 = await client.patch(f"/api/documents/{doc_id}", json={"text": "Update 2"})
+        assert resp2.json()["revision"] == 3
+
     async def test_update_clears_associations(self, client: AsyncClient, app):
         """Verify document_engrams and document_embeddings are cleared on update."""
         create_resp = await client.post("/api/documents/scribbles", json={"text": "Test"})

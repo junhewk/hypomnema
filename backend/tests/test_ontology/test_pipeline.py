@@ -290,3 +290,50 @@ class TestLinkPendingDocuments:
             await process_document(tmp_db, doc_id, llm, mock_embeddings)
         results = await link_pending_documents(tmp_db, llm, limit=1)
         assert len(results) == 1
+
+
+class TestRevisionGuard:
+    @pytest.mark.asyncio
+    async def test_process_document_skips_stale_revision(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+        doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
+        # Bump revision to 2 in DB
+        await tmp_db.execute("UPDATE documents SET revision = 2 WHERE id = ?", (doc_id,))
+        await tmp_db.commit()
+        # Call with expected=1 (stale)
+        engrams = await process_document(tmp_db, doc_id, _make_llm(), mock_embeddings, expected_revision=1)
+        assert engrams == []
+        # processed should still be 0
+        cursor = await tmp_db.execute("SELECT processed FROM documents WHERE id = ?", (doc_id,))
+        row = await cursor.fetchone()
+        assert row["processed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_process_document_runs_with_current_revision(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+        doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
+        engrams = await process_document(tmp_db, doc_id, _make_llm(), mock_embeddings, expected_revision=1)
+        assert len(engrams) == 2
+
+    @pytest.mark.asyncio
+    async def test_process_document_runs_without_revision(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+        doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
+        # Set revision high — but no expected_revision means batch mode, should succeed
+        await tmp_db.execute("UPDATE documents SET revision = 99 WHERE id = ?", (doc_id,))
+        await tmp_db.commit()
+        engrams = await process_document(tmp_db, doc_id, _make_llm(), mock_embeddings)
+        assert len(engrams) == 2
+
+    @pytest.mark.asyncio
+    async def test_link_document_skips_stale_revision(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+        doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
+        llm = _make_linker_llm()
+        await process_document(tmp_db, doc_id, llm, mock_embeddings)
+        # Bump revision after processing
+        await tmp_db.execute("UPDATE documents SET revision = 2 WHERE id = ?", (doc_id,))
+        await tmp_db.commit()
+        # Link with stale revision
+        edges = await link_document(tmp_db, doc_id, llm, expected_revision=1)
+        assert edges == []
+        # processed should still be 1 (not advanced to 2)
+        cursor = await tmp_db.execute("SELECT processed FROM documents WHERE id = ?", (doc_id,))
+        row = await cursor.fetchone()
+        assert row["processed"] == 1

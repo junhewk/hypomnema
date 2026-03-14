@@ -39,6 +39,7 @@ class Document(BaseModel):
     metadata: dict[str, Any] | None = None
     triaged: int = 0
     processed: int = 0
+    revision: int = 1
     tidy_title: str | None = None
     tidy_text: str | None = None
     created_at: datetime

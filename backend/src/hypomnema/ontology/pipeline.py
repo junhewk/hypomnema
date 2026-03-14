@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,6 +22,8 @@ from hypomnema.ontology.linker import (
 )
 from hypomnema.ontology.normalizer import normalize, resolve_synonyms
 
+logger = logging.getLogger(__name__)
+
 
 async def _fetch_document(db: aiosqlite.Connection, document_id: str) -> Document:
     """Fetch a document by ID, raise ValueError if not found."""
@@ -32,11 +35,29 @@ async def _fetch_document(db: aiosqlite.Connection, document_id: str) -> Documen
     return Document.from_row(row)
 
 
+async def _check_revision(
+    db: aiosqlite.Connection, document_id: str, expected_revision: int | None
+) -> bool:
+    """Return True if current revision matches expected. None = always True (batch mode)."""
+    if expected_revision is None:
+        return True
+    cursor = await db.execute(
+        "SELECT revision FROM documents WHERE id = ?", (document_id,)
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        return False
+    return row["revision"] == expected_revision
+
+
 async def process_document(
     db: aiosqlite.Connection,
     document_id: str,
     llm: LLMClient,
     embeddings: EmbeddingModel,
+    *,
+    expected_revision: int | None = None,
 ) -> list[Engram]:
     """Run entity extraction pipeline on a single document.
 
@@ -55,8 +76,20 @@ async def process_document(
     if doc.processed >= 1:
         return []
 
+    # Pre-flight revision check (use already-fetched doc)
+    if expected_revision is not None and doc.revision != expected_revision:
+        logger.warning("process_document: stale revision for %s (expected %s)", document_id, expected_revision)
+        return []
+
     # Extract entities + tidy memo
     result = await extract_entities(llm, doc.text)
+
+    extracted = result.entities
+
+    # Post-LLM revision check — before any DB writes
+    if not await _check_revision(db, document_id, expected_revision):
+        logger.warning("process_document: stale revision after LLM work for %s (expected %s)", document_id, expected_revision)
+        return []
 
     # Store tidy memo fields
     if result.tidy_title or result.tidy_text:
@@ -65,7 +98,6 @@ async def process_document(
             (result.tidy_title, result.tidy_text, document_id),
         )
 
-    extracted = result.entities
     if not extracted:
         await db.execute(
             "UPDATE documents SET processed = 1 WHERE id = ?", (document_id,)
@@ -134,6 +166,8 @@ async def link_document(
     db: aiosqlite.Connection,
     document_id: str,
     llm: LLMClient,
+    *,
+    expected_revision: int | None = None,
 ) -> list[Edge]:
     """Generate edges for engrams in a processed document.
 
@@ -146,6 +180,11 @@ async def link_document(
     doc = await _fetch_document(db, document_id)
 
     if doc.processed != 1:
+        return []
+
+    # Pre-flight revision check (use already-fetched doc)
+    if expected_revision is not None and doc.revision != expected_revision:
+        logger.warning("link_document: stale revision for %s (expected %s)", document_id, expected_revision)
         return []
 
     # Get engrams linked to this document
@@ -181,6 +220,12 @@ async def link_document(
             edge = await create_edge(db, p_with_doc)
             if edge is not None:
                 all_edges.append(edge)
+
+    # Post-LLM revision check — before committing edges
+    if not await _check_revision(db, document_id, expected_revision):
+        logger.warning("link_document: stale revision after LLM work for %s (expected %s)", document_id, expected_revision)
+        await db.rollback()
+        return []
 
     # Mark processed=2
     await db.execute(
