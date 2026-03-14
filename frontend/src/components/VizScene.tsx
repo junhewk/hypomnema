@@ -620,14 +620,22 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   const focusedClusterLabel = useMemo(() => getClusterLabel(focusedNode, clusterMap), [focusedNode, clusterMap]);
 
   // Explode/contract on alt+scroll (Option+scroll on macOS)
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (!e.altKey) return;
-    e.preventDefault();
-    e.stopPropagation();
-    let dy = e.deltaY;
-    if (e.deltaMode === 1) dy *= 40;
-    if (e.deltaMode === 2) dy *= 800;
-    setExplodeFactor(prev => Math.max(0.3, Math.min(3.0, prev + dy * -0.005)));
+  // Native capture-phase listener to intercept before OrbitControls
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (!e.altKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      let dy = e.deltaY;
+      if (e.deltaMode === 1) dy *= 40;
+      if (e.deltaMode === 2) dy *= 800;
+      setExplodeFactor(prev => Math.max(0.3, Math.min(3.0, prev + dy * -0.005)));
+    };
+    el.addEventListener("wheel", handler, { capture: true, passive: false });
+    return () => el.removeEventListener("wheel", handler, { capture: true });
   }, []);
 
   // Edge material with vertex colors
@@ -646,7 +654,6 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
       className="viz-canvas-wrapper h-full w-full"
       data-testid="viz-canvas"
       onContextMenu={(e) => e.preventDefault()}
-      onWheel={handleWheel}
     >
       <Canvas
         camera={{ position: [0, 0, 30], fov: 60 }}
