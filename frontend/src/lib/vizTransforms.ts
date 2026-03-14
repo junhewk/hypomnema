@@ -119,7 +119,7 @@ export function buildSizeBuffer(
   const buf = new Float32Array(points.length);
   for (let i = 0; i < points.length; i++) {
     const count = edgeCounts.get(points[i].engram_id) ?? 0;
-    buf[i] = 5 + Math.log(count + 1) * 4;  // base 5px + log scale
+    buf[i] = 8 + Math.log(count + 1) * 6;  // base 8px + log scale
   }
   return buf;
 }

@@ -60,8 +60,32 @@ def _frontend_build_signature(settings: Settings) -> str:
     return "\n".join(f"{key}={value}" for key, value in sorted(public_env.items()))
 
 
+def _frontend_source_is_stale(next_dir: Path) -> bool:
+    """Return True if any frontend source file is newer than the production build."""
+    build_id = next_dir / "BUILD_ID"
+    if not build_id.is_file():
+        return True
+    build_mtime = build_id.stat().st_mtime
+
+    frontend_dir = next_dir.parent
+    # Check source files
+    src_dir = frontend_dir / "src"
+    if src_dir.is_dir():
+        for path in src_dir.rglob("*"):
+            if path.suffix in (".ts", ".tsx", ".css", ".json") and path.stat().st_mtime > build_mtime:
+                return True
+    # Check root config files
+    for name in ("package.json", "next.config.ts", "tailwind.config.ts"):
+        cfg = frontend_dir / name
+        if cfg.is_file() and cfg.stat().st_mtime > build_mtime:
+            return True
+    return False
+
+
 def _has_matching_production_frontend_build(next_dir: Path, settings: Settings) -> bool:
     if not _has_production_frontend_build(next_dir):
+        return False
+    if _frontend_source_is_stale(next_dir):
         return False
     build_env_file = next_dir / _FRONTEND_BUILD_ENV_FILE
     if not build_env_file.is_file():

@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Canvas, useFrame, invalidate } from "@react-three/fiber";
+import { Canvas, invalidate } from "@react-three/fiber";
 import { useVizDataCtx } from "@/hooks/useVizDataContext";
 import {
   buildPositionBuffer,
@@ -10,11 +10,9 @@ import {
   buildEdgeBuffer,
   buildPointIndex,
 } from "@/lib/vizTransforms";
-import type { Group } from "three";
 
 function MinimapScene() {
   const { points, edges } = useVizDataCtx();
-  const groupRef = useRef<Group>(null);
 
   const pointIndex = useMemo(() => buildPointIndex(points), [points]);
   const positionBuffer = useMemo(() => buildPositionBuffer(points), [points]);
@@ -26,17 +24,15 @@ function MinimapScene() {
 
   const edgeVertexCount = edgeBuffer.length / 3;
 
-  // Slow auto-rotation — only runs when Canvas renders a frame
-  useFrame((_state, delta) => {
-    if (groupRef.current) {
-      groupRef.current.rotation.y += delta * 0.12;
-    }
-  });
+  // Invalidate once when points change so the static scene renders
+  useEffect(() => {
+    if (points.length > 0) invalidate();
+  }, [points]);
 
   if (points.length === 0) return null;
 
   return (
-    <group ref={groupRef}>
+    <group>
       <points>
         <bufferGeometry>
           <bufferAttribute
@@ -78,15 +74,6 @@ function MinimapScene() {
   );
 }
 
-/** Ticks invalidation at a low framerate to drive the rotation without a full 60fps loop. */
-function SlowTicker({ fps }: { fps: number }) {
-  useEffect(() => {
-    const interval = setInterval(() => invalidate(), 1000 / fps);
-    return () => clearInterval(interval);
-  }, [fps]);
-  return null;
-}
-
 export function VizMinimap() {
   const router = useRouter();
   const { points, isLoading } = useVizDataCtx();
@@ -125,7 +112,6 @@ export function VizMinimap() {
         >
           <ambientLight intensity={0.5} />
           <MinimapScene />
-          <SlowTicker fps={10} />
         </Canvas>
       )}
     </div>
