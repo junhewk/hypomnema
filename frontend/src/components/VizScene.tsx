@@ -266,12 +266,36 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   const springs = useRef<Map<number, SpringState>>(new Map());
   const cameraRef = useRef<THREE.Camera>(null);
   const materialRef = useRef<THREE.ShaderMaterial>(null);
+  const nodeToEdgeVertsRef = useRef<Map<number, number[]>>(new Map());
 
   // Sweep velocity tracking (ring buffer of last 5 right-drag pointer events)
   const sweepBuffer = useRef<Array<{ x: number; y: number; t: number }>>([]);
   const isRightDragging = useRef(false);
 
   const pointIndex = useMemo(() => buildPointIndex(points), [points]);
+
+  // Map node index → edge vertex indices (for real-time edge updates during drag)
+  const nodeToEdgeVerts = useMemo(() => {
+    const map = new Map<number, number[]>();
+    const idToIdx = new Map<string, number>();
+    for (let i = 0; i < points.length; i++) idToIdx.set(points[i].engram_id, i);
+
+    let vertIdx = 0;
+    for (const e of edges) {
+      const si = idToIdx.get(e.source_engram_id);
+      const ti = idToIdx.get(e.target_engram_id);
+      if (si == null || ti == null || !pointIndex.has(e.source_engram_id) || !pointIndex.has(e.target_engram_id)) continue;
+      // Each edge has 2 vertices: vertIdx (source), vertIdx+1 (target)
+      if (!map.has(si)) map.set(si, []);
+      map.get(si)!.push(vertIdx);
+      if (!map.has(ti)) map.set(ti, []);
+      map.get(ti)!.push(vertIdx + 1);
+      vertIdx += 2;
+    }
+    return map;
+  }, [points, edges, pointIndex]);
+
+  nodeToEdgeVertsRef.current = nodeToEdgeVerts;
 
   // Network metrics computation
   const metrics = useMemo(() => computeNetworkMetrics(points, edges), [points, edges]);
@@ -310,9 +334,8 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     return buf;
   }, [basePositionBuffer, explodeFactor, points, clusterCentroidMap]);
 
-  // Constellation color mode: white default, cluster color on focus
-  const activeClusterId = focusedNode?.cluster_id ?? null;
-  const colorBuffer = useMemo(() => buildColorBuffer(points, activeClusterId), [points, activeClusterId]);
+  // All nodes show cluster colors
+  const colorBuffer = useMemo(() => buildColorBuffer(points, "all"), [points]);
   const sizeBuffer = useMemo(() => buildSizeBuffer(points, metrics), [points, metrics]);
   const edgeBuffer = useMemo(
     () => buildEdgeBufferFromPositions(edges, pointIndex, points, positionBuffer),
@@ -509,6 +532,20 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
       arr[ds.nodeIndex * 3 + 1] = target.y;
       arr[ds.nodeIndex * 3 + 2] = target.z;
       posAttr.needsUpdate = true;
+
+      // Update connected edge positions
+      const edgeGeo = edgeGeometryRef.current;
+      const edgeVerts = nodeToEdgeVertsRef.current.get(ds.nodeIndex);
+      if (edgeGeo && edgeVerts) {
+        const edgePosAttr = edgeGeo.attributes.position as THREE.BufferAttribute;
+        const edgeArr = edgePosAttr.array as Float32Array;
+        for (const vi of edgeVerts) {
+          edgeArr[vi * 3] = target.x;
+          edgeArr[vi * 3 + 1] = target.y;
+          edgeArr[vi * 3 + 2] = target.z;
+        }
+        edgePosAttr.needsUpdate = true;
+      }
     };
 
     const handleWindowPointerUp = (e: PointerEvent) => {
