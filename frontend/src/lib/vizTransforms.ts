@@ -45,61 +45,80 @@ export function clusterColor(
   return hslToRgb(hue, 0.7, 0.6);
 }
 
-/** PageRank via power iteration. Returns normalized [0,1] scores per engram_id. */
-export function computePageRank(
+export interface NetworkMetrics {
+  degree: number;
+  betweenness: number;
+}
+
+/** Compute degree centrality and betweenness centrality for each node. */
+export function computeNetworkMetrics(
   points: ProjectionPoint[],
-  edges: Array<{ source_engram_id: string; target_engram_id: string; confidence?: number }>,
-  opts: { damping?: number; iterations?: number } = {},
-): Map<string, number> {
-  const damping = opts.damping ?? 0.85;
-  const iterations = opts.iterations ?? 20;
+  edges: Array<{ source_engram_id: string; target_engram_id: string }>,
+): Map<string, NetworkMetrics> {
   const n = points.length;
-  if (n === 0) return new Map();
+  const result = new Map<string, NetworkMetrics>();
+  if (n === 0) return result;
 
   const idToIdx = new Map<string, number>();
   for (let i = 0; i < n; i++) idToIdx.set(points[i].engram_id, i);
 
-  // Build adjacency: outLinks[i] = list of { target, weight }
-  const outLinks: Array<Array<{ target: number; weight: number }>> = Array.from({ length: n }, () => []);
-  const inLinks: Array<Array<{ source: number; weight: number }>> = Array.from({ length: n }, () => []);
+  // Build adjacency list (undirected)
+  const adj: Array<number[]> = Array.from({ length: n }, () => []);
+  const degree = new Float64Array(n);
 
   for (const e of edges) {
     const si = idToIdx.get(e.source_engram_id);
     const ti = idToIdx.get(e.target_engram_id);
     if (si == null || ti == null) continue;
-    const w = e.confidence ?? 1;
-    outLinks[si].push({ target: ti, weight: w });
-    inLinks[ti].push({ source: si, weight: w });
+    adj[si].push(ti);
+    adj[ti].push(si);
+    degree[si]++;
+    degree[ti]++;
   }
 
-  // Compute total out-weight per node
-  const outWeight = new Float64Array(n);
-  for (let i = 0; i < n; i++) {
-    for (const link of outLinks[i]) outWeight[i] += link.weight;
-  }
+  // Betweenness centrality via BFS from each node (Brandes' algorithm)
+  const betweenness = new Float64Array(n);
 
-  let rank = new Float64Array(n).fill(1 / n);
-  let next = new Float64Array(n);
-  const base = (1 - damping) / n;
+  for (let s = 0; s < n; s++) {
+    const stack: number[] = [];
+    const pred: Array<number[]> = Array.from({ length: n }, () => []);
+    const sigma = new Float64Array(n);
+    sigma[s] = 1;
+    const dist = new Int32Array(n).fill(-1);
+    dist[s] = 0;
 
-  for (let iter = 0; iter < iterations; iter++) {
-    next.fill(base);
-    for (let i = 0; i < n; i++) {
-      for (const link of inLinks[i]) {
-        if (outWeight[link.source] > 0) {
-          next[i] += damping * rank[link.source] * (link.weight / outWeight[link.source]);
+    const queue: number[] = [s];
+    let head = 0;
+    while (head < queue.length) {
+      const v = queue[head++];
+      stack.push(v);
+      for (const w of adj[v]) {
+        if (dist[w] < 0) {
+          dist[w] = dist[v] + 1;
+          queue.push(w);
+        }
+        if (dist[w] === dist[v] + 1) {
+          sigma[w] += sigma[v];
+          pred[w].push(v);
         }
       }
     }
-    [rank, next] = [next, rank];
+
+    const delta = new Float64Array(n);
+    while (stack.length > 0) {
+      const w = stack.pop()!;
+      for (const v of pred[w]) {
+        delta[v] += (sigma[v] / sigma[w]) * (1 + delta[w]);
+      }
+      if (w !== s) betweenness[w] += delta[w];
+    }
   }
 
-  // Normalize to [0,1]
-  let maxRank = 0;
-  for (let i = 0; i < n; i++) if (rank[i] > maxRank) maxRank = rank[i];
-  const result = new Map<string, number>();
+  // Normalize betweenness (undirected: divide by 2)
+  for (let i = 0; i < n; i++) betweenness[i] /= 2;
+
   for (let i = 0; i < n; i++) {
-    result.set(points[i].engram_id, maxRank > 0 ? rank[i] / maxRank : 0);
+    result.set(points[i].engram_id, { degree: degree[i], betweenness: betweenness[i] });
   }
   return result;
 }
@@ -194,26 +213,30 @@ export function pointAtIndex(
   return points[index];
 }
 
-/** Build Float32Array of per-node sizes based on PageRank. */
+/** Build Float32Array of per-node sizes based on degree/betweenness centrality. */
 export function buildSizeBuffer(
   points: ProjectionPoint[],
-  ranks: Map<string, number>,
+  metrics: Map<string, NetworkMetrics>,
 ): Float32Array {
-  // Find 85th percentile threshold
-  const rankValues = points.map(p => ranks.get(p.engram_id) ?? 0);
-  const sorted = [...rankValues].sort((a, b) => a - b);
-  const p85 = sorted[Math.floor(sorted.length * 0.85)] ?? 0;
+  const BASE = 4;
+  const n = points.length;
+  if (n === 0) return new Float32Array(0);
 
-  const buf = new Float32Array(points.length);
-  for (let i = 0; i < points.length; i++) {
-    const r = rankValues[i];
-    if (r > p85 && p85 < 1) {
-      // Linear scale from 4px to 18px for nodes above 85th percentile
-      const t = (r - p85) / (1 - p85);
-      buf[i] = 4 + t * 14;
-    } else {
-      buf[i] = 4;
-    }
+  const degrees = points.map(p => metrics.get(p.engram_id)?.degree ?? 0);
+  const betweennesses = points.map(p => metrics.get(p.engram_id)?.betweenness ?? 0);
+
+  const sortedDeg = [...degrees].sort((a, b) => a - b);
+  const sortedBet = [...betweennesses].sort((a, b) => a - b);
+
+  const degThreshold = sortedDeg[Math.floor(n * 0.85)] ?? 0;
+  const betThreshold = sortedBet[Math.floor(n * 0.90)] ?? 0;
+
+  const buf = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const isCentral = degrees[i] > degThreshold && degThreshold > 0;
+    const isBroker = betweennesses[i] > betThreshold && betThreshold > 0;
+    const multiplier = isCentral ? 3 : isBroker ? 2 : 1;
+    buf[i] = BASE * multiplier;
   }
   return buf;
 }

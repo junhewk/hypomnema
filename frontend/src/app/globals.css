@@ -524,7 +524,7 @@ article:hover .continue-btn {
 .viz-hud-key {
   background: color-mix(in srgb, var(--foreground) 6%, transparent);
   border: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
-  padding: 1px 5px;
+  padding: 2px 6px;
   border-radius: 3px;
   white-space: nowrap;
 }

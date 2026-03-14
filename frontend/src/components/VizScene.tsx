@@ -13,7 +13,7 @@ import {
   buildEdgeColorBuffer,
   buildPointIndex,
   buildSizeBuffer,
-  computePageRank,
+  computeNetworkMetrics,
   pointAtIndex,
 } from "@/lib/vizTransforms";
 import { VizTooltip } from "./VizTooltip";
@@ -49,14 +49,8 @@ const FRAGMENT_SHADER = `
     if (vVisible < 0.01) discard;
     float dist = length(gl_PointCoord - vec2(0.5));
     if (dist > 0.5) discard;
-
-    float core = 1.0 - smoothstep(0.0, 0.15, dist);
-    float body = 1.0 - smoothstep(0.05, 0.4, dist);
-    float halo = 1.0 - smoothstep(0.3, 0.5, dist);
-    vec3 col = mix(vColor, vec3(1.0), core * 0.5);
-    float alpha = body * 0.9 + halo * 0.15;
-
-    gl_FragColor = vec4(col, alpha);
+    float edge = 1.0 - smoothstep(0.45, 0.5, dist);
+    gl_FragColor = vec4(vColor, edge);
   }
 `;
 
@@ -79,6 +73,7 @@ interface DragState {
   plane: THREE.Plane;
   offset: THREE.Vector3;
   shiftKey: boolean;
+  originalPos: THREE.Vector3;
 }
 
 interface VizSceneProps {
@@ -267,8 +262,8 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
 
   const pointIndex = useMemo(() => buildPointIndex(points), [points]);
 
-  // PageRank computation
-  const ranks = useMemo(() => computePageRank(points, edges), [points, edges]);
+  // Network metrics computation
+  const metrics = useMemo(() => computeNetworkMetrics(points, edges), [points, edges]);
 
   // Build cluster centroid map for explode
   const clusterCentroidMap = useMemo(() => {
@@ -300,7 +295,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   // Constellation color mode: white default, cluster color on focus
   const activeClusterId = focusedNode?.cluster_id ?? null;
   const colorBuffer = useMemo(() => buildColorBuffer(points, activeClusterId), [points, activeClusterId]);
-  const sizeBuffer = useMemo(() => buildSizeBuffer(points, ranks), [points, ranks]);
+  const sizeBuffer = useMemo(() => buildSizeBuffer(points, metrics), [points, metrics]);
   const edgeBuffer = useMemo(
     () => buildEdgeBuffer(edges, pointIndex),
     [edges, pointIndex],
@@ -451,7 +446,7 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     ray.intersectPlane(plane, intersection);
     const offset = new THREE.Vector3().subVectors(nodePos, intersection);
 
-    dragState.current = { active: true, nodeIndex: idx, plane, offset, shiftKey };
+    dragState.current = { active: true, nodeIndex: idx, plane, offset, shiftKey, originalPos: nodePos.clone() };
 
     // Clear any spring on this node
     springs.current.delete(idx);
@@ -522,17 +517,12 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
 
       const ds = dragState.current;
       if (!ds?.active) return;
-      if (e.button !== 0) return;
 
-      // Start spring settle at current position
-      const geo = geometryRef.current;
-      if (geo) {
-        const arr = (geo.attributes.position as THREE.BufferAttribute).array as Float32Array;
-        const x = arr[ds.nodeIndex * 3];
-        const y = arr[ds.nodeIndex * 3 + 1];
-        const z = arr[ds.nodeIndex * 3 + 2];
-        springs.current.set(ds.nodeIndex, { vx: 0, vy: 0, vz: 0, tx: x, ty: y, tz: z });
-      }
+      // Spring back to original position
+      springs.current.set(ds.nodeIndex, {
+        vx: 0, vy: 0, vz: 0,
+        tx: ds.originalPos.x, ty: ds.originalPos.y, tz: ds.originalPos.z,
+      });
 
       dragState.current = null;
       if (orbitRef.current) orbitRef.current.enabled = true;
@@ -560,12 +550,15 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   const clusterLabel = useMemo(() => getClusterLabel(hovered, clusterMap), [hovered, clusterMap]);
   const focusedClusterLabel = useMemo(() => getClusterLabel(focusedNode, clusterMap), [focusedNode, clusterMap]);
 
-  // Explode/contract on ctrl+scroll
+  // Explode/contract on shift+scroll
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (e.ctrlKey) {
-      e.preventDefault();
-      setExplodeFactor(prev => Math.max(0.3, Math.min(3.0, prev + e.deltaY * -0.002)));
-    }
+    if (!e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    let dy = e.deltaY;
+    if (e.deltaMode === 1) dy *= 40;
+    if (e.deltaMode === 2) dy *= 800;
+    setExplodeFactor(prev => Math.max(0.3, Math.min(3.0, prev + dy * -0.005)));
   }, []);
 
   // Edge material with vertex colors
@@ -594,7 +587,6 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
         <CameraStorer cameraRef={cameraRef} />
 
         {/* Atmosphere */}
-        <fog attach="fog" args={["#08080a", 35, 80]} />
         <ambientLight intensity={0.6} />
 
         <CameraController target={cameraTarget} />

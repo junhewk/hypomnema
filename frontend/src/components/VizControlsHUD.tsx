@@ -6,26 +6,26 @@ const STORAGE_KEY = "hypomnema-viz-hud-dismissed";
 
 const NAV_CONTROLS = [
   ["drag", "pan"],
-  ["R-drag", "orbit"],
+  ["right-click drag", "orbit"],
   ["scroll", "zoom"],
-  ["ctrl scroll", "spread"],
+  ["shift + scroll", "spread"],
 ] as const;
 
 const NODE_CONTROLS = [
-  ["drag node", "move"],
-  ["shift drag", "push / pull"],
+  ["drag", "move"],
+  ["shift + drag", "push / pull"],
   ["click", "focus"],
-  ["dbl-click", "open"],
-  ["esc", "back"],
+  ["double-click", "open"],
+  ["esc", "unfocus"],
 ] as const;
 
 function ControlRow({ keyLabel, action }: { keyLabel: string; action: string }) {
   return (
     <div className="flex items-center justify-between gap-3">
-      <kbd className="viz-hud-key font-mono text-[9px] text-muted/70 leading-none">
+      <kbd className="viz-hud-key font-mono text-[11px] text-muted/80 leading-none">
         {keyLabel}
       </kbd>
-      <span className="font-mono text-[9px] text-muted/40 leading-none">{action}</span>
+      <span className="font-mono text-[11px] text-muted/60 leading-none">{action}</span>
     </div>
   );
 }
@@ -33,10 +33,10 @@ function ControlRow({ keyLabel, action }: { keyLabel: string; action: string }) 
 function ControlGroup({ label, controls }: { label: string; controls: ReadonlyArray<readonly [string, string]> }) {
   return (
     <div>
-      <p className="font-mono text-[7px] uppercase tracking-[0.2em] text-muted/30 mb-1">
+      <p className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/50 mb-1">
         {label}
       </p>
-      <div className="space-y-[3px]">
+      <div className="space-y-1">
         {controls.map(([key, action]) => (
           <ControlRow key={key} keyLabel={key} action={action} />
         ))}
@@ -71,7 +71,7 @@ export function VizControlsHUD({ autoOrbit = false, onToggleAutoOrbit }: VizCont
     return (
       <button
         onClick={handleExpand}
-        className="viz-nav-pill absolute bottom-4 right-4 z-50 rounded-md border px-2.5 py-1.5 font-mono text-[10px] text-muted/60"
+        className="viz-nav-pill absolute bottom-4 right-4 z-50 rounded-md border px-2.5 py-1.5 font-mono text-[11px] text-muted/70"
         aria-label="Show controls"
       >
         ?
@@ -80,14 +80,14 @@ export function VizControlsHUD({ autoOrbit = false, onToggleAutoOrbit }: VizCont
   }
 
   return (
-    <div className="viz-controls-hud absolute bottom-4 right-4 z-50 rounded-md border px-3 py-2.5">
+    <div className="viz-controls-hud absolute bottom-4 right-4 z-50 rounded-md border px-3 py-2.5 min-w-[180px]">
       <div className="mb-2 flex items-center justify-between">
-        <span className="font-mono text-[7px] uppercase tracking-[0.2em] text-muted/35">
+        <span className="font-mono text-[9px] uppercase tracking-[0.2em] text-muted/50">
           controls
         </span>
         <button
           onClick={handleDismiss}
-          className="font-mono text-[10px] text-muted/30 hover:text-muted/60 ml-4 leading-none"
+          className="font-mono text-[11px] text-muted/50 hover:text-muted/70 ml-4 leading-none"
           aria-label="Dismiss controls"
         >
           ×
@@ -103,7 +103,7 @@ export function VizControlsHUD({ autoOrbit = false, onToggleAutoOrbit }: VizCont
           <div className="viz-hud-divider mt-2" />
           <button
             onClick={onToggleAutoOrbit}
-            className="mt-2 w-full rounded-md px-3 py-1 font-mono text-[9px] text-muted/60 hover:text-muted/80 border border-transparent hover:border-muted/20 transition-colors"
+            className="mt-2 w-full rounded-md px-3 py-1 font-mono text-[11px] text-muted/70 hover:text-muted/90 border border-transparent hover:border-muted/20 transition-colors"
           >
             {autoOrbit ? "stop" : "orbit"}
           </button>
