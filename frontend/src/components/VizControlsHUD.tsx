@@ -8,7 +8,7 @@ const NAV_CONTROLS = [
   ["drag", "pan"],
   ["right-click drag", "orbit"],
   ["scroll", "zoom"],
-  ["shift + scroll", "spread"],
+  ["opt + scroll", "spread"],
 ] as const;
 
 const NODE_CONTROLS = [
