@@ -53,7 +53,7 @@ describe("buildColorBuffer", () => {
       makeProjectionPoint({ cluster_id: 0 }),
       makeProjectionPoint({ engram_id: "eng-2", cluster_id: 1 }),
     ];
-    const buf = buildColorBuffer(points);
+    const buf = buildColorBuffer(points, "all");
     expect(buf).toBeInstanceOf(Float32Array);
     expect(buf.length).toBe(6);
     // First 3 values should match clusterColor(0)

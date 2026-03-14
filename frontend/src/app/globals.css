@@ -230,11 +230,16 @@ body {
 .viz-tooltip {
   backdrop-filter: blur(16px) saturate(1.4);
   -webkit-backdrop-filter: blur(16px) saturate(1.4);
-  background: color-mix(in srgb, var(--surface-raised) 70%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 40%, transparent);
+  /* Force dark surface — tooltips always float over dark viz canvas */
+  background: rgba(28, 28, 30, 0.88);
+  color: #e7e5e4;
+  border: 1px solid rgba(38, 38, 39, 0.6);
   box-shadow:
-    0 4px 16px rgba(0, 0, 0, 0.25),
+    0 4px 16px rgba(0, 0, 0, 0.35),
     0 0 0 0.5px rgba(255, 255, 255, 0.06) inset;
+}
+.viz-tooltip-cluster {
+  color: #a8a29e;
 }
 
 .viz-cluster-label {
@@ -301,6 +306,24 @@ body {
 }
 .sidebar-nav-item:hover::before {
   height: 40%;
+}
+/* Collapsed sidebar: center the indicator below the icon */
+[data-collapsed="true"] .sidebar-nav-item::before {
+  left: 50%;
+  top: auto;
+  bottom: -1px;
+  width: 0;
+  height: 2px;
+  transform: translateX(-50%);
+  transition: width 0.2s ease;
+}
+[data-collapsed="true"] .sidebar-nav-item[data-active="true"]::before {
+  width: 12px;
+  height: 2px;
+}
+[data-collapsed="true"] .sidebar-nav-item:hover::before {
+  width: 8px;
+  height: 2px;
 }
 
 /* Minimap porthole */
@@ -518,6 +541,16 @@ article:hover .continue-btn {
 }
 .viz-canvas-wrapper:active {
   cursor: grabbing;
+}
+
+/* ── Sidebar collapse transition ─────────────────── */
+.sidebar-transition {
+  transition: width 200ms ease-in-out;
+}
+.sidebar-label-fade {
+  transition: opacity 150ms ease;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 /* ── Prose mono — markdown content in monospace ────── */

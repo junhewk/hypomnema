@@ -16,17 +16,17 @@ export const VizNodeCard = memo(function VizNodeCard({
       data-testid="viz-node-card"
       className="viz-tooltip rounded-md px-3 py-2 min-w-[140px]"
     >
-      <p className="font-mono text-[11px] font-semibold text-foreground leading-tight">
+      <p className="font-mono text-[13px] font-semibold leading-tight">
         {name}
       </p>
       {clusterLabel != null && (
-        <p className="font-mono text-[9px] text-muted mt-1 tracking-wide">
+        <p className="font-mono text-[11px] mt-1 tracking-wide viz-tooltip-cluster">
           {clusterLabel}
         </p>
       )}
       <button
         onClick={onOpen}
-        className="mt-2 font-mono text-[9px] text-accent hover:text-accent/80 tracking-wide uppercase"
+        className="mt-2 font-mono text-[11px] text-accent hover:text-accent/80 tracking-wide uppercase"
       >
         open →
       </button>

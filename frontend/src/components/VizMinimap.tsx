@@ -16,7 +16,7 @@ function MinimapScene() {
 
   const pointIndex = useMemo(() => buildPointIndex(points), [points]);
   const positionBuffer = useMemo(() => buildPositionBuffer(points), [points]);
-  const colorBuffer = useMemo(() => buildColorBuffer(points), [points]);
+  const colorBuffer = useMemo(() => buildColorBuffer(points, "all"), [points]);
   const edgeBuffer = useMemo(
     () => buildEdgeBuffer(edges, pointIndex),
     [edges, pointIndex],

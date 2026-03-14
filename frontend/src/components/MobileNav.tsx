@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Network } from "lucide-react";
 import { NAV_ITEMS, isNavActive } from "./Sidebar";
 
 export function MobileNav() {
@@ -91,25 +92,28 @@ export function MobileNav() {
 
             {/* Nav items — staggered fade-in */}
             <div className="flex flex-col gap-0.5 px-3">
-              {NAV_ITEMS.map(({ href, label, key }, i) => (
-                <Link
-                  key={href}
-                  href={href}
-                  data-active={isActive(href)}
-                  className={`sidebar-nav-item block rounded px-3 py-2 font-mono text-[11px] no-underline transition-colors ${
-                    isActive(href)
-                      ? "bg-surface-raised text-foreground"
-                      : "text-muted hover:bg-surface-raised/50 hover:text-foreground"
-                  }`}
-                  style={{
-                    animation: closing ? "none" : `fade-up 0.3s ease-out ${80 + i * 50}ms both`,
-                  }}
-                  data-testid={`mobile-nav-${key}`}
-                  onClick={close}
-                >
-                  {label}
-                </Link>
-              ))}
+              {NAV_ITEMS.map(({ href, label, key, icon: Icon }, i) => {
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    data-active={isActive(href)}
+                    className={`sidebar-nav-item flex items-center gap-2.5 rounded px-3 py-2 font-mono text-[11px] no-underline transition-colors ${
+                      isActive(href)
+                        ? "bg-surface-raised text-foreground"
+                        : "text-muted hover:bg-surface-raised/50 hover:text-foreground"
+                    }`}
+                    style={{
+                      animation: closing ? "none" : `fade-up 0.3s ease-out ${80 + i * 50}ms both`,
+                    }}
+                    data-testid={`mobile-nav-${key}`}
+                    onClick={close}
+                  >
+                    <Icon size={14} className="shrink-0" />
+                    {label}
+                  </Link>
+                );
+              })}
             </div>
 
             <div className="flex-1" />
@@ -119,7 +123,7 @@ export function MobileNav() {
               <Link
                 href="/viz"
                 data-active={pathname === "/viz"}
-                className={`sidebar-nav-item block rounded px-3 py-2 font-mono text-[11px] no-underline transition-colors ${
+                className={`sidebar-nav-item flex items-center gap-2.5 rounded px-3 py-2 font-mono text-[11px] no-underline transition-colors ${
                   pathname === "/viz"
                     ? "bg-surface-raised text-foreground"
                     : "text-muted hover:bg-surface-raised/50 hover:text-foreground"
@@ -129,6 +133,7 @@ export function MobileNav() {
                 }}
                 onClick={close}
               >
+                <Network size={14} className="shrink-0" />
                 Visualization
               </Link>
             </div>

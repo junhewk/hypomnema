@@ -27,7 +27,7 @@ The app is centered around a few simple views:
 - `Document view`: the full text of one note or file, plus the concepts extracted from it
 - `Engram view`: a concept page showing connected documents and related concepts
 - `Search`: two modes, one for finding documents and one for exploring concept relationships
-- `Visualization`: a spatial map of your concept network for pattern-finding
+- `Visualization`: a 3D spatial map of your concept network — constellation-style nodes sized by PageRank, cinematic camera controls, cluster color reveal on focus
 - `Settings`: where you choose or update the language model provider used for extraction
 
 In practice, the workflow is:

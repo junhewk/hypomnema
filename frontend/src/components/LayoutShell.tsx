@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
 import { VizDataProvider } from "@/hooks/useVizDataContext";
+import { SidebarProvider } from "@/hooks/useSidebarContext";
 import { Sidebar } from "./Sidebar";
 import { MobileNav } from "./MobileNav";
 import { SetupWizard } from "./SetupWizard";
@@ -19,7 +20,6 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
       setNeedsSetup(h.needs_setup);
       setMode(h.mode);
     }).catch(() => {
-      // If health check fails, assume no setup needed (backend may be starting)
       setNeedsSetup(false);
     });
   }, []);
@@ -29,17 +29,17 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
 
   return (
     <VizDataProvider>
-      {isViz ? (
-        children
-      ) : (
+      <SidebarProvider>
         <div className="flex h-screen">
           <div className="hidden md:flex">
             <Sidebar />
           </div>
           <MobileNav />
-          <main className="flex-1 overflow-y-auto pt-12 md:pt-0">{children}</main>
+          <main className={`flex-1 ${isViz ? "overflow-hidden" : "overflow-y-auto pt-12 md:pt-0"}`}>
+            {children}
+          </main>
         </div>
-      )}
+      </SidebarProvider>
     </VizDataProvider>
   );
 }

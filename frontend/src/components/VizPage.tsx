@@ -11,6 +11,7 @@ export function VizPage() {
   const router = useRouter();
   const { points, clusters, edges, isLoading, error } = useVizDataCtx();
   const [focusedNode, setFocusedNode] = useState<ProjectionPoint | null>(null);
+  const [autoOrbit, setAutoOrbit] = useState(false);
 
   const handleNavigateNode = useCallback(
     (engramId: string) => {
@@ -19,31 +20,28 @@ export function VizPage() {
     [router],
   );
 
+  const handleToggleAutoOrbit = useCallback(() => {
+    setAutoOrbit((prev) => !prev);
+  }, []);
+
+  const handleAutoOrbitStop = useCallback(() => {
+    setAutoOrbit(false);
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         if (focusedNode) {
           setFocusedNode(null);
-        } else {
-          router.push("/");
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [router, focusedNode]);
+  }, [focusedNode]);
 
   return (
-    <div className="fixed inset-0 viz-viewport" data-testid="viz-page">
-      <button
-        onClick={() => router.push("/")}
-        className="viz-nav-pill fixed top-4 left-4 z-50 rounded-md border px-3 py-1.5 font-mono text-[10px] uppercase tracking-wider text-muted/60"
-        aria-label="Back to stream"
-      >
-        <span className="mr-1 text-[8px]">&#x2039;</span>
-        back
-      </button>
-
+    <div className="h-full w-full relative viz-viewport" data-testid="viz-page">
       {isLoading && (
         <div className="flex h-full items-center justify-center">
           <div className="text-center">
@@ -85,11 +83,16 @@ export function VizPage() {
             focusedNode={focusedNode}
             onFocusNode={setFocusedNode}
             onNavigateNode={handleNavigateNode}
+            autoOrbit={autoOrbit}
+            onAutoOrbitStop={handleAutoOrbitStop}
           />
         </div>
       )}
 
-      <VizControlsHUD />
+      <VizControlsHUD
+        autoOrbit={autoOrbit}
+        onToggleAutoOrbit={handleToggleAutoOrbit}
+      />
     </div>
   );
 }

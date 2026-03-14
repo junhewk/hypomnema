@@ -6,14 +6,14 @@ const STORAGE_KEY = "hypomnema-viz-hud-dismissed";
 
 const NAV_CONTROLS = [
   ["drag", "pan"],
-  ["R-drag", "orbit / sweep"],
+  ["R-drag", "orbit"],
   ["scroll", "zoom"],
-  ["\u2303 scroll", "explode"],
+  ["ctrl scroll", "spread"],
 ] as const;
 
 const NODE_CONTROLS = [
   ["drag node", "move"],
-  ["\u21e7 drag node", "yank depth"],
+  ["shift drag", "push / pull"],
   ["click", "focus"],
   ["dbl-click", "open"],
   ["esc", "back"],
@@ -45,7 +45,12 @@ function ControlGroup({ label, controls }: { label: string; controls: ReadonlyAr
   );
 }
 
-export function VizControlsHUD() {
+interface VizControlsHUDProps {
+  autoOrbit?: boolean;
+  onToggleAutoOrbit?: () => void;
+}
+
+export function VizControlsHUD({ autoOrbit = false, onToggleAutoOrbit }: VizControlsHUDProps) {
   const [dismissed, setDismissed] = useState(true); // start hidden to avoid flash
 
   useEffect(() => {
@@ -66,7 +71,7 @@ export function VizControlsHUD() {
     return (
       <button
         onClick={handleExpand}
-        className="viz-nav-pill fixed bottom-4 right-4 z-50 rounded-md border px-2.5 py-1.5 font-mono text-[10px] text-muted/60"
+        className="viz-nav-pill absolute bottom-4 right-4 z-50 rounded-md border px-2.5 py-1.5 font-mono text-[10px] text-muted/60"
         aria-label="Show controls"
       >
         ?
@@ -75,7 +80,7 @@ export function VizControlsHUD() {
   }
 
   return (
-    <div className="viz-controls-hud fixed bottom-4 right-4 z-50 rounded-md border px-3 py-2.5">
+    <div className="viz-controls-hud absolute bottom-4 right-4 z-50 rounded-md border px-3 py-2.5">
       <div className="mb-2 flex items-center justify-between">
         <span className="font-mono text-[7px] uppercase tracking-[0.2em] text-muted/35">
           controls
@@ -93,6 +98,17 @@ export function VizControlsHUD() {
         <div className="viz-hud-divider" />
         <ControlGroup label="nodes" controls={NODE_CONTROLS} />
       </div>
+      {onToggleAutoOrbit && (
+        <>
+          <div className="viz-hud-divider mt-2" />
+          <button
+            onClick={onToggleAutoOrbit}
+            className="mt-2 w-full rounded-md px-3 py-1 font-mono text-[9px] text-muted/60 hover:text-muted/80 border border-transparent hover:border-muted/20 transition-colors"
+          >
+            {autoOrbit ? "stop" : "orbit"}
+          </button>
+        </>
+      )}
     </div>
   );
 }

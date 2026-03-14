@@ -10,8 +10,10 @@ import {
   buildPositionBuffer,
   buildColorBuffer,
   buildEdgeBuffer,
+  buildEdgeColorBuffer,
   buildPointIndex,
   buildSizeBuffer,
+  computePageRank,
   pointAtIndex,
 } from "@/lib/vizTransforms";
 import { VizTooltip } from "./VizTooltip";
@@ -21,29 +23,38 @@ import type { RaycasterParameters } from "three";
 
 const VERTEX_SHADER = `
   attribute float size;
+  uniform float uReveal;
+  uniform float uTime;
   varying vec3 vColor;
+  varying float vVisible;
   void main() {
     vColor = color;
     vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_PointSize = size * (300.0 / length(mvPosition.xyz));
+
+    // Radial reveal
+    float dist = length(position.xyz) / 30.0;
+    vVisible = smoothstep(uReveal - 0.05, uReveal + 0.05, 1.0 - dist);
+
+    // Base size with breathing
+    float breath = 1.0 + sin(uTime * 0.8 + position.x * 0.5) * 0.06;
+    gl_PointSize = size * (300.0 / length(mvPosition.xyz)) * vVisible * breath;
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
 
 const FRAGMENT_SHADER = `
   varying vec3 vColor;
+  varying float vVisible;
   void main() {
+    if (vVisible < 0.01) discard;
     float dist = length(gl_PointCoord - vec2(0.5));
     if (dist > 0.5) discard;
 
-    // Bright core with soft radial falloff
-    float core = 1.0 - smoothstep(0.0, 0.28, dist);
-    float body = 1.0 - smoothstep(0.15, 0.45, dist);
-    float glow = 1.0 - smoothstep(0.3, 0.5, dist);
-
-    // Composite: luminous center + colored body + faint halo
-    vec3 col = mix(vColor, vColor + vec3(0.15), core);
-    float alpha = (body * 0.85 + glow * 0.25) * 0.95;
+    float core = 1.0 - smoothstep(0.0, 0.15, dist);
+    float body = 1.0 - smoothstep(0.05, 0.4, dist);
+    float halo = 1.0 - smoothstep(0.3, 0.5, dist);
+    vec3 col = mix(vColor, vec3(1.0), core * 0.5);
+    float alpha = body * 0.9 + halo * 0.15;
 
     gl_FragColor = vec4(col, alpha);
   }
@@ -77,6 +88,8 @@ interface VizSceneProps {
   focusedNode: ProjectionPoint | null;
   onFocusNode: (node: ProjectionPoint | null) => void;
   onNavigateNode: (engramId: string) => void;
+  autoOrbit: boolean;
+  onAutoOrbitStop: () => void;
 }
 
 function getClusterLabel(node: ProjectionPoint | null, clusterMap: Map<number, string | null>): string | null {
@@ -111,12 +124,82 @@ function SweepDecay({ orbitRef }: { orbitRef: React.RefObject<OrbitControlsImpl 
   useFrame(() => {
     const controls = orbitRef.current;
     if (!controls || !controls.autoRotate) return;
+    // Don't decay slow auto-orbit (cinematic mode)
+    if (Math.abs(controls.autoRotateSpeed) < 1.0) return;
     controls.autoRotateSpeed *= 0.95;
     if (Math.abs(controls.autoRotateSpeed) < 0.01) {
       controls.autoRotate = false;
       controls.autoRotateSpeed = 0;
     }
   });
+  return null;
+}
+
+/** Auto-orbit controller — slow cinematic rotation. */
+function AutoOrbitController({
+  orbitRef,
+  active,
+  onStop,
+}: {
+  orbitRef: React.RefObject<OrbitControlsImpl | null>;
+  active: boolean;
+  onStop: () => void;
+}) {
+  useEffect(() => {
+    if (!active) {
+      const controls = orbitRef.current;
+      if (controls && Math.abs(controls.autoRotateSpeed) < 1.0) {
+        controls.autoRotate = false;
+        controls.autoRotateSpeed = 0;
+      }
+      return;
+    }
+    const controls = orbitRef.current;
+    if (controls) {
+      controls.autoRotate = true;
+      controls.autoRotateSpeed = 0.5;
+    }
+
+    const stopOnInteraction = () => {
+      onStop();
+    };
+
+    window.addEventListener("pointerdown", stopOnInteraction, { once: true });
+    window.addEventListener("wheel", stopOnInteraction, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", stopOnInteraction);
+      window.removeEventListener("wheel", stopOnInteraction);
+    };
+  }, [active, orbitRef, onStop]);
+
+  return null;
+}
+
+/** Drives shader uniforms: radial reveal (0→1 over ~2s) and breathing time. */
+function ShaderAnimator({
+  materialRef,
+}: {
+  materialRef: React.RefObject<THREE.ShaderMaterial | null>;
+}) {
+  const startTime = useRef<number | null>(null);
+  const revealDone = useRef(false);
+
+  useFrame(({ clock }) => {
+    const mat = materialRef.current;
+    if (!mat) return;
+
+    // Radial reveal (runs once, then stops)
+    if (!revealDone.current) {
+      if (startTime.current === null) startTime.current = performance.now();
+      const reveal = Math.min((performance.now() - startTime.current) / 2000, 1.0);
+      mat.uniforms.uReveal.value = reveal;
+      if (reveal >= 1.0) revealDone.current = true;
+    }
+
+    // Breathing time (always active)
+    mat.uniforms.uTime.value = clock.getElapsedTime();
+  });
+
   return null;
 }
 
@@ -165,7 +248,7 @@ function SpringAnimator({
   return null;
 }
 
-export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, onNavigateNode }: VizSceneProps) {
+export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, onNavigateNode, autoOrbit, onAutoOrbitStop }: VizSceneProps) {
   const [hovered, setHovered] = useState<ProjectionPoint | null>(null);
   const [explodeFactor, setExplodeFactor] = useState(1.0);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -173,14 +256,19 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
   const orbitRef = useRef<OrbitControlsImpl>(null);
   const dragState = useRef<DragState | null>(null);
   const geometryRef = useRef<THREE.BufferGeometry>(null);
+  const edgeGeometryRef = useRef<THREE.BufferGeometry>(null);
   const springs = useRef<Map<number, SpringState>>(new Map());
   const cameraRef = useRef<THREE.Camera>(null);
+  const materialRef = useRef<THREE.ShaderMaterial>(null);
 
   // Sweep velocity tracking (ring buffer of last 5 right-drag pointer events)
   const sweepBuffer = useRef<Array<{ x: number; y: number; t: number }>>([]);
   const isRightDragging = useRef(false);
 
   const pointIndex = useMemo(() => buildPointIndex(points), [points]);
+
+  // PageRank computation
+  const ranks = useMemo(() => computePageRank(points, edges), [points, edges]);
 
   // Build cluster centroid map for explode
   const clusterCentroidMap = useMemo(() => {
@@ -209,12 +297,21 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     return buf;
   }, [basePositionBuffer, explodeFactor, points, clusterCentroidMap]);
 
-  const colorBuffer = useMemo(() => buildColorBuffer(points), [points]);
-  const sizeBuffer = useMemo(() => buildSizeBuffer(points, edges), [points, edges]);
+  // Constellation color mode: white default, cluster color on focus
+  const activeClusterId = focusedNode?.cluster_id ?? null;
+  const colorBuffer = useMemo(() => buildColorBuffer(points, activeClusterId), [points, activeClusterId]);
+  const sizeBuffer = useMemo(() => buildSizeBuffer(points, ranks), [points, ranks]);
   const edgeBuffer = useMemo(
     () => buildEdgeBuffer(edges, pointIndex),
     [edges, pointIndex],
   );
+
+  // Edge colors — highlight connected edges on focus (opacity baked into color)
+  const edgeColors = useMemo(
+    () => buildEdgeColorBuffer(edges, pointIndex, focusedNode?.engram_id, focusedNode?.cluster_id),
+    [edges, pointIndex, focusedNode],
+  );
+
   const clusterMap = useMemo(() => {
     const map = new Map<number, string | null>();
     for (const c of clusters) map.set(c.cluster_id, c.label);
@@ -235,8 +332,34 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
       vertexColors: true,
       transparent: true,
       depthWrite: false,
+      uniforms: {
+        uReveal: { value: 0.0 },
+        uTime: { value: 0.0 },
+      },
     });
   }, []);
+
+  // Update color buffer when it changes
+  useEffect(() => {
+    const geo = geometryRef.current;
+    if (!geo) return;
+    const colorAttr = geo.attributes.color as THREE.BufferAttribute | undefined;
+    if (colorAttr) {
+      colorAttr.array.set(colorBuffer);
+      colorAttr.needsUpdate = true;
+    }
+  }, [colorBuffer]);
+
+  // Update edge colors when focus changes
+  useEffect(() => {
+    const geo = edgeGeometryRef.current;
+    if (!geo) return;
+    const colorAttr = geo.attributes.color as THREE.BufferAttribute | undefined;
+    if (colorAttr) {
+      colorAttr.array.set(edgeColors);
+      colorAttr.needsUpdate = true;
+    }
+  }, [edgeColors]);
 
   // Raycaster for node picking during drag
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
@@ -445,6 +568,14 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
     }
   }, []);
 
+  // Edge material with vertex colors
+  const edgeMaterial = useMemo(() => {
+    return new THREE.LineBasicMaterial({
+      vertexColors: true,
+      depthWrite: false,
+    });
+  }, []);
+
   return (
     <div
       ref={canvasRef}
@@ -468,6 +599,8 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
         <CameraController target={cameraTarget} />
         <SweepDecay orbitRef={orbitRef} />
         <SpringAnimator springs={springs} geometryRef={geometryRef} />
+        <AutoOrbitController orbitRef={orbitRef} active={autoOrbit} onStop={onAutoOrbitStop} />
+        <ShaderAnimator materialRef={materialRef} />
 
         <OrbitControls
           ref={orbitRef}
@@ -501,24 +634,23 @@ export function VizScene({ points, clusters, edges, focusedNode, onFocusNode, on
               args={[sizeBuffer, 1]}
             />
           </bufferGeometry>
-          <primitive object={shaderMaterial} attach="material" />
+          <primitive object={shaderMaterial} attach="material" ref={materialRef} />
         </points>
 
         {/* Edges */}
         {edgeVertexCount > 0 && (
           <lineSegments>
-            <bufferGeometry>
+            <bufferGeometry ref={edgeGeometryRef}>
               <bufferAttribute
                 attach="attributes-position"
                 args={[edgeBuffer, 3]}
               />
+              <bufferAttribute
+                attach="attributes-color"
+                args={[edgeColors, 3]}
+              />
             </bufferGeometry>
-            <lineBasicMaterial
-              color="#c4b5a8"
-              transparent
-              opacity={0.4}
-              depthWrite={false}
-            />
+            <primitive object={edgeMaterial} attach="material" />
           </lineSegments>
         )}
 

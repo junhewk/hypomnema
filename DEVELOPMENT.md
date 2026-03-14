@@ -29,6 +29,7 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P16 — Multi-Provider + Settings | Done | 36 backend (413 pass, 1 skip total) | OpenAI + Ollama LLM, OpenAI + Google embeddings, settings API, hot-swap, Fernet encryption, settings UI |
 | P17 — UX Overhaul | Done | 6 backend + 0 frontend (419 pass, 1 skip total; 127 frontend) | Sidebar nav, editable documents with draft auto-save, viz minimap, LayoutShell |
 | P18 — Tauri Desktop Packaging | Done | 0 new tests (scaffolding only) | Health endpoint, static file serving, desktop config mode, Tauri sidecar, PyInstaller spec |
+| P19 — Viz Overhaul | Done | 0 new (updated 1 existing) | Constellation nodes, PageRank sizing, GLSL shader cleanup, radial reveal, auto-orbit, collapsible sidebar |
 
 ### Implementation Notes (P0+P1+P2+P3+P4)
 
@@ -634,6 +635,44 @@ PATCH  /api/documents/{id}          → DocumentOut (edit + reprocess)
 
 **Frontend change:**
 - `next.config.ts` conditional `output: "export"` via `NEXT_EXPORT=1` env var
+
+---
+
+### Phase 19 — Viz Overhaul ("Minority Report" Spatial UX)
+
+**Goal:** Transform visualization from bloated glow nodes into a cinematic constellation display with gestural 3D controls and a collapsible sidebar.
+
+**Viz transforms (`vizTransforms.ts`):**
+- `computePageRank()` — power iteration (damping=0.85, 20 iterations) with confidence-weighted edges, returns normalized [0,1] scores
+- `buildColorBuffer()` — constellation mode: warm neutral white default, cluster color on focus, `"all"` for minimap
+- `buildSizeBuffer()` — PageRank-based sizing: 4px base, 85th percentile threshold scales to 18px
+- `buildEdgeColorBuffer()` — per-vertex edge colors with opacity baked in via premultiplied mix toward background (LineBasicMaterial has no per-vertex alpha)
+- Named constants: `COLOR_NEUTRAL`, `COLOR_EDGE_DEFAULT`, `COLOR_VIZ_BG`
+
+**VizScene shaders and animation:**
+- Crisp fragment shader (core/body/halo smoothstep) replacing 3-layer glow
+- `uReveal` uniform — radial reveal animation over ~2s on page load
+- `uTime` uniform — 6% ambient breathing oscillation, phase-offset by position.x
+- `ShaderAnimator` component (merged RevealAnimator + TimeDriver) — stops reveal after completion
+- `AutoOrbitController` — cinematic rotation (speed 0.5), stops on pointerdown/wheel
+- Edge vertex colors via `LineBasicMaterial({ vertexColors: true })`
+
+**Collapsible sidebar:**
+- `useSidebarContext.tsx` — React context + localStorage persistence (`hypomnema-sidebar-collapsed`)
+- `Sidebar.tsx` — lucide-react icons (Rows3, Search, Settings), collapsed `w-14` icon-only / expanded `w-56`
+- `LayoutShell.tsx` — always renders sidebar (removed viz passthrough ternary), wraps in `SidebarProvider`
+- `MobileNav.tsx` — icons from `NAV_ITEMS`, no collapse on mobile
+
+**VizPage changes:**
+- Removed fixed positioning and back button
+- Escape only clears focused node (no navigation)
+- Auto-orbit state + callbacks passed to VizScene and VizControlsHUD
+
+**HUD relabeling:** spatial language — "orbit" (not "orbit / sweep"), "spread" (not "explode"), "push / pull" (not "yank depth"), auto-orbit toggle button
+
+**Tooltip/card readability:** forced dark-mode CSS (`.viz-tooltip`), increased font sizes (13px name, 11px cluster)
+
+**CSS additions:** `.sidebar-transition`, `.sidebar-label-fade`, `[data-collapsed]` active indicator morphs to centered bottom dot
 
 ---
 

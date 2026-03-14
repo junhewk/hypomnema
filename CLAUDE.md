@@ -71,10 +71,22 @@ LLM provider and API keys can also be configured at runtime via the Settings UI 
 
 ### Frontend Layout
 
-- **Persistent sidebar** (`Sidebar.tsx`) with nav items (Stream, Search, Settings), viz minimap, and full viz link — hidden on mobile, replaced by `MobileNav` hamburger drawer
-- **LayoutShell** wraps all pages: sidebar layout for normal pages, full-screen passthrough for `/viz`
-- **VizDataProvider** context at root level shares viz data between minimap and full page (single fetch)
+- **Collapsible sidebar** (`Sidebar.tsx`) with lucide-react icons and nav items (Stream, Search, Settings), viz minimap, and full viz link — collapses to icon-only (`w-14`) via toggle, state persisted in localStorage via `SidebarProvider` context
+- **LayoutShell** wraps all pages including `/viz` — sidebar is always visible (no full-screen passthrough). `SidebarProvider` + `VizDataProvider` at root level
+- **MobileNav** hamburger drawer replaces sidebar on mobile, with matching icons
+- **VizDataProvider** context shares viz data between sidebar minimap and full viz page (single fetch)
 - **Documents are editable** — "continue" button on scribble cards loads into edit mode with draft auto-save via localStorage
+
+### Visualization
+
+- **Constellation mode** — nodes render as warm neutral white dots by default; cluster colors reveal on focus (click a node to light up its cluster)
+- **PageRank sizing** — power iteration (damping=0.85, 20 iterations) using edge confidence as weights; nodes above 85th percentile scale up to 18px, rest stay at 4px base
+- **Custom GLSL shaders** — crisp dot + subtle halo (core/body/halo smoothstep), replacing bloated glow
+- **Radial reveal** — nodes animate outward from origin over ~2s on page load (`uReveal` uniform)
+- **Node breathing** — 6% ambient size oscillation, phase-offset by position for async feel (`uTime` uniform)
+- **Auto-orbit** — cinematic slow rotation (speed 0.5) toggled via HUD; stops on any user interaction
+- **Edge highlighting** — focused node's edges glow in cluster color; others dim. Opacity baked into vertex colors (premultiplied mix toward background) since `LineBasicMaterial` has no per-vertex alpha
+- **HUD controls** — spatial language labels (spread, push/pull, orbit), auto-orbit toggle
 
 ## Key Design Constraints
 

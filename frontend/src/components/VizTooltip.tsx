@@ -14,11 +14,11 @@ export const VizTooltip = memo(function VizTooltip({
       data-testid="viz-tooltip"
       className="viz-tooltip rounded-md px-3 py-2 pointer-events-none whitespace-nowrap"
     >
-      <p className="font-mono text-[11px] font-semibold text-foreground leading-tight">
+      <p className="font-mono text-[13px] font-semibold leading-tight">
         {name}
       </p>
       {clusterLabel != null && (
-        <p className="font-mono text-[9px] text-muted mt-1 tracking-wide">
+        <p className="font-mono text-[11px] mt-1 tracking-wide viz-tooltip-cluster">
           {clusterLabel}
         </p>
       )}
