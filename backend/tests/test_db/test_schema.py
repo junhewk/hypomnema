@@ -60,6 +60,13 @@ async def _fetch_fk_parents(db, table_name: str) -> set[str]:
     return {str(row["table"]) for row in rows}
 
 
+async def _fetch_table_columns(db, table_name: str) -> set[str]:
+    cursor = await db.execute(f"PRAGMA table_info({table_name})")  # noqa: S608
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return {str(row["name"]) for row in rows}
+
+
 async def _count_rows(db, table_name: str) -> int:
     cursor = await db.execute(f"SELECT count(*) FROM {table_name}")  # noqa: S608
     row = await cursor.fetchone()
@@ -320,6 +327,7 @@ class TestDocumentSchemaMigration:
             documents_sql = await _fetch_table_sql(db, "documents")
             assert documents_sql is not None
             assert "'url'" in documents_sql
+            assert "tidy_level" in await _fetch_table_columns(db, "documents")
             assert await _fetch_table_sql(db, "_documents_old") is None
             assert await _fetch_fk_parents(db, "edges") == {"documents", "engrams"}
             assert await _fetch_fk_parents(db, "document_engrams") == {"documents", "engrams"}
@@ -337,6 +345,7 @@ class TestDocumentSchemaMigration:
             await create_tables(db)
 
             assert await _fetch_table_sql(db, "_documents_old") is None
+            assert "tidy_level" in await _fetch_table_columns(db, "documents")
             assert await _fetch_fk_parents(db, "edges") == {"documents", "engrams"}
             assert await _fetch_fk_parents(db, "document_engrams") == {"documents", "engrams"}
             assert await _fetch_index_table(db, "idx_documents_source_type") == "documents"
@@ -358,6 +367,7 @@ class TestDocumentsCRUD:
         assert row["text"] == "Hello world"
         assert row["triaged"] == 0
         assert row["processed"] == 0
+        assert row["tidy_level"] is None
 
     async def test_auto_id_generated(self, tmp_db):
         await tmp_db.execute("INSERT INTO documents (source_type, text) VALUES (?, ?)",

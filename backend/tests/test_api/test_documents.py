@@ -201,14 +201,28 @@ class TestUpdateDocument:
             "INSERT OR IGNORE INTO document_engrams (document_id, engram_id) VALUES (?, ?)",
             (doc_id, "fake-engram-id"),
         )
+        await db.execute(
+            "UPDATE documents SET tidy_title = ?, tidy_text = ?, tidy_level = ? WHERE id = ?",
+            ("Old tidy title", "Old tidy text", "structured_notes", doc_id),
+        )
         await db.commit()
 
         # Update should clear them
         resp = await client.patch(f"/api/documents/{doc_id}", json={"text": "Updated"})
         assert resp.status_code == 200
+        assert resp.json()["tidy_level"] is None
 
         cursor = await db.execute(
             "SELECT COUNT(*) FROM document_engrams WHERE document_id = ?", (doc_id,)
         )
         row = await cursor.fetchone()
         assert row[0] == 0
+
+        cursor = await db.execute(
+            "SELECT tidy_title, tidy_text, tidy_level FROM documents WHERE id = ?",
+            (doc_id,),
+        )
+        row = await cursor.fetchone()
+        assert row["tidy_title"] is None
+        assert row["tidy_text"] is None
+        assert row["tidy_level"] is None

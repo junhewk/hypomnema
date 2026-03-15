@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { api } from "@/lib/api";
-import { PROVIDER_ICONS } from "@/lib/constants";
+import {
+  BASE_LLM_LABEL,
+  BASE_LLM_MODEL,
+  BASE_LLM_PROVIDER,
+  PROVIDER_ICONS,
+} from "@/lib/constants";
 import type {
   SetupPayload,
   EmbeddingProviderInfo,
@@ -18,22 +23,12 @@ const EMBEDDING_PROVIDERS: EmbeddingProviderInfo[] = [
 
 const LLM_PROVIDERS: ProviderInfo[] = [
   {
-    id: "claude",
-    name: "Anthropic Claude",
-    requires_key: true,
-    default_model: "claude-sonnet-4-20250514",
-    models: [
-      { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
-      { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku" },
-    ],
-  },
-  {
     id: "google",
     name: "Google Gemini",
     requires_key: true,
-    default_model: "gemini-2.5-flash",
+    default_model: BASE_LLM_MODEL,
     models: [
-      { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+      { id: BASE_LLM_MODEL, name: "Gemini 2.5 Flash" },
       { id: "gemini-3-flash-preview", name: "Gemini 3 Flash Preview" },
       { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro" },
       { id: "gemini-3-pro-preview", name: "Gemini 3 Pro Preview" },
@@ -49,6 +44,16 @@ const LLM_PROVIDERS: ProviderInfo[] = [
       { id: "gpt-5-mini", name: "GPT-5 mini" },
       { id: "gpt-4.1-mini", name: "GPT-4.1 mini" },
       { id: "gpt-4o", name: "GPT-4o" },
+    ],
+  },
+  {
+    id: "claude",
+    name: "Anthropic Claude",
+    requires_key: true,
+    default_model: "claude-sonnet-4-20250514",
+    models: [
+      { id: "claude-sonnet-4-20250514", name: "Claude Sonnet 4" },
+      { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku" },
     ],
   },
   { id: "ollama", name: "Ollama (local)", requires_key: false, default_model: "llama3.1", models: [] },
@@ -369,10 +374,14 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
             <p className="font-mono text-[10px] text-muted/40 mb-4">
               Powers entity extraction and edge generation. Can be changed later in settings.
             </p>
+            <p className="font-mono text-[10px] text-muted/50 mb-4">
+              Recommended baseline from the reduced tidy eval: Google Gemini / {BASE_LLM_MODEL}.
+            </p>
 
             <div className="flex flex-col gap-px mb-4">
               {LLM_PROVIDERS.map((p, i) => {
                 const isActive = llmProvider === p.id;
+                const isRecommended = p.id === BASE_LLM_PROVIDER && p.default_model === BASE_LLM_MODEL;
                 return (
                   <button
                     key={p.id}
@@ -412,6 +421,11 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                       <div>
                         <span className="block font-mono text-xs font-medium">
                           {p.name}
+                          {isRecommended && (
+                            <span className="ml-2 rounded-sm bg-muted/10 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wider text-muted/60">
+                              {BASE_LLM_LABEL}
+                            </span>
+                          )}
                         </span>
                         <span className="block font-mono text-[10px] text-muted/60">
                           {p.requires_key ? "api key required" : "local"} · {p.default_model}

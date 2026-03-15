@@ -13,6 +13,7 @@ export function makeDoc(overrides: Partial<Document> = {}): Document {
     processed: 0,
     tidy_title: null,
     tidy_text: null,
+    tidy_level: null,
     created_at: "2026-01-01T00:00:00Z",
     updated_at: "2026-01-01T00:00:00Z",
     ...overrides,

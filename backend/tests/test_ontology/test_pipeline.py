@@ -8,6 +8,7 @@ from hypomnema.ontology.pipeline import (
     link_pending_documents,
     process_document,
     process_pending_documents,
+    retidy_document,
 )
 
 from .conftest import insert_test_doc
@@ -20,6 +21,25 @@ def _make_llm() -> MockLLMClient:
                 {"name": "Actor-Network Theory", "description": "Sociological framework"},
                 {"name": "Translation", "description": "Process of network building"},
             ]
+        },
+        "Normalize these entity names": {
+            "mapping": {
+                "actor-network theory": "actor-network theory",
+                "translation": "translation",
+            }
+        },
+    })
+
+
+def _make_tidy_llm() -> MockLLMClient:
+    return MockLLMClient(responses={
+        "Tidy Actor-Network": {
+            "entities": [
+                {"name": "Actor-Network Theory", "description": "Sociological framework"},
+                {"name": "Translation", "description": "Process of network building"},
+            ],
+            "tidy_title": "Tidy Actor-Network Notes",
+            "tidy_text": "- Actor-Network Theory\n- Translation",
         },
         "Normalize these entity names": {
             "mapping": {
@@ -108,6 +128,27 @@ class TestProcessDocument:
         cursor = await tmp_db.execute("SELECT COUNT(*) as cnt FROM document_engrams")
         row = await cursor.fetchone()
         assert row["cnt"] == 4  # 2 engrams * 2 documents
+
+    @pytest.mark.asyncio
+    async def test_stores_tidy_output_and_level(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+        doc_id = await insert_test_doc(tmp_db, "Tidy Actor-Network Theory notes.")
+
+        await process_document(
+            tmp_db,
+            doc_id,
+            _make_tidy_llm(),
+            mock_embeddings,
+            tidy_level="editorial_polish",
+        )
+
+        cursor = await tmp_db.execute(
+            "SELECT tidy_title, tidy_text, tidy_level FROM documents WHERE id = ?",
+            (doc_id,),
+        )
+        row = await cursor.fetchone()
+        assert row["tidy_title"] == "Tidy Actor-Network Notes"
+        assert row["tidy_text"] == "- Actor-Network Theory\n- Translation"
+        assert row["tidy_level"] == "editorial_polish"
 
 
 class TestProcessPendingDocuments:
@@ -337,3 +378,79 @@ class TestRevisionGuard:
         cursor = await tmp_db.execute("SELECT processed FROM documents WHERE id = ?", (doc_id,))
         row = await cursor.fetchone()
         assert row["processed"] == 1
+
+
+class TestRetidyDocument:
+    @pytest.mark.asyncio
+    async def test_retidy_updates_only_tidy_fields(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+        doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.", doc_id="retidy-doc")
+        llm = _make_linker_llm()
+        await process_document(tmp_db, doc_id, llm, mock_embeddings)
+
+        cursor = await tmp_db.execute(
+            "SELECT processed, revision FROM documents WHERE id = ?",
+            (doc_id,),
+        )
+        before = await cursor.fetchone()
+        cursor = await tmp_db.execute(
+            "SELECT COUNT(*) AS cnt FROM document_engrams WHERE document_id = ?",
+            (doc_id,),
+        )
+        before_links = await cursor.fetchone()
+
+        changed = await retidy_document(
+            tmp_db,
+            doc_id,
+            MockLLMClient(responses={
+                "Actor-Network Theory is important.": {
+                    "tidy_title": "Retidied Notes",
+                    "tidy_text": "- Actor-Network Theory is important.",
+                }
+            }),
+            tidy_level="full_revision",
+        )
+
+        assert changed is True
+        cursor = await tmp_db.execute(
+            "SELECT processed, revision, tidy_title, tidy_text, tidy_level FROM documents WHERE id = ?",
+            (doc_id,),
+        )
+        after = await cursor.fetchone()
+        cursor = await tmp_db.execute(
+            "SELECT COUNT(*) AS cnt FROM document_engrams WHERE document_id = ?",
+            (doc_id,),
+        )
+        after_links = await cursor.fetchone()
+
+        assert after["processed"] == before["processed"]
+        assert after["revision"] == before["revision"]
+        assert after["tidy_title"] == "Retidied Notes"
+        assert after["tidy_text"] == "- Actor-Network Theory is important."
+        assert after["tidy_level"] == "full_revision"
+        assert after_links["cnt"] == before_links["cnt"]
+
+    @pytest.mark.asyncio
+    async def test_retidy_skips_stale_revision(self, tmp_db) -> None:  # type: ignore[no-untyped-def]
+        doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.", doc_id="stale-retidy")
+        changed = await retidy_document(
+            tmp_db,
+            doc_id,
+            MockLLMClient(responses={
+                "Actor-Network Theory is important.": {
+                    "tidy_title": "Should Not Apply",
+                    "tidy_text": "Should Not Apply",
+                }
+            }),
+            expected_revision=2,
+            tidy_level="light_cleanup",
+        )
+
+        assert changed is False
+        cursor = await tmp_db.execute(
+            "SELECT tidy_title, tidy_text, tidy_level FROM documents WHERE id = ?",
+            (doc_id,),
+        )
+        row = await cursor.fetchone()
+        assert row["tidy_title"] is None
+        assert row["tidy_text"] is None
+        assert row["tidy_level"] is None

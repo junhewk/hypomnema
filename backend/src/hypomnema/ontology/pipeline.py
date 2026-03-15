@@ -14,13 +14,14 @@ if TYPE_CHECKING:
 
 from hypomnema.db.models import Document, Edge, Engram
 from hypomnema.ontology.engram import get_or_create_engram, link_document_engram
-from hypomnema.ontology.extractor import extract_entities
+from hypomnema.ontology.extractor import extract_entities, render_tidy_text
 from hypomnema.ontology.linker import (
     assign_predicates,
     create_edge,
     find_neighbors,
 )
 from hypomnema.ontology.normalizer import normalize, resolve_synonyms
+from hypomnema.tidy import DEFAULT_TIDY_LEVEL, TidyLevel
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +59,7 @@ async def process_document(
     embeddings: EmbeddingModel,
     *,
     expected_revision: int | None = None,
+    tidy_level: TidyLevel = DEFAULT_TIDY_LEVEL,
 ) -> list[Engram]:
     """Run entity extraction pipeline on a single document.
 
@@ -82,7 +84,7 @@ async def process_document(
         return []
 
     # Extract entities + tidy memo
-    result = await extract_entities(llm, doc.text)
+    result = await extract_entities(llm, doc.text, tidy_level=tidy_level)
 
     extracted = result.entities
 
@@ -94,8 +96,8 @@ async def process_document(
     # Store tidy memo fields
     if result.tidy_title or result.tidy_text:
         await db.execute(
-            "UPDATE documents SET tidy_title = ?, tidy_text = ? WHERE id = ?",
-            (result.tidy_title, result.tidy_text, document_id),
+            "UPDATE documents SET tidy_title = ?, tidy_text = ?, tidy_level = ? WHERE id = ?",
+            (result.tidy_title, result.tidy_text, tidy_level, document_id),
         )
 
     if not extracted:
@@ -148,6 +150,7 @@ async def process_pending_documents(
     embeddings: EmbeddingModel,
     *,
     limit: int = 50,
+    tidy_level: TidyLevel = DEFAULT_TIDY_LEVEL,
 ) -> dict[str, list[Engram]]:
     """Process all documents with processed=0, up to limit."""
     cursor = await db.execute(
@@ -158,8 +161,43 @@ async def process_pending_documents(
     await cursor.close()
     results: dict[str, list[Engram]] = {}
     for row in rows:
-        results[row["id"]] = await process_document(db, row["id"], llm, embeddings)
+        results[row["id"]] = await process_document(
+            db,
+            row["id"],
+            llm,
+            embeddings,
+            tidy_level=tidy_level,
+        )
     return results
+
+
+async def retidy_document(
+    db: aiosqlite.Connection,
+    document_id: str,
+    llm: LLMClient,
+    *,
+    expected_revision: int | None = None,
+    tidy_level: TidyLevel = DEFAULT_TIDY_LEVEL,
+) -> bool:
+    """Recompute tidy fields without touching ontology state."""
+    doc = await _fetch_document(db, document_id)
+
+    if expected_revision is not None and doc.revision != expected_revision:
+        logger.warning("retidy_document: stale revision for %s (expected %s)", document_id, expected_revision)
+        return False
+
+    result = await render_tidy_text(llm, doc.text, tidy_level=tidy_level)
+
+    if not await _check_revision(db, document_id, expected_revision):
+        logger.warning("retidy_document: stale revision after LLM work for %s (expected %s)", document_id, expected_revision)
+        return False
+
+    await db.execute(
+        "UPDATE documents SET tidy_title = ?, tidy_text = ?, tidy_level = ? WHERE id = ?",
+        (result.tidy_title, result.tidy_text, tidy_level, document_id),
+    )
+    await db.commit()
+    return True
 
 
 async def link_document(

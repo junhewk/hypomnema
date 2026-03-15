@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from hypomnema.llm.base import LLMClient
 
 from hypomnema.ontology.normalizer import normalize
+from hypomnema.tidy import DEFAULT_TIDY_LEVEL, TidyLevel, get_tidy_level_spec
 
 
 class ExtractionError(ValueError):
@@ -35,6 +36,7 @@ class ExtractionResult:
 @dataclasses.dataclass
 class ExtractionTrace:
     prompt_variant: str = ""
+    tidy_level: TidyLevel = DEFAULT_TIDY_LEVEL
     strategy: Literal["single", "map_reduce"] | None = None
     chunk_count: int = 0
 
@@ -70,12 +72,13 @@ _LEGACY_EXTRACTION_SYSTEM = (
     +
     "Additionally, produce a tidy version of the input text:\n"
     "- tidy_title: a concise, descriptive title derived from the text content\n"
-    "- tidy_text: the same content with light cleanup and restructuring using markdown. "
-    "Fix typos, grammar, and whitespace. Use markdown formatting (headings, bullets, "
-    "bold, etc.) to add structure. Do NOT add any content not present in the original. "
-    "Do NOT fabricate information. Every word must come from the original text. "
-    "Keep the original tone and brevity. If the input is already well-structured "
-    "markdown, preserve it with minimal changes.\n\n"
+    "- tidy_text: the same content rendered according to the tidy level instructions.\n\n"
+    "Common tidy requirements:\n"
+    "1. Do NOT add content not present in the original.\n"
+    "2. Do NOT fabricate information.\n"
+    "3. Preserve the original language.\n"
+    "4. If the input is already well-structured markdown, preserve it unless the tidy level "
+    "explicitly allows heavier revision.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"entities": [{"name": "...", "description": "..."}], '
     '"tidy_title": "...", "tidy_text": "..."}\n'
@@ -91,20 +94,29 @@ _GROUNDED_EXTRACTION_SYSTEM = (
     "The title must stay in the dominant source language and script. Never translate, romanize, "
     "or anglicize names. If the text already has a clear title or subject line, preserve it with "
     "light cleanup.\n"
-    "- tidy_text: a lightly cleaned markdown rendering of the same content.\n\n"
-    "Rules for tidy_text:\n"
+    "- tidy_text: a markdown rendering of the same content that follows the requested tidy level.\n\n"
+    "Common rules for tidy_text:\n"
     "1. Preserve the dominant language and script of the input. Never translate. "
     "If the source mixes languages, preserve that mix.\n"
-    "2. Preserve quoted text, numbers, dates, acronyms, speaker names, and specialized terms "
+    "2. Preserve quoted text, URLs, markdown links, inline code, HTML tags and attributes, "
+    "numbers, dates, acronyms, speaker names, ordered-list numbers, and specialized terms "
     "exactly as written unless a typo is obvious.\n"
-    "3. Prefer whitespace cleanup and markdown structure over paraphrase. Keep rough notes rough. "
-    "Do not turn fragmentary notes into a memorandum, article, conclusion, or summary unless the "
-    "source already is one.\n"
+    "2a. Also preserve compact note tokens and mixed-language shorthand exactly, including markers "
+    "such as V, N, from F, ARPA-H, and parenthetical prompts.\n"
+    "3. Match the amount of cleanup and restructuring to the requested tidy level. "
+    "Keep rough notes rough unless the tidy level explicitly allows stronger revision.\n"
     "4. Do not invent metadata, addressees, dates, headings, transitions, interpretations, or "
     "conclusions that are not explicitly present in the text.\n"
-    "5. Use the lightest markdown that clarifies the existing structure. If the input already uses "
-    "markdown, preserve it with minimal changes.\n"
-    "6. When in doubt, copy the source phrasing instead of rewriting.\n\n"
+    "5. Use markdown structure appropriate to the requested tidy level. If the input already uses "
+    "markdown, HTML, README, or docs-like structure, edit it in place unless the tidy level "
+    "explicitly allows heavier restructuring.\n"
+    "5a. If the input already uses markdown headings, preserve heading levels and list-marker style "
+    "exactly unless a tidy level explicitly allows a directly grounded reorganization.\n"
+    "6. Preserve source casing for technical terms and note fragments unless the source clearly contains a typo. "
+    "Do not sentence-case lower-case note lines just to make them look polished.\n"
+    "7. When in doubt, copy the source phrasing instead of rewriting.\n\n"
+    "8. Do not collapse structured docs, READMEs, or reference material into generic summary bullets "
+    "or memo prose.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"entities": [{"name": "...", "description": "..."}], '
     '"tidy_title": "...", "tidy_text": "..."}\n'
@@ -136,8 +148,9 @@ _GROUNDED_MAP_SYSTEM = (
     "stay in the original language, preserve mixed-language spans, keep key terms verbatim, and "
     "avoid generic conclusions or memo framing. Prefer bullet-ready note fragments over abstract "
     "prose. Copy exact wording whenever possible instead of paraphrasing. Never guess at spelling "
-    "or normalization: if a token is uncertain, copy it exactly from the chunk. Do not introduce "
-    "an English lead sentence unless the chunk itself starts that way.\n\n"
+    "or normalization: if a token is uncertain, copy it exactly from the chunk. Preserve URLs, "
+    "markdown links, inline code, HTML tags and attributes, ordered-list numbers, and quoted spans "
+    "exactly. Do not introduce an English lead sentence unless the chunk itself starts that way.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"entities": [{"name": "...", "description": "..."}], '
     '"evidence_lines": ["..."], "chunk_summary": "..."}'
@@ -153,8 +166,8 @@ _LEGACY_REDUCE_SYSTEM = (
     "evidence_lines copied from the source document.\n\n"
     +
     "Generate tidy_title and tidy_text from the evidence_lines.\n"
-    "Use light cleanup only. Do NOT add content not present in the evidence_lines. "
-    "Do NOT fabricate. Preserve original language.\n\n"
+    "Do NOT add content not present in the evidence_lines. "
+    "Do NOT fabricate. Preserve original language. Follow the requested tidy level.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"tidy_title": "...", "tidy_text": "..."}'
 )
@@ -164,19 +177,29 @@ _GROUNDED_REDUCE_SYSTEM = (
     "evidence_lines copied from the source document.\n\n"
     +
     "Generate tidy_title using only source wording already present in the evidence_lines.\n"
-    "Generate tidy_text by stitching the evidence_lines into a lightly cleaned markdown version "
-    "of the original document.\n\n"
-    "Rules for tidy_text:\n"
+    "Generate tidy_text by stitching the evidence_lines into a markdown rendering of the original "
+    "document that follows the requested tidy level.\n\n"
+    "Common rules for tidy_text:\n"
     "- Preserve the original language and mixed-language spans. Do not introduce a new language "
     "for the title or body.\n"
-    "- Preserve note structure, speaker labels, lists, and fragments when present\n"
+    "- Preserve note structure, speaker labels, lists, code fences, markdown links, HTML blocks, "
+    "and fragments when present\n"
+    "- Preserve URLs, quoted spans, inline code, numbers, ordered-list numbering, acronyms, and "
+    "specialized terms exactly\n"
+    "- Preserve compact shorthand, mixed-language note tokens, and parenthetical prompts exactly, including tokens such as V, N, and from F\n"
+    "- If the evidence_lines already reflect markdown, HTML, README, or docs-like structure, edit "
+    "in place rather than converting them into summary bullets\n"
+    "- Preserve markdown heading levels and list-marker style exactly when they already appear in the evidence_lines\n"
     "- Do not introduce memo framing, abstract conclusions, or section headers unless they already "
     "exist in the evidence_lines\n"
-    "- Use the lightest markdown that clarifies existing structure\n"
-    "- Keep the wording close to the evidence_lines; avoid interpretation or expansion\n"
+    "- Use markdown appropriate to the requested tidy level\n"
+    "- Keep the wording close to the evidence_lines unless the tidy level explicitly allows heavier revision\n"
     "- Do not start with a summary sentence or thesis statement unless the source already has one\n"
+    "- Preserve source casing for note fragments and technical terms; do not sentence-case lower-case evidence lines unless the source itself supports it\n"
     "- Preserve quoted spans and specialized terms exactly\n"
-    "- Never guess at spelling corrections; when uncertain, copy tokens exactly from the evidence_lines\n\n"
+    "- Never guess at spelling corrections; when uncertain, copy tokens exactly from the evidence_lines\n"
+    "- For short fragmentary notes, avoid umbrella introductions and keep one grounded bullet per source idea unless the source clearly supports stronger restructuring\n"
+    "- Do not collapse documentation or README material into generic summary bullets\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"tidy_title": "...", "tidy_text": "..."}'
 )
@@ -187,12 +210,18 @@ _GROUNDED_V2_MAP_SYSTEM = (
     "Also provide source-grounded evidence lines for later reconstruction.\n"
     "Requirements:\n"
     "1. Stay in the exact source language mix of the chunk. Never translate.\n"
-    "2. Output 4-12 short bullet-ready note lines, not prose summary paragraphs.\n"
+    "2. Output 4-12 short evidence lines, not prose summary paragraphs. If the source is already "
+    "markdown, HTML, README, or docs-like, preserve the original structural lines even if they are "
+    "not bullet-ready.\n"
     "3. Reuse source wording whenever possible. For note-style inputs, prefer copying full source "
     "lines verbatim. Each evidence line must be copied from one source line or be a minimal "
-    "whitespace-cleaned version of it. Do not guess at spelling or normalize uncertain tokens.\n"
-    "4. Preserve quoted text, dates, numbers, acronyms, speaker labels, and technical terms exactly.\n"
-    "5. Do not add lead-in sentences, conclusions, memo framing, or inferred structure.\n\n"
+    "whitespace-cleaned version of it. Do not guess at spelling or normalize uncertain tokens. "
+    "Preserve markdown link syntax, inline code, HTML tags and attributes, URLs, and ordered-list "
+    "numbers exactly.\n"
+    "4. Preserve quoted text, dates, numbers, acronyms, speaker labels, technical terms, compact shorthand, "
+    "and mixed-language note tokens exactly.\n"
+    "5. Do not add lead-in sentences, conclusions, memo framing, or inferred structure. When the "
+    "source is already structured documentation, prefer structural fidelity over compression.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"entities": [{"name": "...", "description": "..."}], '
     '"evidence_lines": ["..."], "chunk_summary": "..."}'
@@ -221,7 +250,9 @@ _GROUNDED_MERGE_SYSTEM = (
     "2. Keep only wording that is explicitly present in the input evidence_lines\n"
     "3. Preserve source order and language mix as much as possible\n"
     "4. If two lines are near-duplicates, keep one original input line rather than rewriting them\n"
-    "5. Do not add headers, conclusions, transitions, or summaries\n\n"
+    "5. Preserve URLs, markdown links, inline code, HTML tags and attributes, quoted spans, and "
+    "ordered-list numbers exactly\n"
+    "6. Do not add headers, conclusions, transitions, or summaries\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"evidence_lines": ["..."]}'
 )
@@ -233,9 +264,12 @@ _GROUNDED_V2_MERGE_SYSTEM = (
     "1. Output only evidence_lines that are directly supported by the input evidence_lines.\n"
     "2. Preserve the dominant source language and script. Never translate.\n"
     "3. Remove chunk-overlap duplicates while preserving source order.\n"
-    "4. Keep quoted spans, numbers, acronyms, speaker labels, and specialized terms exactly.\n"
-    "5. If two lines say the same thing, keep one original line rather than paraphrasing.\n"
-    "6. Do not create any new sentence, title, section header, or memo framing.\n\n"
+    "4. Keep quoted spans, URLs, markdown links, inline code, HTML tags and attributes, numbers, "
+    "ordered-list numbering, acronyms, speaker labels, and specialized terms exactly.\n"
+    "5. Keep compact shorthand, mixed-language note tokens, and parenthetical prompts exactly.\n"
+    "6. If two lines say the same thing, keep one original line rather than paraphrasing.\n"
+    "7. Do not create any new sentence, title, section header, or memo framing.\n"
+    "8. Preserve structural documentation lines and existing markdown heading levels instead of collapsing them into simplified notes.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"evidence_lines": ["..."]}'
 )
@@ -246,21 +280,63 @@ _GROUNDED_V2_REDUCE_SYSTEM = (
     "Your tasks:\n"
     "1. Generate tidy_title using only wording already present in the evidence_lines and in the "
     "dominant source language\n"
-    "2. Generate tidy_text by lightly cleaning and arranging the evidence_lines into markdown\n\n"
-    "Requirements for tidy_text:\n"
+    "2. Generate tidy_text by arranging the evidence_lines into markdown that follows the requested tidy level\n\n"
+    "Common requirements for tidy_text:\n"
     "1. Preserve the dominant source language and script. Never add a new English title or summary "
     "sentence to a Korean-dominant document.\n"
-    "2. Keep the output as notes if the source is notes. Do not convert note clusters into a memo, "
-    "essay, abstract, or thesis statement.\n"
-    "3. Keep wording close to the evidence_lines. Prefer copying exact lines over paraphrasing.\n"
-    "4. Preserve quoted spans, numbers, acronyms, speaker labels, and specialized terms exactly.\n"
-    "5. Use only light markdown such as blank lines and bullets that reflect the existing structure.\n"
+    "2. Keep the output aligned with source form unless the tidy level explicitly allows stronger "
+    "reorganization. If the source already looks like markdown, HTML, README, or docs, edit in place first.\n"
+    "3. Keep wording close to the evidence_lines unless the tidy level explicitly allows heavier revision.\n"
+    "4. Preserve quoted spans, URLs, markdown links, inline code, HTML tags and attributes, numbers, "
+    "ordered-list numbering, acronyms, speaker labels, and specialized terms exactly.\n"
+    "5. Use markdown intensity appropriate to the requested tidy level.\n"
     "6. Never guess at spelling corrections or token normalization. If uncertain, copy exact source "
     "tokens from the evidence_lines.\n"
-    "7. Do not add new section headers, conclusions, or framing language unless they already exist "
-    "in the evidence_lines.\n\n"
+    "7. Preserve source casing for note fragments and technical terms. Do not sentence-case lower-case source lines just to make them look polished.\n"
+    "8. Preserve compact shorthand, mixed-language note tokens, and parenthetical prompts exactly, including tokens such as V, N, and from F.\n"
+    "9. Preserve markdown heading levels and existing speaker-section boundaries when they already appear in the evidence_lines.\n"
+    "10. Do not add new section headers, conclusions, or framing language unless they already exist "
+    "in the evidence_lines.\n"
+    "11. For short fragmentary notes, avoid umbrella introductions or thesis sentences and keep the rewrite close to one grounded bullet per source idea.\n"
+    "12. For transcripts, discussion notes, and bullet-heavy source text, keep bullets and speaker sections instead of converting them into explanatory paragraphs.\n"
+    "13. Do not collapse documentation or README material into generic summary bullets or memo framing.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"tidy_title": "...", "tidy_text": "..."}'
+)
+
+_TIDY_ONLY_SINGLE_SYSTEM = (
+    "You are cleaning a single source document into tidy_title and tidy_text only.\n\n"
+    "Generate tidy_title using only wording already present in the text and keep the dominant source "
+    "language and script.\n"
+    "Generate tidy_text from the same source text using the requested tidy level.\n\n"
+    "Common rules:\n"
+    "1. Never translate.\n"
+    "2. Preserve quotes, URLs, markdown links, inline code, HTML tags and attributes, numbers, dates, "
+    "acronyms, ordered-list numbers, names, and specialized terms.\n"
+    "2a. Preserve compact shorthand, mixed-language note tokens, and parenthetical prompts exactly, including tokens such as V, N, and from F.\n"
+    "3. If the source is already markdown, HTML, README, or docs-like, edit it in place instead of "
+    "converting it into summary bullets or memo prose.\n"
+    "3a. If the source already uses markdown headings or bullet markers, preserve heading levels and list-marker style exactly unless whitespace cleanup is the only change.\n"
+    "4. Preserve source casing for note fragments and technical terms unless the source clearly contains a typo. "
+    "Do not sentence-case lower-case note lines, capitalize fragment starts, or add finishing punctuation just to make them look polished.\n"
+    "5. For short fragmentary notes, avoid umbrella introductions, thesis sentences, and explanatory padding. "
+    "Keep the rewrite close to one grounded bullet per source idea unless the source clearly supports a fuller paragraph.\n"
+    "6. For transcripts, discussion notes, and bullet-heavy source text, preserve bullets and speaker sections instead of converting them into multi-paragraph exposition.\n"
+    "7. Always return a non-empty tidy_text. If a rewrite risks dropping an exact token, copy the original line verbatim.\n"
+    "8. Do not invent metadata, conclusions, addressees, or unsupported context.\n"
+    "9. Return ONLY valid JSON in this exact format:\n"
+    '{"tidy_title": "...", "tidy_text": "..."}'
+)
+
+_TIDY_ONLY_MAP_SYSTEM = (
+    "You are preparing source-grounded evidence lines for a later tidy-text rendering pass.\n"
+    "Return 4-12 short evidence_lines copied from this chunk or minimally whitespace-cleaned.\n"
+    "Preserve the exact source language mix, markdown links, inline code, HTML tags and attributes, "
+    "URLs, quoted spans, numbers, ordered-list numbers, acronyms, speaker labels, and specialized "
+    "terms. If the source is already structured markdown or HTML, prefer full structural lines over "
+    "compressed notes. Do not add conclusions, memo framing, or inferred structure.\n\n"
+    "Return ONLY valid JSON in this exact format:\n"
+    '{"evidence_lines": ["..."], "chunk_summary": "..."}'
 )
 
 _PROMPT_VARIANTS = {
@@ -304,6 +380,11 @@ def get_prompt_variant(name: str = DEFAULT_PROMPT_VARIANT) -> ExtractorPromptVar
         raise ValueError(f"Unknown prompt variant {name!r}. Available: {available}") from exc
 
 
+def _with_tidy_level(system: str, tidy_level: TidyLevel) -> str:
+    """Append tidy-level-specific instructions to a base prompt."""
+    return f"{system.rstrip()}\n\n{get_tidy_level_spec(tidy_level).prompt_directive}"
+
+
 def _split_chunks(text: str, chunk_size: int = 4000, overlap: int = 200) -> list[str]:
     """Split text into chunks on paragraph boundaries with overlap."""
     if len(text) <= chunk_size:
@@ -343,6 +424,11 @@ class _ChunkResult:
     evidence_lines: tuple[str, ...]
 
 
+@dataclasses.dataclass(frozen=True)
+class _TidyChunkResult:
+    evidence_lines: tuple[str, ...]
+
+
 async def _extract_chunk(
     llm: LLMClient,
     chunk: str,
@@ -370,6 +456,18 @@ async def _extract_chunk(
     evidence_lines = _extract_evidence_lines(result)
 
     return _ChunkResult(entities=entities, evidence_lines=evidence_lines)
+
+
+async def _extract_tidy_chunk(
+    llm: LLMClient,
+    chunk: str,
+) -> _TidyChunkResult:
+    """Extract evidence lines for tidy-only rendering."""
+    try:
+        result = await llm.complete_json(chunk, system=_TIDY_ONLY_MAP_SYSTEM)
+    except ValueError as exc:
+        raise ExtractionError(f"LLM returned malformed tidy chunk output: {exc}") from exc
+    return _TidyChunkResult(evidence_lines=_extract_evidence_lines(result))
 
 
 def _extract_evidence_lines(
@@ -572,6 +670,36 @@ async def _compress_evidence_lines(
     return artifacts[0] if artifacts else merged
 
 
+async def _compress_tidy_evidence_lines(
+    llm: LLMClient,
+    chunk_results: list[_TidyChunkResult],
+    variant: ExtractorPromptVariant,
+) -> tuple[str, ...]:
+    """Compress evidence lines for tidy-only rendering."""
+    merged = _dedupe_evidence_lines(
+        line
+        for chunk_result in chunk_results
+        for line in chunk_result.evidence_lines
+    )
+    if _serialized_evidence_size(merged) <= _FINAL_RENDER_EVIDENCE_CHARS:
+        return merged
+
+    artifacts = [chunk_result.evidence_lines for chunk_result in chunk_results if chunk_result.evidence_lines]
+    if not artifacts:
+        return merged
+
+    while len(artifacts) > 1:
+        next_level: list[tuple[str, ...]] = []
+        for index in range(0, len(artifacts), _MERGE_GROUP_SIZE):
+            group = artifacts[index:index + _MERGE_GROUP_SIZE]
+            next_level.append(await _merge_evidence_group(llm, group, variant))
+        artifacts = next_level
+        if len(artifacts) == 1 and _serialized_evidence_size(artifacts[0]) <= _FINAL_RENDER_EVIDENCE_CHARS:
+            return artifacts[0]
+
+    return artifacts[0] if artifacts else merged
+
+
 def _fallback_title(evidence_lines: tuple[str, ...]) -> str | None:
     """Derive a conservative title from the first grounded evidence line."""
     for line in evidence_lines:
@@ -601,6 +729,7 @@ async def _render_long_document(
     llm: LLMClient,
     chunk_results: list[_ChunkResult],
     variant: ExtractorPromptVariant,
+    tidy_level: TidyLevel,
 ) -> ExtractionResult:
     """Render the final tidy output from a grounded merged artifact."""
     entities = _merge_entities(chunk_results)
@@ -610,7 +739,10 @@ async def _render_long_document(
 
     render_input = json.dumps({"evidence_lines": list(evidence_lines)}, ensure_ascii=False)
     try:
-        result = await llm.complete_json(render_input, system=variant.reduce_system)
+        result = await llm.complete_json(
+            render_input,
+            system=_with_tidy_level(variant.reduce_system, tidy_level),
+        )
         tidy_title = _clean_optional_str(result.get("tidy_title")) or _fallback_title(evidence_lines)
         tidy_text = _clean_optional_str(result.get("tidy_text")) or _fallback_tidy_text(evidence_lines)
     except ValueError:
@@ -624,11 +756,41 @@ async def _render_long_document(
     )
 
 
+async def _render_tidy_from_evidence(
+    llm: LLMClient,
+    evidence_lines: tuple[str, ...],
+    variant: ExtractorPromptVariant,
+    tidy_level: TidyLevel,
+) -> ExtractionResult:
+    """Render tidy-only output from grounded evidence lines."""
+    if not evidence_lines:
+        return ExtractionResult(entities=[])
+
+    render_input = json.dumps({"evidence_lines": list(evidence_lines)}, ensure_ascii=False)
+    try:
+        result = await llm.complete_json(
+            render_input,
+            system=_with_tidy_level(variant.reduce_system, tidy_level),
+        )
+        tidy_title = _clean_optional_str(result.get("tidy_title")) or _fallback_title(evidence_lines)
+        tidy_text = _clean_optional_str(result.get("tidy_text")) or _fallback_tidy_text(evidence_lines)
+    except ValueError:
+        tidy_title = _fallback_title(evidence_lines)
+        tidy_text = _fallback_tidy_text(evidence_lines)
+
+    return ExtractionResult(
+        entities=[],
+        tidy_title=tidy_title,
+        tidy_text=tidy_text,
+    )
+
+
 async def extract_entities(
     llm: LLMClient,
     text: str,
     *,
     prompt_variant: str = DEFAULT_PROMPT_VARIANT,
+    tidy_level: TidyLevel = DEFAULT_TIDY_LEVEL,
     trace: ExtractionTrace | None = None,
 ) -> ExtractionResult:
     """Extract conceptual entities and tidy memo from text using an LLM.
@@ -646,12 +808,13 @@ async def extract_entities(
     variant = get_prompt_variant(prompt_variant)
     if trace is not None:
         trace.prompt_variant = variant.name
+        trace.tidy_level = tidy_level
 
     if len(stripped) < _CHUNK_THRESHOLD:
         if trace is not None:
             trace.strategy = "single"
             trace.chunk_count = 1
-        return await _extract_single(llm, stripped, variant)
+        return await _extract_single(llm, stripped, variant, tidy_level)
 
     # Long documents: map to grounded chunk artifacts, then render from the merged artifact.
     chunks = _split_chunks(stripped)
@@ -659,21 +822,83 @@ async def extract_entities(
         trace.strategy = "map_reduce"
         trace.chunk_count = len(chunks)
     chunk_results = list(await asyncio.gather(*(_extract_chunk(llm, c, variant) for c in chunks)))
-    return await _render_long_document(llm, chunk_results, variant)
+    return await _render_long_document(llm, chunk_results, variant, tidy_level)
+
+
+async def render_tidy_text(
+    llm: LLMClient,
+    text: str,
+    *,
+    prompt_variant: str = DEFAULT_PROMPT_VARIANT,
+    tidy_level: TidyLevel = DEFAULT_TIDY_LEVEL,
+    trace: ExtractionTrace | None = None,
+) -> ExtractionResult:
+    """Render tidy_title and tidy_text without running entity extraction."""
+    stripped = text.strip()
+    if not stripped:
+        return ExtractionResult(entities=[])
+
+    variant = get_prompt_variant(prompt_variant)
+    if trace is not None:
+        trace.prompt_variant = variant.name
+        trace.tidy_level = tidy_level
+
+    if len(stripped) < _CHUNK_THRESHOLD:
+        if trace is not None:
+            trace.strategy = "single"
+            trace.chunk_count = 1
+        return await _render_single_tidy(llm, stripped, tidy_level)
+
+    chunks = _split_chunks(stripped)
+    if trace is not None:
+        trace.strategy = "map_reduce"
+        trace.chunk_count = len(chunks)
+    chunk_results = list(await asyncio.gather(*(_extract_tidy_chunk(llm, c) for c in chunks)))
+    evidence_lines = await _compress_tidy_evidence_lines(llm, chunk_results, variant)
+    return await _render_tidy_from_evidence(llm, evidence_lines, variant, tidy_level)
 
 
 async def _extract_single(
     llm: LLMClient,
     text: str,
     variant: ExtractorPromptVariant,
+    tidy_level: TidyLevel,
 ) -> ExtractionResult:
     """Extract from a short document with a single LLM call."""
     try:
-        result = await llm.complete_json(text, system=variant.extraction_system)
+        result = await llm.complete_json(
+            text,
+            system=_with_tidy_level(variant.extraction_system, tidy_level),
+        )
     except ValueError as exc:
         raise ExtractionError(f"LLM returned malformed output: {exc}") from exc
 
     return _parse_extraction_result(result)
+
+
+async def _render_single_tidy(
+    llm: LLMClient,
+    text: str,
+    tidy_level: TidyLevel,
+) -> ExtractionResult:
+    """Render tidy output from a short document without entity extraction."""
+    try:
+        result = await llm.complete_json(
+            text,
+            system=_with_tidy_level(_TIDY_ONLY_SINGLE_SYSTEM, tidy_level),
+        )
+    except ValueError as exc:
+        raise ExtractionError(f"LLM returned malformed tidy output: {exc}") from exc
+    parsed = _parse_tidy_result(result)
+    if parsed.tidy_text:
+        return parsed
+
+    source_lines = _summary_to_evidence_lines(text, limit=None) or tuple(line for line in text.splitlines() if line.strip())
+    return ExtractionResult(
+        entities=[],
+        tidy_title=parsed.tidy_title or _fallback_title(source_lines),
+        tidy_text=text.strip() or _fallback_tidy_text(source_lines),
+    )
 
 
 def _parse_extraction_result(data: dict[str, Any]) -> ExtractionResult:
@@ -693,6 +918,15 @@ def _parse_extraction_result(data: dict[str, Any]) -> ExtractionResult:
 
     return ExtractionResult(
         entities=entities,
+        tidy_title=_clean_optional_str(data.get("tidy_title")),
+        tidy_text=_clean_optional_str(data.get("tidy_text")),
+    )
+
+
+def _parse_tidy_result(data: dict[str, Any]) -> ExtractionResult:
+    """Parse a tidy-only LLM response into ExtractionResult."""
+    return ExtractionResult(
+        entities=[],
         tidy_title=_clean_optional_str(data.get("tidy_title")),
         tidy_text=_clean_optional_str(data.get("tidy_text")),
     )

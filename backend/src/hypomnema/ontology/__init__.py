@@ -15,6 +15,7 @@ from hypomnema.ontology.extractor import (
     ExtractionError,
     ExtractionResult,
     extract_entities,
+    render_tidy_text,
 )
 from hypomnema.ontology.linker import (
     VALID_PREDICATES,
@@ -29,6 +30,7 @@ from hypomnema.ontology.pipeline import (
     link_pending_documents,
     process_document,
     process_pending_documents,
+    retidy_document,
 )
 
 __all__ = [
@@ -56,5 +58,7 @@ __all__ = [
     "normalize",
     "process_document",
     "process_pending_documents",
+    "render_tidy_text",
+    "retidy_document",
     "resolve_synonyms",
 ]

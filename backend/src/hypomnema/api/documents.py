@@ -33,8 +33,16 @@ async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int |
     db = app.state.db
     llm = app.state.llm
     embeddings = app.state.embeddings
+    tidy_level = app.state.settings.tidy_level
     try:
-        await process_document(db, document_id, llm, embeddings, expected_revision=revision)
+        await process_document(
+            db,
+            document_id,
+            llm,
+            embeddings,
+            expected_revision=revision,
+            tidy_level=tidy_level,
+        )
         await link_document(db, document_id, llm, expected_revision=revision)
 
         # Auto-compute projections so viz is immediately available
@@ -132,7 +140,7 @@ async def update_document(
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values())
     cursor = await db.execute(
-        f"UPDATE documents SET {set_clause}, processed = 0, tidy_title = NULL, tidy_text = NULL, "  # noqa: S608
+        f"UPDATE documents SET {set_clause}, processed = 0, tidy_title = NULL, tidy_text = NULL, tidy_level = NULL, "  # noqa: S608
         "revision = revision + 1, updated_at = datetime('now') WHERE id = ? RETURNING *",
         (*values, document_id),
     )

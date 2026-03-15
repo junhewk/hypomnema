@@ -7,6 +7,7 @@ import pytest
 import hypomnema.ontology.extractor as extractor_mod
 from hypomnema.llm.mock import MockLLMClient
 from hypomnema.ontology.extractor import (
+    DEFAULT_TIDY_LEVEL,
     DEFAULT_PROMPT_VARIANT,
     ExtractionError,
     ExtractionResult,
@@ -17,6 +18,7 @@ from hypomnema.ontology.extractor import (
     get_prompt_variant,
     list_prompt_variants,
 )
+from hypomnema.tidy import get_tidy_level_spec
 
 
 class RoutedLLM:
@@ -55,7 +57,7 @@ class RoutedLLM:
             }
         if system == variant.merge_system:
             return {"evidence_lines": ["Invented merged line"]}
-        if system == variant.reduce_system:
+        if system.startswith(variant.reduce_system):
             return {
                 "tidy_title": "Rendered Title",
                 "tidy_text": "Rendered body",
@@ -239,11 +241,13 @@ class TestMapReduce:
         assert trace.strategy == "map_reduce"
         assert trace.chunk_count > 1
         variant = get_prompt_variant(DEFAULT_PROMPT_VARIANT)
-        render_prompts = [prompt for prompt, system in llm.calls if system == variant.reduce_system]
+        render_prompts = [prompt for prompt, system in llm.calls if system.startswith(variant.reduce_system)]
         assert len(render_prompts) == 1
         assert '"evidence_lines"' in render_prompts[0]
         assert '"chunks"' not in render_prompts[0]
         assert not any(system == variant.merge_system for _, system in llm.calls)
+        reduce_system = next(system for _, system in llm.calls if system.startswith(variant.reduce_system))
+        assert get_tidy_level_spec(DEFAULT_TIDY_LEVEL).prompt_directive in reduce_system
 
     @pytest.mark.asyncio
     async def test_short_text_uses_single_call(self) -> None:
@@ -279,7 +283,7 @@ class TestMapReduce:
         variant = get_prompt_variant(DEFAULT_PROMPT_VARIANT)
         merge_prompts = [prompt for prompt, system in llm.calls if system == variant.merge_system]
         assert len(merge_prompts) == 1
-        render_prompts = [prompt for prompt, system in llm.calls if system == variant.reduce_system]
+        render_prompts = [prompt for prompt, system in llm.calls if system.startswith(variant.reduce_system)]
         assert len(render_prompts) == 1
         assert "Invented merged line" not in render_prompts[0]
         assert "CHUNK_ALPHA line one" in render_prompts[0]

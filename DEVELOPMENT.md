@@ -696,11 +696,12 @@ This is a policy snapshot, not a permanent truth. Re-check platform docs before 
 
 **Windows:**
 - Windows does not require an Apple-style annual developer fee for normal direct downloads.
-- Lowest-friction early path: GitHub Releases with a standard installer.
-- `winget` is a package-manager distribution channel, not an approval program and not an app store. Users can install with a command such as `winget install ...`.
-- `winget` does not remove Microsoft Defender SmartScreen warnings by itself. Code signing is a separate trust step.
+- GitHub Releases with a standard installer is sufficient for the first public Windows release.
+- `winget` is optional. It is a package-manager distribution channel, not an approval program and not an app store. Its value is install/upgrade convenience, not trust.
+- `winget` does not remove Microsoft Defender SmartScreen warnings by itself.
+- Windows code signing is a separate trust step. The practical later-stage path is a standard Authenticode code-signing certificate plus `signtool` with timestamping.
 - Microsoft Store is optional. As of this snapshot, individual developer accounts are free and company accounts are approximately USD 99 one time, not annual.
-- Practical recommendation: release on GitHub first, add `winget` next, and defer paid code-signing until download volume justifies the cost.
+- Practical recommendation: release on GitHub first, skip `winget` unless command-line install/upgrade convenience becomes important, and defer paid code-signing until SmartScreen friction justifies the cost.
 
 **macOS:**
 - For broad desktop distribution to normal users, the practical path is Apple Developer Program membership plus signing/notarization.
@@ -720,6 +721,7 @@ This is a policy snapshot, not a permanent truth. Re-check platform docs before 
 **Resulting strategy for Hypomnema:**
 - Public/open-source distribution: GitHub, centered on the server/web version.
 - Windows desktop: first desktop target.
+- Windows desktop distribution does not require `winget` for the first release.
 - macOS desktop: only after there is enough demand to justify Apple membership, notarization, packaging work, and support burden.
 - Homebrew: consider a personal tap after a signed macOS build exists; do not rely on official `homebrew/cask` for the first macOS release.
 
@@ -728,6 +730,7 @@ This is a policy snapshot, not a permanent truth. Re-check platform docs before 
 - Homebrew Acceptable Casks: https://docs.brew.sh/Acceptable-Casks
 - Homebrew Taps: https://docs.brew.sh/How-to-Create-and-Maintain-a-Tap
 - WinGet overview: https://learn.microsoft.com/en-us/windows/package-manager/
+- SignTool: https://learn.microsoft.com/en-us/windows/win32/seccrypto/using-signtool-to-sign-a-file
 - Microsoft Store account FAQ: https://learn.microsoft.com/en-us/windows/apps/publish/faq/open-developer-account
 
 ---

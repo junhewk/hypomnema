@@ -5,11 +5,14 @@ from typing import Literal
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 
+from hypomnema.tidy import DEFAULT_TIDY_LEVEL, TidyLevel
+
 
 _DB_OVERRIDABLE = {
     "llm_provider", "llm_model", "anthropic_api_key", "google_api_key",
     "openai_api_key", "ollama_base_url", "openai_base_url",
     "embedding_provider", "embedding_model", "embedding_dim",
+    "tidy_level",
 }
 
 
@@ -34,6 +37,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     ollama_base_url: str = "http://localhost:11434"
     openai_base_url: str = ""
+    tidy_level: TidyLevel = DEFAULT_TIDY_LEVEL
 
     # Embedding provider (fixed at install time — not changeable at runtime)
     embedding_provider: Literal["local", "openai", "google"] = "local"

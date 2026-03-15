@@ -28,6 +28,9 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
             triaged INTEGER NOT NULL DEFAULT 0,
             processed INTEGER NOT NULL DEFAULT 0,
             revision INTEGER NOT NULL DEFAULT 1,
+            tidy_title TEXT,
+            tidy_text TEXT,
+            tidy_level TEXT,
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
             updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
         )
@@ -141,6 +144,7 @@ async def _migrate_add_columns(db: aiosqlite.Connection) -> None:
     columns = {
         "tidy_title": "TEXT",
         "tidy_text": "TEXT",
+        "tidy_level": "TEXT",
         "revision": "INTEGER NOT NULL DEFAULT 1",
     }
     for col, definition in columns.items():
@@ -421,6 +425,7 @@ def _documents_table_sql(table_name: str) -> str:
             revision INTEGER NOT NULL DEFAULT 1,
             tidy_title TEXT,
             tidy_text TEXT,
+            tidy_level TEXT,
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
             updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
         )
@@ -500,9 +505,9 @@ async def _copy_documents_rows(
     await db.execute(
         f"{insert_mode} INTO {destination_table} ("  # noqa: S608
         "id, source_type, title, text, mime_type, source_uri, metadata, "
-        "triaged, processed, revision, tidy_title, tidy_text, created_at, updated_at"
+        "triaged, processed, revision, tidy_title, tidy_text, tidy_level, created_at, updated_at"
         f") SELECT id, source_type, title, text, mime_type, source_uri, metadata, "  # noqa: S608
-        "triaged, processed, revision, tidy_title, tidy_text, created_at, updated_at "
+        "triaged, processed, revision, tidy_title, tidy_text, tidy_level, created_at, updated_at "
         f"FROM {source_table}"  # noqa: S608
     )
 

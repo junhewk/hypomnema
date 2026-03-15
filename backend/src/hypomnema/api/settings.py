@@ -32,6 +32,8 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 _ENCRYPTED_KEYS = {"anthropic_api_key", "google_api_key", "openai_api_key"}
 _VALID_LLM_PROVIDERS = {"claude", "google", "openai", "ollama"}
+_BASE_LLM_PROVIDER = "google"
+_BASE_LLM_MODEL = "gemini-2.5-flash"
 _LLM_MODELS: dict[str, list[ModelOption]] = {
     "claude": [
         ModelOption(id="claude-sonnet-4-20250514", name="Claude Sonnet 4"),
@@ -45,6 +47,7 @@ _LLM_MODELS: dict[str, list[ModelOption]] = {
         ModelOption(id="gemini-2.5-flash-lite-preview-09-2025", name="Gemini 2.5 Flash-Lite Preview"),
     ],
     "openai": [
+        ModelOption(id="gpt-5.4", name="GPT-5.4"),
         ModelOption(id="gpt-5-mini", name="GPT-5 mini"),
         ModelOption(id="gpt-4.1-mini", name="GPT-4.1 mini"),
         ModelOption(id="gpt-4o", name="GPT-4o"),
@@ -53,7 +56,7 @@ _LLM_MODELS: dict[str, list[ModelOption]] = {
 }
 _DEFAULT_LLM_MODELS = {
     "claude": "claude-sonnet-4-20250514",
-    "google": "gemini-2.5-flash",
+    "google": _BASE_LLM_MODEL,
     "openai": "gpt-5-mini",
     "ollama": "llama3.1",
 }
@@ -68,6 +71,7 @@ def _build_response(settings: AppSettings, masked_keys: dict[str, str]) -> Setti
         openai_api_key=masked_keys.get("openai_api_key", mask_key(settings.openai_api_key) if settings.openai_api_key else ""),
         ollama_base_url=settings.ollama_base_url,
         openai_base_url=settings.openai_base_url,
+        tidy_level=settings.tidy_level,
         embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
         embedding_dim=settings.embedding_dim,
@@ -250,13 +254,6 @@ async def complete_setup(
 
 _LLM_PROVIDER_CATALOG = [
     ProviderInfo(
-        id="claude",
-        name="Anthropic Claude",
-        requires_key=True,
-        default_model=_DEFAULT_LLM_MODELS["claude"],
-        models=_LLM_MODELS["claude"],
-    ),
-    ProviderInfo(
         id="google",
         name="Google Gemini",
         requires_key=True,
@@ -269,6 +266,13 @@ _LLM_PROVIDER_CATALOG = [
         requires_key=True,
         default_model=_DEFAULT_LLM_MODELS["openai"],
         models=_LLM_MODELS["openai"],
+    ),
+    ProviderInfo(
+        id="claude",
+        name="Anthropic Claude",
+        requires_key=True,
+        default_model=_DEFAULT_LLM_MODELS["claude"],
+        models=_LLM_MODELS["claude"],
     ),
     ProviderInfo(
         id="ollama",
@@ -524,7 +528,13 @@ async def _reprocess_all_documents(app: FastAPI, total: int) -> None:
         processed = 0
         for doc_id in doc_ids:
             try:
-                await process_document(db, doc_id, llm, embeddings)
+                await process_document(
+                    db,
+                    doc_id,
+                    llm,
+                    embeddings,
+                    tidy_level=app.state.settings.tidy_level,
+                )
             except Exception:
                 logger.exception("Error processing document %s", doc_id)
             processed += 1

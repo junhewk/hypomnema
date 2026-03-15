@@ -1,6 +1,12 @@
 export type SourceType = "scribble" | "file" | "feed" | "url";
 export type SearchMode = "documents" | "knowledge";
 export type FeedType = "rss" | "scrape" | "youtube";
+export type TidyLevel =
+  | "format_only"
+  | "light_cleanup"
+  | "structured_notes"
+  | "editorial_polish"
+  | "full_revision";
 export type Predicate =
   | "contradicts"
   | "supports"
@@ -27,6 +33,7 @@ export interface Document {
   processed: number;
   tidy_title: string | null;
   tidy_text: string | null;
+  tidy_level: TidyLevel | null;
   created_at: string;
   updated_at: string;
 }
@@ -118,6 +125,7 @@ export interface AppSettings {
   openai_api_key: string;
   ollama_base_url: string;
   openai_base_url: string;
+  tidy_level: TidyLevel;
   embedding_provider: string;
   embedding_model: string;
   embedding_dim: number;
@@ -131,6 +139,7 @@ export interface SettingsUpdatePayload {
   openai_api_key?: string;
   ollama_base_url?: string;
   openai_base_url?: string;
+  tidy_level?: TidyLevel;
 }
 
 export interface ModelOption {

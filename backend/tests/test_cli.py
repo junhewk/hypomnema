@@ -260,6 +260,53 @@ class TestMain:
         assert calls[0].provider == "openai"
         assert calls[0].model == "gpt-5-mini"
 
+    def test_dispatches_eval_tidy_text_with_tidy_level(self, monkeypatch: Any) -> None:
+        calls: list[argparse.Namespace] = []
+
+        def fake_eval(args: argparse.Namespace) -> None:
+            calls.append(args)
+
+        monkeypatch.setattr(cli_mod, "cmd_dev", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_serve", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_eval_tidy_text", fake_eval)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["hypomnema", "eval", "tidy-text", "--tidy-level", "full_revision"],
+        )
+
+        cli_mod.main()
+
+        assert len(calls) == 1
+        assert calls[0].tidy_level == "full_revision"
+
+    def test_dispatches_eval_tidy_text_matrix(self, monkeypatch: Any) -> None:
+        calls: list[argparse.Namespace] = []
+
+        def fake_eval(args: argparse.Namespace) -> None:
+            calls.append(args)
+
+        monkeypatch.setattr(cli_mod, "cmd_dev", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_serve", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_eval_tidy_text_matrix", fake_eval)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["hypomnema", "eval", "tidy-text-matrix"],
+        )
+
+        cli_mod.main()
+
+        assert len(calls) == 1
+        assert calls[0].command == "eval"
+        assert calls[0].eval_command == "tidy-text-matrix"
+        assert calls[0].tidy_level is None
+        assert calls[0].max_cases == 18
+        assert calls[0].case_id is None
+        assert calls[0].generated_json is None
+        assert calls[0].refresh_corpus is False
+        assert calls[0].with_judge is False
+
     def test_dispatches_eval_engram_dedupe(self, monkeypatch: Any) -> None:
         calls: list[argparse.Namespace] = []
 
@@ -282,3 +329,34 @@ class TestMain:
         assert calls[0].command == "eval"
         assert calls[0].eval_command == "engram-dedupe"
         assert calls[0].dataset == "full"
+
+    def test_dispatches_tidy_backfill(self, monkeypatch: Any) -> None:
+        calls: list[argparse.Namespace] = []
+
+        def fake_backfill(args: argparse.Namespace) -> None:
+            calls.append(args)
+
+        monkeypatch.setattr(cli_mod, "cmd_dev", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_serve", lambda _args: None)
+        monkeypatch.setattr(cli_mod, "cmd_tidy_backfill", fake_backfill)
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "hypomnema",
+                "tidy",
+                "backfill",
+                "--level",
+                "light_cleanup",
+                "--scope",
+                "missing",
+            ],
+        )
+
+        cli_mod.main()
+
+        assert len(calls) == 1
+        assert calls[0].command == "tidy"
+        assert calls[0].tidy_command == "backfill"
+        assert calls[0].level == "light_cleanup"
+        assert calls[0].scope == "missing"

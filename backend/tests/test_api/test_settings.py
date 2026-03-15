@@ -9,6 +9,7 @@ from hypomnema.db.schema import create_tables, get_vec_table_embedding_dim
 from hypomnema.db.settings_store import get_setting, set_setting
 from hypomnema.llm import base as llm_base
 from hypomnema.llm.mock import MockLLMClient
+from hypomnema.tidy import DEFAULT_TIDY_LEVEL
 
 
 class TestSettingsAPI:
@@ -34,6 +35,7 @@ class TestSettingsAPI:
         # Embedding info should be present
         assert "embedding_provider" in data
         assert "embedding_dim" in data
+        assert data["tidy_level"] == DEFAULT_TIDY_LEVEL
 
     async def test_put_settings_updates_llm_provider(self, app, client):
         """PUT /api/settings should update LLM provider."""
@@ -48,6 +50,22 @@ class TestSettingsAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["llm_provider"] == "ollama"
+
+    async def test_put_settings_updates_tidy_level(self, app, client):
+        """PUT /api/settings should persist the global tidy level."""
+        fernet_key = get_or_create_key(app.state.settings.db_path.parent)
+        app.state.fernet_key = fernet_key
+        app.state.llm_lock = asyncio.Lock()
+
+        response = await client.put(
+            "/api/settings",
+            json={"tidy_level": "full_revision"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["tidy_level"] == "full_revision"
+        assert app.state.settings.tidy_level == "full_revision"
+        assert await get_setting(app.state.db, "tidy_level", fernet_key=fernet_key) == "full_revision"
 
     async def test_put_settings_encrypts_api_key(self, app, client):
         """PUT /api/settings should encrypt API keys in DB."""

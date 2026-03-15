@@ -7,6 +7,8 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
+from hypomnema.tidy import TidyLevel
+
 
 def _parse_iso_datetime(v: Any) -> datetime:
     """Parse SQLite ISO timestamp (with trailing Z) to datetime."""
@@ -42,6 +44,7 @@ class Document(BaseModel):
     revision: int = 1
     tidy_title: str | None = None
     tidy_text: str | None = None
+    tidy_level: TidyLevel | None = None
     created_at: datetime
     updated_at: datetime
 
