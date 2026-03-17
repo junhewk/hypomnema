@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import tempfile
 from pathlib import Path
@@ -12,17 +13,49 @@ import httpx
 
 from hypomnema.api.deps import DB
 from hypomnema.api.schemas import DocumentDetail, DocumentOut, DocumentUpdate, DocumentWithEngrams, EngramSummary, RelatedDocument, ScribbleCreate, UrlFetch
-from hypomnema.db.models import Engram
+from hypomnema.db.models import Document, Engram
 from hypomnema.ingestion.file_parser import UnsupportedFormatError, ingest_file
 from hypomnema.ingestion.scribble import create_scribble
 from hypomnema.ingestion.url_fetch import DuplicateUrlError, fetch_url
-from hypomnema.ontology.pipeline import link_document, process_document
+from hypomnema.ontology.pipeline import link_document, process_document, update_processing_metadata
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 # Draft = scribble that was never processed (no tidy_text yet)
 _DRAFT_FILTER = "source_type = 'scribble' AND processed = 0 AND tidy_text IS NULL"
+
+
+async def _queue_processing_metadata(db: DB, doc: Document) -> Document:
+    metadata = dict(doc.metadata or {})
+    await update_processing_metadata(
+        db,
+        doc.id,
+        metadata,
+        status="queued",
+        stage="queued",
+        source_profile="pdf" if doc.mime_type == "application/pdf" else "default",
+        chunk_total=0,
+        chunk_completed=0,
+        chunk_failed=0,
+        retry_count=0,
+        fallback_used=False,
+        last_error=None,
+    )
+    doc.metadata = metadata
+    return doc
+
+
+async def _load_document_metadata(db: DB, document_id: str) -> dict[str, object]:
+    cursor = await db.execute("SELECT metadata FROM documents WHERE id = ?", (document_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None or row["metadata"] is None:
+        return {}
+    raw = row["metadata"]
+    if isinstance(raw, str):
+        return json.loads(raw)
+    return dict(raw)
 
 
 async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int | None = None) -> None:
@@ -34,7 +67,20 @@ async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int |
     llm = app.state.llm
     embeddings = app.state.embeddings
     tidy_level = app.state.settings.tidy_level
+    metadata = await _load_document_metadata(db, document_id)
+
+    async def progress_callback(payload: dict[str, object]) -> None:
+        await update_processing_metadata(db, document_id, metadata, **payload)
+
     try:
+        await update_processing_metadata(
+            db,
+            document_id,
+            metadata,
+            status="running",
+            stage="extract",
+            last_error=None,
+        )
         await process_document(
             db,
             document_id,
@@ -42,14 +88,49 @@ async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int |
             embeddings,
             expected_revision=revision,
             tidy_level=tidy_level,
+            progress_callback=progress_callback,
+        )
+        await update_processing_metadata(
+            db,
+            document_id,
+            metadata,
+            status="running",
+            stage="link",
+            last_error=None,
         )
         await link_document(db, document_id, llm, expected_revision=revision)
+        await update_processing_metadata(
+            db,
+            document_id,
+            metadata,
+            status="running",
+            stage="project",
+            last_error=None,
+        )
 
         # Auto-compute projections so viz is immediately available
         from hypomnema.visualization.projection import compute_projections
 
         await compute_projections(db)
-    except Exception:
+        processing = metadata.get("processing", {})
+        final_status = "partial" if processing.get("fallback_used") or processing.get("chunk_failed") else "completed"
+        await update_processing_metadata(
+            db,
+            document_id,
+            metadata,
+            status=final_status,
+            stage="done",
+            last_error=None,
+        )
+    except Exception as exc:
+        await update_processing_metadata(
+            db,
+            document_id,
+            metadata,
+            status="failed",
+            stage="failed",
+            last_error=f"{type(exc).__name__}: {exc}",
+        )
         logger.exception("Ontology pipeline failed for document %s", document_id)
 
 
@@ -65,6 +146,7 @@ async def create_scribble_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     if not body.draft:
+        doc = await _queue_processing_metadata(db, doc)
         background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
     return DocumentOut.model_validate(doc, from_attributes=True)
 
@@ -86,6 +168,7 @@ async def fetch_url_endpoint(
         raise HTTPException(status_code=422, detail=str(e)) from e
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {e}") from e
+    doc = await _queue_processing_metadata(db, doc)
     background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
     return DocumentOut.model_validate(doc, from_attributes=True)
 
@@ -108,6 +191,7 @@ async def upload_file_endpoint(
         raise HTTPException(status_code=400, detail=str(e)) from e
     finally:
         tmp_path.unlink(missing_ok=True)
+    doc = await _queue_processing_metadata(db, doc)
     background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
     return DocumentOut.model_validate(doc, from_attributes=True)
 
@@ -153,11 +237,13 @@ async def update_document(
     await db.execute("DELETE FROM edges WHERE source_document_id = ?", (document_id,))
     await db.commit()
 
+    doc = await _queue_processing_metadata(db, Document.from_row(updated_row))
+
     # Re-run ontology pipeline in background with current revision
     revision = updated_row["revision"]
     background_tasks.add_task(_run_ontology_pipeline, request.app, document_id, revision)
 
-    return DocumentOut(**dict(updated_row))
+    return DocumentOut.model_validate(doc, from_attributes=True)
 
 
 @router.get("", response_model=list[DocumentWithEngrams])

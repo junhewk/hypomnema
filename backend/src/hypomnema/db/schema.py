@@ -501,13 +501,21 @@ async def _copy_documents_rows(
     destination_table: str,
     or_ignore: bool,
 ) -> None:
+    all_columns = [
+        "id", "source_type", "title", "text", "mime_type", "source_uri", "metadata",
+        "triaged", "processed", "revision", "tidy_title", "tidy_text", "tidy_level",
+        "created_at", "updated_at",
+    ]
+    cursor = await db.execute(f"PRAGMA table_info({source_table})")  # noqa: S608
+    source_columns = {str(row["name"]) for row in await cursor.fetchall()}
+    await cursor.close()
+    available = [col for col in all_columns if col in source_columns]
+    select_exprs = [col if col in source_columns else f"NULL AS {col}" for col in all_columns]
     insert_mode = "INSERT OR IGNORE" if or_ignore else "INSERT"
     await db.execute(
         f"{insert_mode} INTO {destination_table} ("  # noqa: S608
-        "id, source_type, title, text, mime_type, source_uri, metadata, "
-        "triaged, processed, revision, tidy_title, tidy_text, tidy_level, created_at, updated_at"
-        f") SELECT id, source_type, title, text, mime_type, source_uri, metadata, "  # noqa: S608
-        "triaged, processed, revision, tidy_title, tidy_text, tidy_level, created_at, updated_at "
+        f"{', '.join(all_columns)}"
+        f") SELECT {', '.join(select_exprs)} "  # noqa: S608
         f"FROM {source_table}"  # noqa: S608
     )
 

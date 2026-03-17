@@ -150,6 +150,32 @@ class TestProcessDocument:
         assert row["tidy_text"] == "- Actor-Network Theory\n- Translation"
         assert row["tidy_level"] == "editorial_polish"
 
+    @pytest.mark.asyncio
+    async def test_pdf_document_defaults_to_acceptable_tidy_level(
+        self,
+        tmp_db,
+        mock_embeddings,
+    ) -> None:  # type: ignore[no-untyped-def]
+        doc_id = await insert_test_doc(
+            tmp_db,
+            "Tidy Actor-Network Theory notes.",
+            mime_type="application/pdf",
+        )
+
+        await process_document(
+            tmp_db,
+            doc_id,
+            _make_tidy_llm(),
+            mock_embeddings,
+        )
+
+        cursor = await tmp_db.execute(
+            "SELECT tidy_level FROM documents WHERE id = ?",
+            (doc_id,),
+        )
+        row = await cursor.fetchone()
+        assert row["tidy_level"] == "light_cleanup"
+
 
 class TestProcessPendingDocuments:
     @pytest.mark.asyncio

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import logging
+from datetime import UTC, datetime
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -24,6 +27,7 @@ from hypomnema.ontology.normalizer import normalize, resolve_synonyms
 from hypomnema.tidy import DEFAULT_TIDY_LEVEL, TidyLevel
 
 logger = logging.getLogger(__name__)
+_PDF_DEFAULT_TIDY_LEVEL: TidyLevel = "light_cleanup"
 
 
 async def _fetch_document(db: aiosqlite.Connection, document_id: str) -> Document:
@@ -52,6 +56,38 @@ async def _check_revision(
     return row["revision"] == expected_revision
 
 
+def _now_iso() -> str:
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
+
+
+def _resolve_document_tidy_level(doc: Document, tidy_level: TidyLevel) -> TidyLevel:
+    if doc.mime_type == "application/pdf" and tidy_level == DEFAULT_TIDY_LEVEL:
+        return _PDF_DEFAULT_TIDY_LEVEL
+    return tidy_level
+
+
+async def update_processing_metadata(
+    db: aiosqlite.Connection,
+    document_id: str,
+    metadata: dict[str, object],
+    **updates: object,
+) -> dict[str, object]:
+    processing = metadata.get("processing")
+    processing_dict = dict(processing) if isinstance(processing, dict) else {}
+    filtered_updates = {key: value for key, value in updates.items() if value is not None}
+    if all(processing_dict.get(key) == value for key, value in filtered_updates.items()):
+        return metadata
+    processing_dict.update(filtered_updates)
+    processing_dict["updated_at"] = _now_iso()
+    metadata["processing"] = processing_dict
+    await db.execute(
+        "UPDATE documents SET metadata = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+        (json.dumps(metadata, ensure_ascii=False), document_id),
+    )
+    await db.commit()
+    return metadata
+
+
 async def process_document(
     db: aiosqlite.Connection,
     document_id: str,
@@ -60,6 +96,7 @@ async def process_document(
     *,
     expected_revision: int | None = None,
     tidy_level: TidyLevel = DEFAULT_TIDY_LEVEL,
+    progress_callback: Callable[[dict[str, object]], Awaitable[None] | None] | None = None,
 ) -> list[Engram]:
     """Run entity extraction pipeline on a single document.
 
@@ -83,8 +120,16 @@ async def process_document(
         logger.warning("process_document: stale revision for %s (expected %s)", document_id, expected_revision)
         return []
 
+    effective_tidy_level = _resolve_document_tidy_level(doc, tidy_level)
+
     # Extract entities + tidy memo
-    result = await extract_entities(llm, doc.text, tidy_level=tidy_level)
+    result = await extract_entities(
+        llm,
+        doc.text,
+        tidy_level=effective_tidy_level,
+        source_mime_type=doc.mime_type,
+        progress_callback=progress_callback,
+    )
 
     extracted = result.entities
 
@@ -97,7 +142,7 @@ async def process_document(
     if result.tidy_title or result.tidy_text:
         await db.execute(
             "UPDATE documents SET tidy_title = ?, tidy_text = ?, tidy_level = ? WHERE id = ?",
-            (result.tidy_title, result.tidy_text, tidy_level, document_id),
+            (result.tidy_title, result.tidy_text, effective_tidy_level, document_id),
         )
 
     if not extracted:
@@ -186,7 +231,13 @@ async def retidy_document(
         logger.warning("retidy_document: stale revision for %s (expected %s)", document_id, expected_revision)
         return False
 
-    result = await render_tidy_text(llm, doc.text, tidy_level=tidy_level)
+    effective_tidy_level = _resolve_document_tidy_level(doc, tidy_level)
+    result = await render_tidy_text(
+        llm,
+        doc.text,
+        tidy_level=effective_tidy_level,
+        source_mime_type=doc.mime_type,
+    )
 
     if not await _check_revision(db, document_id, expected_revision):
         logger.warning("retidy_document: stale revision after LLM work for %s (expected %s)", document_id, expected_revision)
@@ -194,7 +245,7 @@ async def retidy_document(
 
     await db.execute(
         "UPDATE documents SET tidy_title = ?, tidy_text = ?, tidy_level = ? WHERE id = ?",
-        (result.tidy_title, result.tidy_text, tidy_level, document_id),
+        (result.tidy_title, result.tidy_text, effective_tidy_level, document_id),
     )
     await db.commit()
     return True

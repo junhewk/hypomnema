@@ -10,12 +10,53 @@ from hypomnema.ingestion.file_parser import (
     UnsupportedFormatError,
     ingest_file,
     parse_file,
+    preprocess_pdf_text,
 )
 
 from .conftest import SAMPLE_TEXT
 
 
 class TestParseFile:
+    def test_preprocess_pdf_text_removes_repeated_margins_and_joins_wrapped_lines(self) -> None:
+        text = preprocess_pdf_text([
+            "Healthcare AI Ethics\n1\nAI can trans-\nform care.",
+            "Healthcare AI Ethics\n2\nThis para-\ngraph spans lines.",
+            "Healthcare AI Ethics\n3\nReferences\n[1] Example reference",
+        ])
+
+        assert "Healthcare AI Ethics" not in text
+        assert "\n1\n" not in text
+        assert "transform care." in text
+        assert "This paragraph spans lines." in text
+        assert "References\n\n[1] Example reference" in text
+
+    def test_preprocess_pdf_text_trims_backmatter_sections_in_long_documents(self) -> None:
+        descriptors = [
+            "governance", "privacy", "fairness", "autonomy", "accountability", "traceability",
+            "safety", "bias", "oversight", "equity", "consent", "transparency", "robustness",
+            "accessibility", "procurement", "monitoring", "reliability", "stewardship", "auditing",
+        ]
+        page_texts = [
+            (
+                f"Page {index}\nSection {index}\n"
+                f"Main body paragraph on {descriptor} topic.\n"
+                f"Distinct finding about {descriptor} for healthcare AI oversight."
+            )
+            for index, descriptor in enumerate(descriptors, start=1)
+        ]
+        page_texts.extend([
+            "Page 20\nAppendix\nAppendix detail 1.",
+            "Page 21\nReferences\n[1] Example reference",
+            "Page 22\nAcknowledgements\nThanks.",
+        ])
+
+        text = preprocess_pdf_text(page_texts)
+
+        assert "Distinct finding about auditing for healthcare AI oversight." in text
+        assert "Appendix detail 1." not in text
+        assert "[1] Example reference" not in text
+        assert "Thanks." not in text
+
     def test_pdf_extracts_text(self, fixtures_dir: Path):
         result = parse_file(fixtures_dir / "sample.pdf")
         assert SAMPLE_TEXT in result.text

@@ -17,6 +17,7 @@ from hypomnema.ontology.extractor import (
     extract_entities,
     get_prompt_variant,
     list_prompt_variants,
+    render_tidy_text,
 )
 from hypomnema.tidy import get_tidy_level_spec
 
@@ -62,6 +63,118 @@ class RoutedLLM:
                 "tidy_title": "Rendered Title",
                 "tidy_text": "Rendered body",
             }
+        raise AssertionError(f"Unexpected system prompt: {system}")
+
+
+class TidyOnlyRoutedLLM:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def complete(self, prompt: str, *, system: str = "") -> str:
+        raise AssertionError("complete() should not be used in extractor tests")
+
+    async def complete_json(self, prompt: str, *, system: str = "") -> dict[str, Any]:
+        self.calls.append((prompt, system))
+        variant = get_prompt_variant(DEFAULT_PROMPT_VARIANT)
+        if system == extractor_mod._TIDY_ONLY_MAP_SYSTEM:
+            return {
+                "evidence_lines": [
+                    "## 2. Background",
+                    "Figure 1. Alignment pipeline",
+                    "[12] Value alignment reference",
+                    "doi:10.1000/example",
+                ],
+            }
+        if system == variant.merge_system:
+            raise AssertionError("merge should not be needed for this tidy-only test")
+        if system.startswith(variant.reduce_system):
+            return {
+                "tidy_title": "PDF Tidy Title",
+                "tidy_text": "PDF Tidy Body",
+            }
+        raise AssertionError(f"Unexpected system prompt: {system}")
+
+
+class PdfTieredLLM:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def complete(self, prompt: str, *, system: str = "") -> str:
+        raise AssertionError("complete() should not be used in extractor tests")
+
+    async def complete_json(self, prompt: str, *, system: str = "") -> dict[str, Any]:
+        self.calls.append((prompt, system))
+        variant = get_prompt_variant(DEFAULT_PROMPT_VARIANT)
+        if system.startswith(variant.map_system):
+            return {
+                "entities": [
+                    {"name": "Healthcare AI Ethics", "description": "PDF concept"},
+                ],
+                "evidence_lines": [
+                    "Healthcare AI Ethics",
+                    "2 Background",
+                    "Figure 1. Alignment pipeline",
+                    "\"Quoted\" alignment evidence 2024",
+                    "doi:10.1000/example",
+                    "[12] Value alignment reference",
+                ],
+            }
+        if system.startswith(extractor_mod._TIDY_ONLY_MAP_SYSTEM):
+            return {
+                "evidence_lines": [
+                    "Healthcare AI Ethics",
+                    "2 Background",
+                    "Figure 1. Alignment pipeline",
+                    "\"Quoted\" alignment evidence 2024",
+                    "doi:10.1000/example",
+                    "[12] Value alignment reference",
+                ],
+            }
+        if system.startswith(variant.reduce_system):
+            return {
+                "tidy_title": "Elaborate PDF Title",
+                "tidy_text": "Elaborate PDF Body",
+            }
+        raise AssertionError(f"Unexpected system prompt: {system}")
+
+
+class PdfStructuredLLM:
+    def __init__(self, *, valid_polished: bool) -> None:
+        self.valid_polished = valid_polished
+        self.calls: list[tuple[str, str]] = []
+
+    async def complete(self, prompt: str, *, system: str = "") -> str:
+        raise AssertionError("complete() should not be used in extractor tests")
+
+    async def complete_json(self, prompt: str, *, system: str = "") -> dict[str, Any]:
+        self.calls.append((prompt, system))
+        variant = get_prompt_variant(DEFAULT_PROMPT_VARIANT)
+        if system.startswith(variant.map_system) or system.startswith(extractor_mod._TIDY_ONLY_MAP_SYSTEM):
+            polished = (
+                "This section compares strong alignment and weak alignment with human values. "
+                "The discussion focuses on alignment failures and value transfer under RLHF with GPT-4 in Section 5.1 and \"Chinese room\"."
+                if self.valid_polished else
+                "This section preserves strong alignment and weak alignment only."
+            )
+            return {
+                "title_candidates": ["Strong and weak alignment of large language models with human values"],
+                "section_headings": ["2 Background"],
+                "topic_lines": [
+                    "Strong alignment and weak alignment are compared against human values in this section.",
+                ],
+                "quote_lines": [
+                    '"Chinese room"',
+                ],
+                "numeric_lines": [
+                    "GPT-4 and RLHF are evaluated in Section 5.1.",
+                ],
+                "support_lines": [
+                    "The discussion focuses on alignment failures and value transfer.",
+                ],
+                "polished_block": polished,
+            }
+        if system.startswith(variant.reduce_system):
+            raise AssertionError("PDF deterministic stitch should not call reduce")
         raise AssertionError(f"Unexpected system prompt: {system}")
 
 
@@ -223,6 +336,17 @@ class TestSplitChunks:
         chunks = _split_chunks(text, chunk_size=500, overlap=50)
         assert all(len(c.strip()) > 0 for c in chunks)
 
+    def test_single_large_paragraph_uses_multiple_chunks(self) -> None:
+        tokens = [f"TOKEN_{index:03d}" for index in range(240)]
+        text = " ".join(tokens)
+
+        chunks = _split_chunks(text, chunk_size=500, overlap=50)
+
+        assert len(chunks) > 1
+        assert all(len(chunk) <= 500 for chunk in chunks)
+        for token in (tokens[0], tokens[len(tokens) // 2], tokens[-1]):
+            assert any(token in chunk for chunk in chunks)
+
 
 class TestMapReduce:
     @pytest.mark.asyncio
@@ -271,8 +395,8 @@ class TestMapReduce:
         monkeypatch.setattr(extractor_mod, "_FINAL_RENDER_EVIDENCE_CHARS", 10)
         llm = RoutedLLM()
         text = (
-            "CHUNK_ALPHA " + "a" * 4300 + "\n\n"
-            + "CHUNK_BETA " + "b" * 4300
+            ("CHUNK_ALPHA " * 380) + "\n\n"
+            + ("CHUNK_BETA " * 380)
         )
 
         result = await extract_entities(llm, text)
@@ -319,11 +443,132 @@ class TestMapReduce:
 
         llm = SynonymLLM()
         text = (
-            "CHUNK_ALPHA " + "a" * 4300 + "\n\n"
-            + "CHUNK_BETA " + "b" * 4300
+            ("CHUNK_ALPHA " * 380) + "\n\n"
+            + ("CHUNK_BETA " * 380)
         )
 
         result = await extract_entities(llm, text)
 
         assert [entity.name for entity in result.entities] == ["연명의료계획서와 사전연명의료의향서 구분"]
         assert result.entities[0].description == "더 긴 설명을 가진 두 번째 표현"
+
+    @pytest.mark.asyncio
+    async def test_long_tidy_text_without_paragraph_breaks_uses_multiple_chunks(self) -> None:
+        llm = TidyOnlyRoutedLLM()
+        text = " ".join(
+            f"Section{index:03d} figure{index:03d} citation[{index:03d}] doi:10.1000/{index:03d}"
+            for index in range(1200)
+        )
+        trace = ExtractionTrace()
+
+        result = await render_tidy_text(llm, text, trace=trace)
+
+        assert result.tidy_title == "PDF Tidy Title"
+        assert result.tidy_text == "PDF Tidy Body"
+        assert trace.strategy == "map_reduce"
+        assert trace.chunk_count > 1
+        assert sum(1 for _, system in llm.calls if system == extractor_mod._TIDY_ONLY_MAP_SYSTEM) > 1
+
+    @pytest.mark.asyncio
+    async def test_pdf_light_cleanup_uses_deterministic_stitch_without_reduce(self) -> None:
+        llm = PdfTieredLLM()
+        text = " ".join(
+            f"Section{index:03d} Figure{index:03d} quote[{index:03d}] doi:10.1000/{index:03d}"
+            for index in range(1200)
+        )
+        trace = ExtractionTrace()
+
+        result = await extract_entities(
+            llm,
+            text,
+            trace=trace,
+            tidy_level="light_cleanup",
+            source_mime_type="application/pdf",
+        )
+
+        variant = get_prompt_variant(DEFAULT_PROMPT_VARIANT)
+        assert result.tidy_title == "Healthcare AI Ethics"
+        assert result.tidy_text is not None
+        assert "# 2 Background" in result.tidy_text
+        assert "Figure 1. Alignment pipeline" in result.tidy_text
+        assert not any(system.startswith(variant.reduce_system) for _, system in llm.calls)
+        assert trace.fallback_used is False
+
+    @pytest.mark.asyncio
+    async def test_pdf_editorial_polish_uses_deterministic_stitch_without_reduce(self) -> None:
+        llm = PdfTieredLLM()
+        text = " ".join(
+            f"Section{index:03d} Figure{index:03d} quote[{index:03d}] doi:10.1000/{index:03d}"
+            for index in range(1200)
+        )
+        trace = ExtractionTrace()
+
+        result = await render_tidy_text(
+            llm,
+            text,
+            trace=trace,
+            tidy_level="editorial_polish",
+            source_mime_type="application/pdf",
+        )
+
+        variant = get_prompt_variant(DEFAULT_PROMPT_VARIANT)
+        assert result.tidy_title == "Healthcare AI Ethics"
+        assert result.tidy_text is not None
+        assert "# Healthcare AI Ethics" in result.tidy_text
+        assert "Figure 1. Alignment pipeline" in result.tidy_text
+        assert not any(system.startswith(variant.reduce_system) for _, system in llm.calls)
+        assert trace.fallback_used is False
+
+    @pytest.mark.asyncio
+    async def test_pdf_balanced_uses_valid_polished_block_from_typed_artifact(self) -> None:
+        llm = PdfStructuredLLM(valid_polished=True)
+        text = " ".join(
+            f"Section{index:03d} GPT-4 RLHF Chinese room value alignment"
+            for index in range(1200)
+        )
+        trace = ExtractionTrace()
+
+        result = await render_tidy_text(
+            llm,
+            text,
+            trace=trace,
+            tidy_level="structured_notes",
+            source_mime_type="application/pdf",
+        )
+
+        assert result.tidy_text is not None
+        assert "Chinese room" in result.tidy_text
+        assert "GPT-4" in result.tidy_text
+        assert trace.pdf_debug["accepted_polished_blocks"] >= 1
+        assert trace.pdf_debug["rejected_polished_blocks"] == 0
+
+    @pytest.mark.asyncio
+    async def test_pdf_balanced_rejects_polished_block_missing_numeric_anchor(self) -> None:
+        llm = PdfStructuredLLM(valid_polished=False)
+        text = " ".join(
+            f"Section{index:03d} GPT-4 RLHF Chinese room value alignment"
+            for index in range(1200)
+        )
+        trace = ExtractionTrace()
+
+        result = await render_tidy_text(
+            llm,
+            text,
+            trace=trace,
+            tidy_level="structured_notes",
+            source_mime_type="application/pdf",
+        )
+
+        assert result.tidy_text is not None
+        assert "GPT-4 and RLHF are evaluated in Section 5.1." in result.tidy_text
+        assert trace.pdf_debug["accepted_polished_blocks"] == 0
+        assert trace.pdf_debug["rejected_polished_blocks"] >= 1
+
+    def test_deterministic_pdf_title_skips_affiliation_lines(self) -> None:
+        title = extractor_mod._deterministic_pdf_title((
+            "1 Oxford Internet Institute, University of Oxford, 1 St Giles', Oxford, OX1 3JS, UK",
+            "The Debate on the Ethics of AI in Health Care",
+            "This review examines healthcare AI ethics through beneficence and autonomy.",
+        ))
+
+        assert title == "The Debate on the Ethics of AI in Health Care"
