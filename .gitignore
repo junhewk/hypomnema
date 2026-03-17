@@ -10,6 +10,7 @@ backend/.python-version
 
 # Node
 node_modules/
+package-lock.json
 .next/
 out/
 
@@ -34,3 +35,4 @@ Thumbs.db
 htmlcov/
 dist/
 build/
+frontend/test-results/
