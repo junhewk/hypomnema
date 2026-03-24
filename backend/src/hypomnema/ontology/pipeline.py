@@ -297,18 +297,21 @@ async def link_document(
     # For each engram, find neighbors and assign predicates
     all_edges: list[Edge] = []
     for engram in engrams:
-        neighbor_pairs = await find_neighbors(db, engram.id)
-        if not neighbor_pairs:
-            continue
-        neighbors = [n for n, _sim in neighbor_pairs]
-        proposed = await assign_predicates(
-            llm, engram, neighbors, document_text=doc.text
-        )
-        for p in proposed:
-            p_with_doc = dataclasses.replace(p, source_document_id=document_id)
-            edge = await create_edge(db, p_with_doc)
-            if edge is not None:
-                all_edges.append(edge)
+        try:
+            neighbor_pairs = await find_neighbors(db, engram.id)
+            if not neighbor_pairs:
+                continue
+            neighbors = [n for n, _sim in neighbor_pairs]
+            proposed = await assign_predicates(
+                llm, engram, neighbors, document_text=doc.text
+            )
+            for p in proposed:
+                p_with_doc = dataclasses.replace(p, source_document_id=document_id)
+                edge = await create_edge(db, p_with_doc)
+                if edge is not None:
+                    all_edges.append(edge)
+        except Exception:
+            logger.exception("link_document: failed to link engram %s (%s)", engram.id, engram.canonical_name)
 
     # Post-LLM revision check — before committing edges
     if not await _check_revision(db, document_id, expected_revision):

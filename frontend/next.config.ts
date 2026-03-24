@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
+const isStaticExport = process.env.NEXT_EXPORT === "1";
+
 const nextConfig: NextConfig = {
-  output: process.env.NEXT_EXPORT === "1" ? "export" : undefined,
+  output: isStaticExport ? "export" : undefined,
+  env: {
+    NEXT_PUBLIC_STATIC_EXPORT: isStaticExport ? "1" : "",
+  },
 };
 
 export default nextConfig;

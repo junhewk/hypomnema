@@ -99,18 +99,31 @@ def _extract_article(response: httpx.Response) -> WebFetchResult:
     """Extract article content from an HTTP response."""
     html = response.text
     extracted = trafilatura.bare_extraction(html, include_tables=True, include_links=False)
-    if not isinstance(extracted, dict) or not extracted.get("text"):
+    if extracted is None:
         raise ValueError("No extractable content")
 
-    text = str(extracted["text"])
-    title = str(extracted.get("title")) if extracted.get("title") else None
-    meta: dict[str, object | str | None] = {}
-    if extracted.get("author"):
-        meta["author"] = extracted["author"]
-    if extracted.get("date"):
-        meta["date"] = extracted["date"]
+    # trafilatura >= 2.0 returns a Document object; older versions return a dict
+    if isinstance(extracted, dict):
+        text = extracted.get("text", "")
+        title = extracted.get("title")
+        author = extracted.get("author")
+        date = extracted.get("date")
+    else:
+        text = extracted.text or ""
+        title = extracted.title
+        author = extracted.author
+        date = extracted.date
 
-    return WebFetchResult(text=text, title=title, metadata=meta)
+    if not text:
+        raise ValueError("No extractable content")
+
+    meta: dict[str, object | str | None] = {}
+    if author:
+        meta["author"] = author
+    if date:
+        meta["date"] = date
+
+    return WebFetchResult(text=text, title=title or None, metadata=meta)
 
 
 def _extract_pdf(response: httpx.Response) -> WebFetchResult:

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useVizDataCtx } from "@/hooks/useVizDataContext";
 import { useInputDevice } from "@/hooks/useInputDevice";
+import { engramHref } from "@/lib/routes";
 import { VizScene } from "./VizScene";
 import { VizControlsHUD } from "./VizControlsHUD";
 import type { ProjectionPoint } from "@/lib/types";
@@ -22,7 +23,7 @@ export function VizPage() {
 
   const handleNavigateNode = useCallback(
     (engramId: string) => {
-      router.push(`/engrams/${engramId}`);
+      router.push(engramHref(engramId));
     },
     [router],
   );

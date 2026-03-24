@@ -52,13 +52,25 @@ function resolveBaseUrl(baseUrl?: string): string {
 }
 
 export class ApiError extends Error {
+  public detail: string;
+
   constructor(
     public status: number,
     public statusText: string,
     public body: string,
   ) {
-    super(`API Error ${status}: ${statusText}`);
+    let detail = body;
+    try {
+      const parsed = JSON.parse(body) as { detail?: string };
+      if (typeof parsed.detail === "string" && parsed.detail.length > 0) {
+        detail = parsed.detail;
+      }
+    } catch {
+      // Keep the raw body if it is not JSON.
+    }
+    super(detail ? `API Error ${status}: ${statusText}; ${detail}` : `API Error ${status}: ${statusText}`);
     this.name = "ApiError";
+    this.detail = detail;
   }
 }
 

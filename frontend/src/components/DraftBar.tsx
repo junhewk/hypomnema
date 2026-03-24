@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
+import { readLocalStorage, writeLocalStorage } from "@/lib/storage";
 import { timeAgo } from "@/lib/timeAgo";
 import type { Document } from "@/lib/types";
 
@@ -15,8 +16,7 @@ interface DraftBarProps {
 export function DraftBar({ onEdit, refreshSignal }: DraftBarProps) {
   const [drafts, setDrafts] = useState<Document[]>([]);
   const [collapsed, setCollapsed] = useState(() => {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem(COLLAPSED_KEY) !== "false";
+    return readLocalStorage(COLLAPSED_KEY) !== "false";
   });
 
   const fetchDrafts = useCallback(async () => {
@@ -35,7 +35,7 @@ export function DraftBar({ onEdit, refreshSignal }: DraftBarProps) {
   function toggleCollapsed() {
     setCollapsed((prev) => {
       const next = !prev;
-      localStorage.setItem(COLLAPSED_KEY, String(next));
+      writeLocalStorage(COLLAPSED_KEY, String(next));
       return next;
     });
   }

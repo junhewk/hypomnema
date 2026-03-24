@@ -15,6 +15,8 @@ class GoogleLLMClient:
         self._client = genai.Client(api_key=api_key)
         self._model = model or self.DEFAULT_MODEL
 
+    _DEFAULT_TIMEOUT_MS = 60_000
+
     @staticmethod
     def _build_config(
         *,
@@ -22,11 +24,11 @@ class GoogleLLMClient:
         json_mode: bool = False,
         timeout_ms: int | None = None,
     ) -> types.GenerateContentConfig | None:
+        effective_timeout = timeout_ms if timeout_ms is not None else GoogleLLMClient._DEFAULT_TIMEOUT_MS
         http_options = types.HttpOptions(
             retry_options=types.HttpRetryOptions(attempts=1),
+            timeout=effective_timeout,
         )
-        if timeout_ms is not None:
-            http_options.timeout = timeout_ms
 
         kwargs: dict[str, object] = {
             "http_options": http_options,

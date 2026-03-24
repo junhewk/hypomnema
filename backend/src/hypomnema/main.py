@@ -134,6 +134,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         scheduler.start()
         app.state.scheduler = scheduler
 
+        # Ontology processing queue (serial)
+        from hypomnema.ontology.queue import OntologyQueue
+
+        ontology_queue = OntologyQueue(app)
+        ontology_queue.start()
+        app.state.ontology_queue = ontology_queue
+
         if vec_schema_rebuilt:
             logger.warning(
                 "Embedding dimension mismatch detected; rebuilt vec tables for %s dimensions and queued full reprocessing",
@@ -165,9 +172,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.embeddings = None
         app.state.llm = None
         app.state.scheduler = None
+        app.state.ontology_queue = None
 
     yield
 
+    if app.state.ontology_queue:
+        await app.state.ontology_queue.shutdown()
     if app.state.scheduler:
         app.state.scheduler.shutdown(wait=True)
     if app.state.embedding_change_task:

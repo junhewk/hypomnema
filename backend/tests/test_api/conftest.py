@@ -20,6 +20,7 @@ from hypomnema.db.schema import create_tables
 from hypomnema.embeddings.mock import MockEmbeddingModel
 from hypomnema.llm.mock import MockLLMClient
 from hypomnema.main import create_app
+from hypomnema.ontology.queue import OntologyQueue
 from hypomnema.scheduler.cron import FeedScheduler
 
 
@@ -38,9 +39,13 @@ async def app(tmp_path: Path):
     test_app.state.embeddings = MockEmbeddingModel(dimension=384)
     test_app.state.settings = settings
     test_app.state.scheduler = FeedScheduler(db_path, embeddings=test_app.state.embeddings)
+    ontology_queue = OntologyQueue(test_app)
+    ontology_queue.start()
+    test_app.state.ontology_queue = ontology_queue
 
     yield test_app
 
+    await ontology_queue.shutdown()
     await db.close()
 
 

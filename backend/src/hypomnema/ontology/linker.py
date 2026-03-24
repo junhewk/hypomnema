@@ -106,7 +106,7 @@ async def find_neighbors(
     return neighbors
 
 
-_DOCUMENT_CONTEXT_MAX_CHARS = 4000
+_DOCUMENT_CONTEXT_MAX_CHARS = 1500
 
 _PREDICATE_SYSTEM = (
     "You are a knowledge graph edge generator. Given a source concept and a list of "

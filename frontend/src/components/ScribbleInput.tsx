@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent, type DragEvent } from "react";
 import { api, ApiError } from "@/lib/api";
+import { readLocalStorage, removeLocalStorage, writeLocalStorage } from "@/lib/storage";
 import type { Document } from "@/lib/types";
 
 const DRAFT_KEY = "hypomnema_draft";
@@ -44,7 +45,7 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
   useEffect(() => {
     if (isEditing) return;
     try {
-      const draft = localStorage.getItem(DRAFT_KEY);
+      const draft = readLocalStorage(DRAFT_KEY);
       if (draft) {
         const { title: t, text: tx } = JSON.parse(draft);
         if (t || tx) {
@@ -64,9 +65,9 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
     if (isEditing) return;
     const timer = setTimeout(() => {
       if (text || title) {
-        localStorage.setItem(DRAFT_KEY, JSON.stringify({ title, text }));
+        writeLocalStorage(DRAFT_KEY, JSON.stringify({ title, text }));
       } else {
-        localStorage.removeItem(DRAFT_KEY);
+        removeLocalStorage(DRAFT_KEY);
       }
     }, 500);
     return () => clearTimeout(timer);
@@ -85,6 +86,9 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
     syncTextareaHeight(text);
   }, [text]);
 
+  const uploadRef = useRef<(file: File) => void>(undefined);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
   async function uploadFile(file: File) {
     setIsUploading(true);
     setError(null);
@@ -97,6 +101,42 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
       setIsUploading(false);
     }
   }
+  uploadRef.current = uploadFile;
+
+  // Global drag-and-drop: prevent default everywhere, show overlay via debounce
+  useEffect(() => {
+    function onDragOver(e: globalThis.DragEvent) {
+      e.preventDefault();
+      // Reset hide timer on every dragover — keeps overlay visible while dragging
+      clearTimeout(hideTimerRef.current);
+      setIsDragOver(true);
+      hideTimerRef.current = setTimeout(() => setIsDragOver(false), 150);
+    }
+    function onDrop(e: globalThis.DragEvent) {
+      e.preventDefault();
+      e.stopPropagation();
+      clearTimeout(hideTimerRef.current);
+      setIsDragOver(false);
+      const file = e.dataTransfer?.files[0];
+      if (file) uploadRef.current?.(file);
+    }
+    function onDragLeave(e: globalThis.DragEvent) {
+      // Only hide when leaving the window entirely
+      if (!e.relatedTarget) {
+        clearTimeout(hideTimerRef.current);
+        hideTimerRef.current = setTimeout(() => setIsDragOver(false), 100);
+      }
+    }
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("drop", onDrop);
+    window.addEventListener("dragleave", onDragLeave);
+    return () => {
+      clearTimeout(hideTimerRef.current);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("drop", onDrop);
+      window.removeEventListener("dragleave", onDragLeave);
+    };
+  }, []);
 
   async function handleSubmit(e?: FormEvent) {
     e?.preventDefault();
@@ -118,7 +158,7 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
       }
       setTitle("");
       setText("");
-      localStorage.removeItem(DRAFT_KEY);
+      removeLocalStorage(DRAFT_KEY);
       onSubmit(doc);
       if (isEditing && onCancelEdit) {
         onCancelEdit();
@@ -149,7 +189,7 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
       const doc = await api.createScribble(text.trim(), title.trim() || undefined, true);
       setTitle("");
       setText("");
-      localStorage.removeItem(DRAFT_KEY);
+      removeLocalStorage(DRAFT_KEY);
       onDraft?.(doc);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save draft");
@@ -178,34 +218,14 @@ export function ScribbleInput({ onSubmit, onDraft, editingDocument, onCancelEdit
     }
   }
 
-  function handleDragOver(e: DragEvent) {
-    e.preventDefault();
-    if (!isDragOver) setIsDragOver(true);
-  }
-
-  function handleDragLeave(e: DragEvent) {
-    e.preventDefault();
-    setIsDragOver(false);
-  }
-
-  function handleDrop(e: DragEvent) {
-    e.preventDefault();
-    setIsDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) uploadFile(file);
-  }
-
   return (
     <form
       onSubmit={handleSubmit}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
       data-url-mode={isUrl || undefined}
       className="editor-surface relative mb-8 rounded-lg border border-border p-5 transition-shadow focus-within:shadow-[0_0_0_1px_var(--border-focus)]"
     >
       {isDragOver && (
-        <div className="drop-overlay absolute inset-0 z-10 flex items-center justify-center">
+        <div className="drop-overlay pointer-events-none absolute inset-0 z-10 flex items-center justify-center">
           <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--accent)]">Drop file</span>
         </div>
       )}

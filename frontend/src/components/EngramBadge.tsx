@@ -2,6 +2,7 @@
 
 import { memo } from "react";
 import Link from "next/link";
+import { engramHref } from "@/lib/routes";
 import type { Engram } from "@/lib/types";
 
 interface EngramBadgeProps {
@@ -15,7 +16,7 @@ export const EngramBadge = memo(function EngramBadge({
 }: EngramBadgeProps) {
   return (
     <Link
-      href={`/engrams/${engram.id}`}
+      href={engramHref(engram.id)}
       className={`inline-block rounded-full px-2 py-0.5 font-mono text-[11px] no-underline transition-colors text-[var(--engram)] bg-[var(--engram)]/10 hover:bg-[var(--engram)]/20 ${dimmed ? "opacity-50" : ""}`}
       data-testid="engram-badge"
     >

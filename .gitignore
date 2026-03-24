@@ -40,3 +40,7 @@ htmlcov/
 dist/
 build/
 frontend/test-results/
+desktop/src-tauri/binaries/
+desktop/src-tauri/resources/hypomnema-server/
+desktop/src-tauri/gen/
+desktop/src-tauri/target/

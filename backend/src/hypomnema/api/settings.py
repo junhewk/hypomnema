@@ -242,6 +242,13 @@ async def complete_setup(
     scheduler.start()
     request.app.state.scheduler = scheduler
 
+    # 9b. Start ontology processing queue
+    from hypomnema.ontology.queue import OntologyQueue
+
+    ontology_queue = OntologyQueue(request.app)
+    ontology_queue.start()
+    request.app.state.ontology_queue = ontology_queue
+
     # 10. Mark setup complete
     await set_setting(db, "setup_complete", "1", fernet_key=fernet_key, encrypt_value=False)
 

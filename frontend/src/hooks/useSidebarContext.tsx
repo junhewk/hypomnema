@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { readLocalStorage, writeLocalStorage } from "@/lib/storage";
 
 interface SidebarContextValue {
   collapsed: boolean;
@@ -18,13 +19,13 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    setCollapsed(localStorage.getItem(STORAGE_KEY) === "true");
+    setCollapsed(readLocalStorage(STORAGE_KEY) === "true");
   }, []);
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
       const next = !prev;
-      localStorage.setItem(STORAGE_KEY, String(next));
+      writeLocalStorage(STORAGE_KEY, String(next));
       return next;
     });
   }, []);

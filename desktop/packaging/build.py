@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import os
 import platform
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -19,7 +20,9 @@ FRONTEND_DIR = REPO_ROOT / "frontend"
 BACKEND_DIR = REPO_ROOT / "backend"
 DESKTOP_DIR = REPO_ROOT / "desktop"
 PACKAGING_DIR = DESKTOP_DIR / "packaging"
-BINARIES_DIR = DESKTOP_DIR / "src-tauri" / "binaries"
+RESOURCES_DIR = DESKTOP_DIR / "src-tauri" / "resources"
+SIDECAR_RESOURCE_DIR = RESOURCES_DIR / "hypomnema-server"
+BUNDLE_DIR = DESKTOP_DIR / "src-tauri" / "target" / "release" / "bundle"
 
 
 def get_target_triple() -> str:
@@ -71,6 +74,109 @@ def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = No
     subprocess.run(cmd, cwd=cwd, check=True, env=env)
 
 
+def remove_path(path: Path) -> None:
+    if path.is_dir():
+        shutil.rmtree(path)
+    elif path.exists():
+        path.unlink()
+
+
+def copy_path(src: Path, dst: Path) -> None:
+    if src.is_dir():
+        shutil.copytree(src, dst)
+    else:
+        shutil.copy2(src, dst)
+
+
+def stale_dmg_scratch_paths() -> list[Path]:
+    scratch_paths: list[Path] = []
+    for bundle_subdir in ("macos", "dmg"):
+        bundle_path = BUNDLE_DIR / bundle_subdir
+        if not bundle_path.exists():
+            continue
+        scratch_paths.extend(sorted(bundle_path.glob("rw.*.dmg")))
+    return scratch_paths
+
+
+def mounted_disk_images() -> dict[str, str]:
+    if platform.system() != "Darwin":
+        return {}
+
+    result = subprocess.run(["hdiutil", "info", "-plist"], capture_output=True)
+    if result.returncode != 0:
+        print("  WARN: Unable to inspect mounted disk images; skipping cleanup")
+        return {}
+
+    try:
+        payload = plistlib.loads(result.stdout)
+    except Exception as exc:
+        print(f"  WARN: Unable to parse mounted disk image list: {exc}")
+        return {}
+
+    mounted_images: dict[str, str] = {}
+    for image in payload.get("images", []):
+        image_path = image.get("image-path")
+        if not image_path:
+            continue
+
+        dev_entries = [
+            entity["dev-entry"]
+            for entity in image.get("system-entities", [])
+            if entity.get("dev-entry", "").startswith("/dev/")
+        ]
+        if not dev_entries:
+            continue
+
+        mounted_images[image_path] = min(dev_entries, key=len)
+
+    return mounted_images
+
+
+def detach_disk_image(device: str) -> None:
+    for attempt in range(1, 4):
+        result = subprocess.run(["hdiutil", "detach", device], capture_output=True, text=True)
+        if result.returncode == 0:
+            return
+        if attempt == 3:
+            detail = result.stderr.strip() or result.stdout.strip() or "unknown error"
+            raise RuntimeError(f"failed to detach {device}: {detail}")
+
+
+def clean_stale_dmg_scratch_artifacts() -> None:
+    if platform.system() != "Darwin":
+        return
+
+    scratch_paths = stale_dmg_scratch_paths()
+    if not scratch_paths:
+        return
+
+    print("\n[cleanup] Removing stale DMG scratch artifacts...")
+    mounted_images = mounted_disk_images()
+    for scratch_path in scratch_paths:
+        resolved_path = str(scratch_path.resolve())
+        device = mounted_images.get(resolved_path)
+        if device:
+            print(f"  Detaching mounted scratch image {scratch_path.name} ({device})")
+            detach_disk_image(device)
+
+        print(f"  Removing {scratch_path}")
+        remove_path(scratch_path)
+
+
+def find_pyinstaller_output(dist_dir: Path) -> Path:
+    candidates = [dist_dir / "hypomnema-server", dist_dir / "hypomnema-server.exe"]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    matches = sorted(dist_dir.glob("hypomnema-server*"))
+    if len(matches) == 1:
+        return matches[0]
+
+    print(f"ERROR: Could not determine PyInstaller output under {dist_dir}", file=sys.stderr)
+    sys.exit(1)
+
+
 def build_frontend() -> None:
     print("\n[1/3] Building frontend static export...")
     env = {**os.environ, "NEXT_EXPORT": "1"}
@@ -92,91 +198,59 @@ def build_backend(target_triple: str) -> None:
 
     # Rename output to include target triple (Tauri sidecar convention)
     dist_dir = PACKAGING_DIR / "dist"
-    src_name = dist_dir / "hypomnema-server"
-    dst_name = dist_dir / f"hypomnema-server-{target_triple}"
+    src_path = find_pyinstaller_output(dist_dir)
+    dst_path = dist_dir / f"hypomnema-server-{target_triple}"
 
-    if dst_name.exists():
-        shutil.rmtree(dst_name)
-    if src_name.exists():
-        src_name.rename(dst_name)
-    else:
-        print(f"ERROR: Expected {src_name} to exist after PyInstaller build", file=sys.stderr)
-        sys.exit(1)
+    remove_path(dst_path)
+    src_path.rename(dst_path)
 
-    # Verify sqlite-vec is bundled and loadable
-    _verify_sqlite_vec(dst_name)
+    # Verify the frozen backend is runnable
+    _verify_sidecar(dst_path)
 
-    # Copy to Tauri binaries directory
-    BINARIES_DIR.mkdir(parents=True, exist_ok=True)
-    target_bin = BINARIES_DIR / f"hypomnema-server-{target_triple}"
-    if target_bin.exists():
-        shutil.rmtree(target_bin)
-    shutil.copytree(str(dst_name), str(target_bin))
-    print(f"  Sidecar copied to {target_bin}")
+    # Copy the full onedir bundle into Tauri resources.
+    RESOURCES_DIR.mkdir(parents=True, exist_ok=True)
+    remove_path(SIDECAR_RESOURCE_DIR)
+    copy_path(dst_path, SIDECAR_RESOURCE_DIR)
+    print(f"  Sidecar copied to {SIDECAR_RESOURCE_DIR}")
 
 
-def _verify_sqlite_vec(sidecar_dir: Path) -> None:
-    """Verify the bundled sqlite-vec extension is loadable."""
-    import sqlite3 as _sqlite3
+def _verify_sidecar(sidecar_path: Path) -> None:
+    """Verify the bundled backend sidecar is runnable."""
+    executable = sidecar_path
+    if sidecar_path.is_dir():
+        candidates = [sidecar_path / "hypomnema-server", sidecar_path / "hypomnema-server.exe"]
+        executable = next((candidate for candidate in candidates if candidate.exists()), None)
+        if executable is None:
+            print(f"  ERROR: Sidecar executable not found in {sidecar_path}", file=sys.stderr)
+            sys.exit(1)
 
-    vec_dirs = list(sidecar_dir.rglob("sqlite_vec"))
-    if not vec_dirs:
-        print("  WARNING: sqlite_vec directory not found in sidecar bundle")
-        return
-
-    vec_dir = vec_dirs[0]
-    ext_files = [f for f in vec_dir.iterdir() if f.suffix in (".so", ".dylib", ".dll")]
-    if not ext_files:
-        print("  WARNING: No sqlite-vec shared library found in bundle")
-        return
-
-    ext_path = ext_files[0]
-    try:
-        conn = _sqlite3.connect(":memory:")
-        conn.enable_load_extension(True)
-        conn.load_extension(str(ext_path.with_suffix("")))
-        version = conn.execute("SELECT vec_version()").fetchone()[0]
-        conn.close()
-        print(f"  sqlite-vec verification OK (version {version})")
-    except Exception as exc:
-        print(f"  ERROR: sqlite-vec verification failed: {exc}", file=sys.stderr)
-        sys.exit(1)
-
-
-def adhoc_codesign_macos() -> None:
-    """Apply ad-hoc code signing on macOS when no signing identity is configured.
-
-    macOS Sequoia+ blocks unsigned apps entirely — ad-hoc signing avoids this
-    while still allowing the user to open the app via right-click > Open.
-    """
-    if platform.system() != "Darwin":
-        return
-    if os.environ.get("APPLE_SIGNING_IDENTITY"):
-        print("  Skipping ad-hoc signing: APPLE_SIGNING_IDENTITY is set")
-        return
-
-    macos_bundle_dir = DESKTOP_DIR / "src-tauri" / "target" / "release" / "bundle" / "macos"
-    if not macos_bundle_dir.exists():
-        print("  WARNING: macOS bundle dir not found, skipping ad-hoc signing")
-        return
-
-    app_bundles = list(macos_bundle_dir.glob("*.app"))
-    if not app_bundles:
-        print("  WARNING: No .app bundle found, skipping ad-hoc signing")
-        return
-
-    app_path = app_bundles[0]
-    print(f"  Applying ad-hoc code signature to {app_path.name}...")
-    subprocess.run(
-        ["codesign", "--force", "--deep", "-s", "-", str(app_path)],
-        check=True,
+    result = subprocess.run(
+        [str(executable), "--self-check"],
+        capture_output=True,
+        text=True,
     )
-    print("  Ad-hoc signing complete")
+    if result.returncode != 0:
+        print("  ERROR: Sidecar self-check failed", file=sys.stderr)
+        if result.stdout:
+            print(result.stdout, file=sys.stderr)
+        if result.stderr:
+            print(result.stderr, file=sys.stderr)
+        sys.exit(1)
+    print("  Sidecar self-check OK")
 
 
 def build_tauri(target_triple: str) -> None:
     print("\n[3/3] Building Tauri application...")
-    run(["cargo", "tauri", "build"], cwd=DESKTOP_DIR / "src-tauri")
+    clean_stale_dmg_scratch_artifacts()
+
+    env = os.environ.copy()
+    if platform.system() == "Darwin" and not env.get("APPLE_SIGNING_IDENTITY"):
+        # Sign during `cargo tauri build` so the generated DMG contains the
+        # signed application bundle instead of an unsigned pre-sign copy.
+        env["APPLE_SIGNING_IDENTITY"] = "-"
+        print("  Using ad-hoc Apple signing identity for Tauri bundling")
+
+    run(["cargo", "tauri", "build"], cwd=DESKTOP_DIR / "src-tauri", env=env)
 
     system = platform.system().lower()
     if system == "darwin":
@@ -188,9 +262,6 @@ def build_tauri(target_triple: str) -> None:
 
     bundle_dir = DESKTOP_DIR / "src-tauri" / "target" / "release" / "bundle" / bundle_type
     print(f"  Tauri build complete. Look for artifacts in: {bundle_dir}")
-
-    # Ad-hoc codesign on macOS when no signing identity is set
-    adhoc_codesign_macos()
 
 
 def main() -> None:

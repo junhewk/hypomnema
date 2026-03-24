@@ -11,13 +11,27 @@ export interface UseDocumentsReturn {
   refresh: () => void;
 }
 
+function hasUnprocessed(docs: DocumentWithEngrams[]): boolean {
+  return docs.some((d) => {
+    const processing = (d.metadata as Record<string, unknown> | null)?.processing as Record<string, unknown> | undefined;
+    const status = processing?.status;
+    return status === "queued" || status === "running";
+  });
+}
+
 export function useDocuments(): UseDocumentsReturn {
   const [documents, setDocuments] = useState<DocumentWithEngrams[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasFetchedRef = useRef(false);
+
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
 
   const fetchDocuments = useCallback(async () => {
     const isInitial = !hasFetchedRef.current;
@@ -28,37 +42,35 @@ export function useDocuments(): UseDocumentsReturn {
       setDocuments((prev) => {
         if (
           prev.length === result.length &&
-          prev.every(
-            (d, i) =>
-              d.id === result[i].id && d.processed === result[i].processed,
-          )
+          prev.every((d, i) => {
+            const r = result[i];
+            return (
+              d.id === r.id &&
+              d.processed === r.processed &&
+              d.updated_at === r.updated_at
+            );
+          })
         ) {
           return prev;
         }
         return result;
       });
       hasFetchedRef.current = true;
+
+      // Stop polling once everything is processed
+      if (!hasUnprocessed(result)) {
+        stopPolling();
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       if (isInitial) setIsLoading(false);
     }
-  }, []);
+  }, [stopPolling]);
 
   useEffect(() => {
     fetchDocuments();
   }, [fetchDocuments]);
-
-  const stopPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-    if (pollTimeoutRef.current) {
-      clearTimeout(pollTimeoutRef.current);
-      pollTimeoutRef.current = null;
-    }
-  }, []);
 
   useEffect(() => {
     return stopPolling;
@@ -71,10 +83,6 @@ export function useDocuments(): UseDocumentsReturn {
     pollTimerRef.current = setInterval(() => {
       fetchDocuments();
     }, 5000);
-
-    pollTimeoutRef.current = setTimeout(() => {
-      stopPolling();
-    }, 30000);
   }, [fetchDocuments, stopPolling]);
 
   return {

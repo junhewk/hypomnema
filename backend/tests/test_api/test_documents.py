@@ -239,6 +239,7 @@ class TestFetchUrl:
 
         assert resp.status_code == 201
         data = resp.json()
+        await app.state.ontology_queue.join()
         db = app.state.db
         cursor = await db.execute(
             "SELECT processed, mime_type, metadata, tidy_title, tidy_text, tidy_level FROM documents WHERE id = ?",
@@ -277,9 +278,10 @@ class TestListDocuments:
         assert resp.status_code == 200
         assert resp.json() == []
 
-    async def test_returns_recent_documents(self, client: AsyncClient):
+    async def test_returns_recent_documents(self, client: AsyncClient, app):
         for i in range(3):
             await client.post("/api/documents/scribbles", json={"text": f"Doc {i}"})
+        await app.state.ontology_queue.join()
 
         resp = await client.get("/api/documents")
         assert resp.status_code == 200
@@ -288,17 +290,19 @@ class TestListDocuments:
         # Each doc should have engrams list
         assert "engrams" in data[0]
 
-    async def test_excludes_drafts(self, client: AsyncClient):
+    async def test_excludes_drafts(self, client: AsyncClient, app):
         await client.post("/api/documents/scribbles", json={"text": "Normal doc"})
         await client.post("/api/documents/scribbles", json={"text": "Draft doc", "draft": True})
+        await app.state.ontology_queue.join()
 
         resp = await client.get("/api/documents")
         data = resp.json()
         assert len(data) == 1
         assert data[0]["text"] == "Normal doc"
 
-    async def test_days_param(self, client: AsyncClient):
+    async def test_days_param(self, client: AsyncClient, app):
         await client.post("/api/documents/scribbles", json={"text": "Recent doc"})
+        await app.state.ontology_queue.join()
         resp = await client.get("/api/documents", params={"days": 1})
         assert resp.status_code == 200
         assert len(resp.json()) == 1
@@ -314,10 +318,11 @@ class TestDrafts:
         data = resp.json()
         assert data["processed"] == 0
 
-    async def test_list_drafts(self, client: AsyncClient):
+    async def test_list_drafts(self, client: AsyncClient, app):
         await client.post("/api/documents/scribbles", json={"text": "Draft 1", "draft": True})
         await client.post("/api/documents/scribbles", json={"text": "Draft 2", "draft": True})
         await client.post("/api/documents/scribbles", json={"text": "Normal"})
+        await app.state.ontology_queue.join()
 
         resp = await client.get("/api/documents/drafts")
         assert resp.status_code == 200
@@ -327,9 +332,10 @@ class TestDrafts:
 
 @pytest.mark.asyncio
 class TestDocumentCount:
-    async def test_count_excludes_drafts(self, client: AsyncClient):
+    async def test_count_excludes_drafts(self, client: AsyncClient, app):
         await client.post("/api/documents/scribbles", json={"text": "Normal"})
         await client.post("/api/documents/scribbles", json={"text": "Draft", "draft": True})
+        await app.state.ontology_queue.join()
 
         resp = await client.get("/api/documents/count")
         assert resp.status_code == 200

@@ -17,7 +17,7 @@ class TestGoogleEmbeddingModel:
     def test_dimension(self):
         with patch("hypomnema.embeddings.google.genai"):
             model = GoogleEmbeddingModel(api_key="fake")
-            assert model.dimension == 768
+            assert model.dimension == 3072
 
     def test_embed_returns_normalized(self):
         with patch("hypomnema.embeddings.google.genai") as mock_genai:
@@ -26,7 +26,7 @@ class TestGoogleEmbeddingModel:
 
             # Simulate API response
             mock_embedding = MagicMock()
-            mock_embedding.values = list(np.random.randn(768).astype(float))
+            mock_embedding.values = list(np.random.randn(3072).astype(float))
             mock_result = MagicMock()
             mock_result.embeddings = [mock_embedding]
             mock_client.models.embed_content.return_value = mock_result
@@ -34,7 +34,7 @@ class TestGoogleEmbeddingModel:
             model = GoogleEmbeddingModel(api_key="fake")
             result = model.embed(["hello"])
 
-            assert result.shape == (1, 768)
+            assert result.shape == (1, 3072)
             assert result.dtype == np.float32
             norm = float(np.linalg.norm(result[0]))
             assert abs(norm - 1.0) < 1e-5

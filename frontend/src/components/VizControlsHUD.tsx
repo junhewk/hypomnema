@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import type { InputDevice } from "@/hooks/useInputDevice";
+import { readLocalStorage, removeLocalStorage, writeLocalStorage } from "@/lib/storage";
 
 const STORAGE_KEY = "hypomnema-viz-hud-dismissed";
 
@@ -90,17 +91,17 @@ export function VizControlsHUD({
   const [dismissed, setDismissed] = useState(true); // start hidden to avoid flash
 
   useEffect(() => {
-    setDismissed(localStorage.getItem(STORAGE_KEY) === "true");
+    setDismissed(readLocalStorage(STORAGE_KEY) === "true");
   }, []);
 
   const handleDismiss = () => {
     setDismissed(true);
-    localStorage.setItem(STORAGE_KEY, "true");
+    writeLocalStorage(STORAGE_KEY, "true");
   };
 
   const handleExpand = () => {
     setDismissed(false);
-    localStorage.removeItem(STORAGE_KEY);
+    removeLocalStorage(STORAGE_KEY);
   };
 
   if (dismissed) {

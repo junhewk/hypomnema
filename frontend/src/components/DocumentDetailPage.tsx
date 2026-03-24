@@ -6,6 +6,7 @@ import { useDocument } from "@/hooks/useDocument";
 import { useEngrams } from "@/hooks/useEngrams";
 import { useRelatedDocuments } from "@/hooks/useRelatedDocuments";
 import { SOURCE_STYLES } from "@/lib/documentStyles";
+import { documentHref } from "@/lib/routes";
 import { timeAgo } from "@/lib/timeAgo";
 import { BackButton } from "./BackButton";
 import { NetworkPanel } from "./NetworkPanel";
@@ -29,7 +30,7 @@ function RelatedNav({ id }: { id: string }) {
     <nav className="mb-4 flex items-center gap-2 font-mono text-[10px] text-muted/60">
       <span className="uppercase tracking-wider text-muted/40">related</span>
       <a
-        href={hasPrev ? `/documents/${related[index - 1].id}` : undefined}
+        href={hasPrev ? documentHref(related[index - 1].id) : undefined}
         onClick={(e) => {
           if (!hasPrev) e.preventDefault();
         }}
@@ -39,7 +40,7 @@ function RelatedNav({ id }: { id: string }) {
         ‹
       </a>
       <a
-        href={`/documents/${current.id}`}
+        href={documentHref(current.id)}
         className="hover:text-foreground truncate max-w-[200px]"
         title={current.title ?? "Untitled"}
       >
@@ -49,7 +50,7 @@ function RelatedNav({ id }: { id: string }) {
         {index + 1}/{related.length}
       </span>
       <a
-        href={hasNext ? `/documents/${related[index + 1].id}` : undefined}
+        href={hasNext ? documentHref(related[index + 1].id) : undefined}
         onClick={(e) => {
           if (!hasNext) e.preventDefault();
         }}

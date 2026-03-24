@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 EMBEDDING_DEFAULTS: dict[str, tuple[int, str]] = {
     "local": (384, "all-MiniLM-L6-v2"),
     "openai": (1536, "text-embedding-3-small"),
-    "google": (768, "text-embedding-004"),
+    "google": (3072, "gemini-embedding-001"),
 }
 
 
@@ -43,7 +43,9 @@ def build_embeddings(settings: Settings) -> EmbeddingModel:
 
             return LocalEmbeddingModel(model_name=settings.embedding_model)
         except ImportError:
-            logger.warning("Local embedding model not available (torch missing), falling back to mock")
+            logger.warning(
+                "Local embedding model dependencies are unavailable, falling back to mock embeddings"
+            )
             from hypomnema.embeddings.mock import MockEmbeddingModel
 
             return MockEmbeddingModel(dimension=settings.embedding_dim)

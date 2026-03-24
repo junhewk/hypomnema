@@ -18,7 +18,7 @@ import type {
 const EMBEDDING_PROVIDERS: EmbeddingProviderInfo[] = [
   { id: "local", name: "Local (sentence-transformers)", default_dimension: 384, default_model: "all-MiniLM-L6-v2", requires_key: false },
   { id: "openai", name: "OpenAI Embeddings", default_dimension: 1536, default_model: "text-embedding-3-small", requires_key: true },
-  { id: "google", name: "Google Embeddings", default_dimension: 768, default_model: "text-embedding-004", requires_key: true },
+  { id: "google", name: "Google Embeddings", default_dimension: 3072, default_model: "gemini-embedding-001", requires_key: true },
 ];
 
 const LLM_PROVIDERS: ProviderInfo[] = [
@@ -445,21 +445,29 @@ export function SetupWizard({ mode, onComplete }: { mode: string; onComplete: ()
                     <span className="mb-1.5 block font-mono text-[10px] uppercase tracking-wider text-muted/60">
                       Model
                     </span>
-                    <select
-                      value={llmModel || selectedLlm?.default_model || ""}
-                      onChange={(e) => {
-                        setLlmModel(e.target.value);
-                        setLlmProbe(null);
-                        void verifyLlmConnection(llmProvider, e.target.value);
-                      }}
-                      className="w-full border-b border-border bg-transparent pb-1.5 font-mono text-sm outline-none transition-colors focus:border-border-focus"
-                    >
-                      {selectedLlmModels.map((option: ModelOption) => (
-                        <option key={option.id} value={option.id} className="bg-background text-foreground">
-                          {option.name} · {option.id}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <select
+                        value={llmModel || selectedLlm?.default_model || ""}
+                        onChange={(e) => {
+                          setLlmModel(e.target.value);
+                          setLlmProbe(null);
+                          void verifyLlmConnection(llmProvider, e.target.value);
+                        }}
+                        className="w-full appearance-none rounded-sm border border-border bg-surface px-3 py-2 pr-9 font-mono text-sm text-foreground outline-none transition-colors focus:border-border-focus"
+                      >
+                        {selectedLlmModels.map((option: ModelOption) => (
+                          <option key={option.id} value={option.id} className="bg-background text-foreground">
+                            {option.name} · {option.id}
+                          </option>
+                        ))}
+                      </select>
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-xs text-muted/60"
+                      >
+                        v
+                      </span>
+                    </div>
                   </label>
                 ) : (
                   <label className="mb-3 block">

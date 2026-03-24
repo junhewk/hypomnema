@@ -6,8 +6,8 @@ from numpy.typing import NDArray
 
 
 class GoogleEmbeddingModel:
-    DEFAULT_MODEL = "text-embedding-004"
-    DEFAULT_DIMENSION = 768
+    DEFAULT_MODEL = "gemini-embedding-001"
+    DEFAULT_DIMENSION = 3072
 
     def __init__(self, api_key: str, *, model: str = "") -> None:
         self._client = genai.Client(api_key=api_key)

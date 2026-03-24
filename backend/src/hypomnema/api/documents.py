@@ -7,7 +7,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, UploadFile
 
 import httpx
 
@@ -145,7 +145,6 @@ async def create_scribble_endpoint(
     body: ScribbleCreate,
     request: Request,
     db: DB,
-    background_tasks: BackgroundTasks,
 ) -> DocumentOut:
     try:
         doc = await create_scribble(db, body.text, title=body.title)
@@ -153,7 +152,7 @@ async def create_scribble_endpoint(
         raise HTTPException(status_code=400, detail=str(e)) from e
     if not body.draft:
         doc = await _queue_processing_metadata(db, doc)
-        background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
+        await request.app.state.ontology_queue.enqueue(doc.id)
     return DocumentOut.model_validate(doc, from_attributes=True)
 
 
@@ -162,7 +161,6 @@ async def fetch_url_endpoint(
     body: UrlFetch,
     request: Request,
     db: DB,
-    background_tasks: BackgroundTasks,
 ) -> DocumentOut:
     if not body.url.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
@@ -175,7 +173,7 @@ async def fetch_url_endpoint(
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"Failed to fetch URL: {e}") from e
     doc = await _queue_processing_metadata(db, doc)
-    background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
+    await request.app.state.ontology_queue.enqueue(doc.id)
     return DocumentOut.model_validate(doc, from_attributes=True)
 
 
@@ -184,7 +182,6 @@ async def upload_file_endpoint(
     file: UploadFile,
     request: Request,
     db: DB,
-    background_tasks: BackgroundTasks,
 ) -> DocumentOut:
     suffix = Path(file.filename or "upload").suffix
     with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
@@ -198,7 +195,7 @@ async def upload_file_endpoint(
     finally:
         tmp_path.unlink(missing_ok=True)
     doc = await _queue_processing_metadata(db, doc)
-    background_tasks.add_task(_run_ontology_pipeline, request.app, doc.id)
+    await request.app.state.ontology_queue.enqueue(doc.id)
     return DocumentOut.model_validate(doc, from_attributes=True)
 
 
@@ -208,7 +205,6 @@ async def update_document(
     body: DocumentUpdate,
     request: Request,
     db: DB,
-    background_tasks: BackgroundTasks,
 ) -> DocumentOut:
     """Update a document's text/title and re-run ontology pipeline."""
     cursor = await db.execute("SELECT * FROM documents WHERE id = ?", (document_id,))
@@ -243,7 +239,7 @@ async def update_document(
     doc = await _queue_processing_metadata(db, Document.from_row(updated_row))
 
     revision = updated_row["revision"]
-    background_tasks.add_task(_run_ontology_pipeline, request.app, document_id, revision)
+    await request.app.state.ontology_queue.enqueue(document_id, revision)
 
     return DocumentOut.model_validate(doc, from_attributes=True)
 

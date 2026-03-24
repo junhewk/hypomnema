@@ -3,6 +3,7 @@
 import { memo, type CSSProperties } from "react";
 import Link from "next/link";
 import type { Document, ScoredDocument, EngramSummary } from "@/lib/types";
+import { documentHref, engramHref } from "@/lib/routes";
 import { timeAgo } from "@/lib/timeAgo";
 import { SOURCE_STYLES } from "@/lib/documentStyles";
 import { StatusDot } from "./StatusDot";
@@ -28,7 +29,7 @@ export const DocumentCard = memo(function DocumentCard({
 
   return (
     <Link
-      href={`/documents/${doc.id}`}
+      href={documentHref(doc.id)}
       className="block no-underline text-inherit"
       data-testid="document-link"
     >
@@ -73,7 +74,7 @@ export const DocumentCard = memo(function DocumentCard({
             {engrams.slice(0, 3).map((eg) => (
               <Link
                 key={eg.id}
-                href={`/engrams/${eg.id}`}
+                href={engramHref(eg.id)}
                 onClick={(e) => e.stopPropagation()}
                 className="engram-pill rounded-sm bg-[var(--engram)]/8 px-1.5 py-0.5 font-mono text-[10px] text-[var(--engram)] no-underline"
               >

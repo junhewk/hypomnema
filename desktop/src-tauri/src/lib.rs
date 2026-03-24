@@ -1,11 +1,59 @@
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::Manager;
 use tauri::RunEvent;
 use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_shell::ShellExt;
 
 /// Wrapper so we can store the sidecar child handle via `app.manage()`.
 struct Backend(Mutex<Option<CommandChild>>);
+
+fn backend_executable_name() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "hypomnema-server.exe"
+    } else {
+        "hypomnema-server"
+    }
+}
+
+fn backend_executable_path<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<PathBuf, String> {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .map_err(|e| format!("failed to resolve resources dir: {e}"))?;
+    let bundled_paths = [
+        resource_dir
+            .join("hypomnema-server")
+            .join(backend_executable_name()),
+        resource_dir
+            .join("resources")
+            .join("hypomnema-server")
+            .join(backend_executable_name()),
+    ];
+
+    for bundled_path in bundled_paths {
+        if bundled_path.exists() {
+            return Ok(bundled_path);
+        }
+    }
+
+    let dev_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join("hypomnema-server")
+        .join(backend_executable_name());
+    if dev_path.exists() {
+        return Ok(dev_path);
+    }
+
+    Err(format!(
+        "backend executable not found under {} or {}",
+        resource_dir.display(),
+        dev_path.display(),
+    ))
+}
 
 /// Poll GET /api/health until the sidecar is ready.
 async fn wait_for_backend(port: u16, timeout: Duration) -> Result<(), String> {
@@ -31,18 +79,19 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
             let handle = app.handle().clone();
+            let backend_path = backend_executable_path(&handle)?;
 
             // Spawn the Python sidecar
             let sidecar = handle
                 .shell()
-                .sidecar("hypomnema-server")
-                .expect("failed to create sidecar command")
+                .command(&backend_path)
                 .args(["--port", &port.to_string()]);
 
-            let (mut _rx, child) = sidecar.spawn().expect("failed to spawn sidecar");
+            let (mut _rx, child) = sidecar
+                .spawn()
+                .map_err(|e| format!("failed to spawn backend {}: {e}", backend_path.display()))?;
 
             // Store child handle in Mutex for cleanup on exit
             app.manage(Backend(Mutex::new(Some(child))));
