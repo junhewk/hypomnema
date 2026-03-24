@@ -589,12 +589,16 @@ dependencies = [
     { name = "python-docx" },
     { name = "python-multipart" },
     { name = "scikit-learn" },
-    { name = "sentence-transformers" },
     { name = "sqlite-vec" },
     { name = "trafilatura" },
     { name = "umap-learn" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "youtube-transcript-api" },
+]
+
+[package.optional-dependencies]
+local-embeddings = [
+    { name = "sentence-transformers" },
 ]
 
 [package.dev-dependencies]
@@ -626,13 +630,14 @@ requires-dist = [
     { name = "python-docx", specifier = ">=1.1,<2" },
     { name = "python-multipart", specifier = ">=0.0.18,<1" },
     { name = "scikit-learn", specifier = ">=1.6,<2" },
-    { name = "sentence-transformers", specifier = ">=3.4,<4" },
+    { name = "sentence-transformers", marker = "extra == 'local-embeddings'", specifier = ">=3.4,<4" },
     { name = "sqlite-vec", specifier = ">=0.1.6,<1" },
     { name = "trafilatura", specifier = ">=2.0,<3" },
     { name = "umap-learn", specifier = ">=0.5,<1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34,<1" },
     { name = "youtube-transcript-api", specifier = ">=1.0,<2" },
 ]
+provides-extras = ["local-embeddings"]
 
 [package.metadata.requires-dev]
 desktop = [{ name = "pyinstaller", specifier = ">=6,<7" }]

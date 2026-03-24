@@ -12,4 +12,5 @@ __pycache__
 *.md
 .env
 .env.*
+.hypomnema_key
 data/

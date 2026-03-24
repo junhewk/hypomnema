@@ -1,14 +1,90 @@
-"""Database schema — all DDL statements."""
+"""Database schema — all DDL statements and migration framework."""
 
+from __future__ import annotations
+
+import logging
 import re
+from collections.abc import Callable, Coroutine
 from contextlib import suppress
+from typing import Any
 
 import aiosqlite
 
+logger = logging.getLogger(__name__)
+
 _VEC_DIM_RE = re.compile(r"embedding\s+float\[(\d+)\]", re.IGNORECASE)
 
+# ---------------------------------------------------------------------------
+# Migration framework
+# ---------------------------------------------------------------------------
 
-async def create_core_tables(db: aiosqlite.Connection) -> None:
+_MigrationFn = Callable[[aiosqlite.Connection], Coroutine[Any, Any, None]]
+_MIGRATIONS: list[tuple[int, str, _MigrationFn]] = []
+# Populated after function definitions below.  See _register_migrations().
+
+
+async def run_migrations(db: aiosqlite.Connection) -> None:
+    """Run all pending schema migrations.  Idempotent.
+
+    For fresh databases every migration runs in order.  For existing databases
+    that predate the migration framework the baseline migration is marked as
+    already applied and only newer migrations execute.
+    """
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS _migrations (
+            version INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+    await db.commit()
+
+    cursor = await db.execute("SELECT version FROM _migrations ORDER BY version")
+    applied = {row["version"] for row in await cursor.fetchall()}
+    await cursor.close()
+
+    # Bootstrap: pre-migration database (tables exist, no _migrations rows).
+    # Run the baseline migration anyway (it's idempotent) to pick up any
+    # tables or fixups added since the database was originally created.
+    if not applied and await _table_exists(db, "documents"):
+        logger.info("Bootstrapping migration framework on existing database")
+        await _migration_001_baseline(db)
+        await db.execute(
+            "INSERT INTO _migrations (version, name) VALUES (?, ?)",
+            (1, "baseline_schema"),
+        )
+        await db.commit()
+        applied.add(1)
+
+    for version, name, fn in _MIGRATIONS:
+        if version in applied:
+            continue
+        logger.info("Running migration %d: %s", version, name)
+        await fn(db)
+        await db.execute(
+            "INSERT INTO _migrations (version, name) VALUES (?, ?)",
+            (version, name),
+        )
+        await db.commit()
+        logger.info("Migration %d applied", version)
+
+    # Post-migration maintenance (always runs, idempotent)
+    from hypomnema.ontology.engram import backfill_engram_aliases
+
+    await backfill_engram_aliases(db)
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Migration 1 — baseline schema (the complete v0.1.0 schema)
+# ---------------------------------------------------------------------------
+
+async def _migration_001_baseline(db: aiosqlite.Connection) -> None:
+    """Complete baseline: all tables, columns, indexes, FTS5, triggers."""
+    await _create_core_tables_impl(db)
+
+
+async def _create_core_tables_impl(db: aiosqlite.Connection) -> None:
     """Create all core tables, indexes, FTS5, and triggers. Idempotent.
 
     Does NOT create vec0 virtual tables — call create_vec_tables() separately.
@@ -133,9 +209,6 @@ async def create_core_tables(db: aiosqlite.Connection) -> None:
     if documents_rebuilt:
         await db.execute("INSERT INTO documents_fts(documents_fts) VALUES ('rebuild')")
 
-    from hypomnema.ontology.engram import backfill_engram_aliases
-
-    await backfill_engram_aliases(db)
     await db.commit()
 
 
@@ -509,7 +582,6 @@ async def _copy_documents_rows(
     cursor = await db.execute(f"PRAGMA table_info({source_table})")  # noqa: S608
     source_columns = {str(row["name"]) for row in await cursor.fetchall()}
     await cursor.close()
-    available = [col for col in all_columns if col in source_columns]
     select_exprs = [col if col in source_columns else f"NULL AS {col}" for col in all_columns]
     insert_mode = "INSERT OR IGNORE" if or_ignore else "INSERT"
     await db.execute(
@@ -567,3 +639,27 @@ async def _rebuild_edges_table(db: aiosqlite.Connection) -> None:
             f"FROM {temp_name}"  # noqa: S608
         )
         await db.execute(f"DROP TABLE {temp_name}")  # noqa: S608
+
+
+# ---------------------------------------------------------------------------
+# Migration registry — keep at bottom so all functions are defined
+# ---------------------------------------------------------------------------
+
+def _register_migrations() -> None:
+    _MIGRATIONS.clear()
+    _MIGRATIONS.append((1, "baseline_schema", _migration_001_baseline))
+
+
+_register_migrations()
+
+
+# ---------------------------------------------------------------------------
+# Public API (backward-compatible wrappers)
+# ---------------------------------------------------------------------------
+
+async def create_core_tables(db: aiosqlite.Connection) -> None:
+    """Create all core tables via the migration framework.  Idempotent.
+
+    Prefer ``run_migrations`` for new code.
+    """
+    await run_migrations(db)

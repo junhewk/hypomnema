@@ -12,8 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from hypomnema.config import Settings
 from hypomnema.crypto import get_or_create_key
-from hypomnema.db.engine import get_connection
-from hypomnema.db.schema import create_core_tables, ensure_vec_tables
+from hypomnema.db.engine import ConnectionPool, get_connection
+from hypomnema.db.schema import ensure_vec_tables, run_migrations
 from hypomnema.db.settings_store import get_all_settings
 from hypomnema.embeddings.factory import build_embeddings
 from hypomnema.llm.factory import api_key_for_provider, base_url_for_provider, build_llm
@@ -21,16 +21,44 @@ from hypomnema.llm.factory import api_key_for_provider, base_url_for_provider, b
 logger = logging.getLogger(__name__)
 
 
+def _configure_json_logging() -> None:
+    """Switch all loggers to JSON-line output."""
+    import json as _json
+
+    class _JsonFormatter(logging.Formatter):
+        def format(self, record: logging.LogRecord) -> str:
+            return _json.dumps({
+                "ts": self.formatTime(record, self.datefmt),
+                "level": record.levelname,
+                "logger": record.name,
+                "msg": record.getMessage(),
+            })
+
+    handler = logging.StreamHandler()
+    handler.setFormatter(_JsonFormatter())
+    root = logging.getLogger()
+    root.handlers.clear()
+    root.addHandler(handler)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings: Settings = app.state.settings
+
+    if settings.json_logs:
+        _configure_json_logging()
 
     # Database
     db = await get_connection(settings.db_path, settings.sqlite_vec_path)
     app.state.db = db
 
-    # Always create core tables
-    await create_core_tables(db)
+    # Run schema migrations
+    await run_migrations(db)
+
+    # Connection pool for request handling
+    pool = ConnectionPool(size=3)
+    await pool.open(settings.db_path, settings.sqlite_vec_path)
+    app.state.pool = pool
 
     # Fernet key
     data_dir = settings.db_path.parent
@@ -144,6 +172,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.scheduler.shutdown(wait=True)
     if app.state.embedding_change_task:
         app.state.embedding_change_task.cancel()
+    await pool.close()
     await db.close()
 
 
@@ -170,6 +199,7 @@ def create_app(settings: Settings | None = None, *, use_lifespan: bool = True) -
     )
 
     from hypomnema.api.auth import auth_router
+    from hypomnema.api.backup import router as backup_router
     from hypomnema.api.documents import router as documents_router
     from hypomnema.api.engrams import router as engrams_router
     from hypomnema.api.feeds import router as feeds_router
@@ -179,6 +209,7 @@ def create_app(settings: Settings | None = None, *, use_lifespan: bool = True) -
     from hypomnema.api.health import router as health_router
 
     app.include_router(auth_router)
+    app.include_router(backup_router)
     app.include_router(documents_router)
     app.include_router(engrams_router)
     app.include_router(feeds_router)

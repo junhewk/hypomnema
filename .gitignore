@@ -24,6 +24,10 @@ out/
 .DS_Store
 Thumbs.db
 
+# Data & secrets
+backend/data/
+.hypomnema_key
+
 # Environment
 .env
 .env.local

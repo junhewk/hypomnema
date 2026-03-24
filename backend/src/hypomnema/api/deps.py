@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException, Request
@@ -12,13 +13,20 @@ if TYPE_CHECKING:
     import aiosqlite
 
     from hypomnema.config import Settings
+    from hypomnema.db.engine import ConnectionPool
     from hypomnema.embeddings.base import EmbeddingModel
     from hypomnema.llm.base import LLMClient
     from hypomnema.scheduler.cron import FeedScheduler
 
 
-def get_db(request: Request) -> aiosqlite.Connection:
-    return request.app.state.db  # type: ignore[no-any-return]
+async def get_db(request: Request) -> AsyncGenerator[aiosqlite.Connection, None]:
+    pool: ConnectionPool | None = getattr(request.app.state, "pool", None)
+    if pool is not None:
+        async with pool.acquire() as conn:
+            yield conn
+    else:
+        # Fallback for tests or pre-pool setups
+        yield request.app.state.db
 
 
 def get_llm(request: Request) -> LLMClient:

@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     # Static file serving (desktop mode)
     static_dir: Path | None = None
 
+    # Logging
+    json_logs: bool = False
+
     @field_validator("embedding_dim")
     @classmethod
     def embedding_dim_must_be_positive(cls, v: int) -> int:

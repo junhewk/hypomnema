@@ -6,6 +6,17 @@ services:
     volumes:
       - ./data:/app/data
     environment:
+      # "local" uses sentence-transformers (~2 GB RAM on first load).
+      # Use "openai" or "google" for lower memory usage.
       - HYPOMNEMA_EMBEDDING_PROVIDER=local
       - HYPOMNEMA_PASSPHRASE=${HYPOMNEMA_PASSPHRASE:-}
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8073/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
     restart: unless-stopped

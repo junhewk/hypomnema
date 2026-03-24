@@ -7,6 +7,7 @@ Auto-detects platform/arch and produces Tauri-compatible sidecar binaries.
 from __future__ import annotations
 
 import argparse
+import os
 import platform
 import shutil
 import subprocess
@@ -72,8 +73,6 @@ def run(cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = No
 
 def build_frontend() -> None:
     print("\n[1/3] Building frontend static export...")
-    import os
-
     env = {**os.environ, "NEXT_EXPORT": "1"}
     run(["npm", "run", "build"], cwd=FRONTEND_DIR, env=env)
     out_dir = FRONTEND_DIR / "out"
@@ -104,6 +103,9 @@ def build_backend(target_triple: str) -> None:
         print(f"ERROR: Expected {src_name} to exist after PyInstaller build", file=sys.stderr)
         sys.exit(1)
 
+    # Verify sqlite-vec is bundled and loadable
+    _verify_sqlite_vec(dst_name)
+
     # Copy to Tauri binaries directory
     BINARIES_DIR.mkdir(parents=True, exist_ok=True)
     target_bin = BINARIES_DIR / f"hypomnema-server-{target_triple}"
@@ -111,6 +113,65 @@ def build_backend(target_triple: str) -> None:
         shutil.rmtree(target_bin)
     shutil.copytree(str(dst_name), str(target_bin))
     print(f"  Sidecar copied to {target_bin}")
+
+
+def _verify_sqlite_vec(sidecar_dir: Path) -> None:
+    """Verify the bundled sqlite-vec extension is loadable."""
+    import sqlite3 as _sqlite3
+
+    vec_dirs = list(sidecar_dir.rglob("sqlite_vec"))
+    if not vec_dirs:
+        print("  WARNING: sqlite_vec directory not found in sidecar bundle")
+        return
+
+    vec_dir = vec_dirs[0]
+    ext_files = [f for f in vec_dir.iterdir() if f.suffix in (".so", ".dylib", ".dll")]
+    if not ext_files:
+        print("  WARNING: No sqlite-vec shared library found in bundle")
+        return
+
+    ext_path = ext_files[0]
+    try:
+        conn = _sqlite3.connect(":memory:")
+        conn.enable_load_extension(True)
+        conn.load_extension(str(ext_path.with_suffix("")))
+        version = conn.execute("SELECT vec_version()").fetchone()[0]
+        conn.close()
+        print(f"  sqlite-vec verification OK (version {version})")
+    except Exception as exc:
+        print(f"  ERROR: sqlite-vec verification failed: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+
+def adhoc_codesign_macos() -> None:
+    """Apply ad-hoc code signing on macOS when no signing identity is configured.
+
+    macOS Sequoia+ blocks unsigned apps entirely — ad-hoc signing avoids this
+    while still allowing the user to open the app via right-click > Open.
+    """
+    if platform.system() != "Darwin":
+        return
+    if os.environ.get("APPLE_SIGNING_IDENTITY"):
+        print("  Skipping ad-hoc signing: APPLE_SIGNING_IDENTITY is set")
+        return
+
+    macos_bundle_dir = DESKTOP_DIR / "src-tauri" / "target" / "release" / "bundle" / "macos"
+    if not macos_bundle_dir.exists():
+        print("  WARNING: macOS bundle dir not found, skipping ad-hoc signing")
+        return
+
+    app_bundles = list(macos_bundle_dir.glob("*.app"))
+    if not app_bundles:
+        print("  WARNING: No .app bundle found, skipping ad-hoc signing")
+        return
+
+    app_path = app_bundles[0]
+    print(f"  Applying ad-hoc code signature to {app_path.name}...")
+    subprocess.run(
+        ["codesign", "--force", "--deep", "-s", "-", str(app_path)],
+        check=True,
+    )
+    print("  Ad-hoc signing complete")
 
 
 def build_tauri(target_triple: str) -> None:
@@ -127,6 +188,9 @@ def build_tauri(target_triple: str) -> None:
 
     bundle_dir = DESKTOP_DIR / "src-tauri" / "target" / "release" / "bundle" / bundle_type
     print(f"  Tauri build complete. Look for artifacts in: {bundle_dir}")
+
+    # Ad-hoc codesign on macOS when no signing identity is set
+    adhoc_codesign_macos()
 
 
 def main() -> None:

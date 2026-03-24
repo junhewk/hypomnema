@@ -13,9 +13,10 @@ RUN npm run build
 # ── Stage 2: Backend + static serving ─────────────────────
 FROM python:3.12-slim AS backend
 
-# System deps for sqlite-vec and optional torch
+# System deps for sqlite-vec, optional torch, and healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Install uv
@@ -30,14 +31,19 @@ RUN cd backend && \
     if [ "$VARIANT" = "slim" ]; then \
       uv sync --no-dev --no-install-project; \
     else \
-      uv sync --no-dev --no-install-project; \
+      uv sync --no-dev --no-install-project --extra local-embeddings; \
     fi
 
 # Copy backend source
 COPY backend/ ./backend/
 
 # Install the project itself
-RUN cd backend && uv sync --no-dev
+RUN cd backend && \
+    if [ "$VARIANT" = "slim" ]; then \
+      uv sync --no-dev; \
+    else \
+      uv sync --no-dev --extra local-embeddings; \
+    fi
 
 # Copy static frontend from builder
 COPY --from=frontend-builder /app/frontend/out ./static
@@ -52,5 +58,13 @@ EXPOSE 8073
 
 # Create data directory
 RUN mkdir -p /app/data
+
+# Non-root user
+RUN adduser --disabled-password --gecos '' --home /app hypomnema && \
+    chown -R hypomnema:hypomnema /app
+USER hypomnema
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD curl -fs http://localhost:8073/api/health || exit 1
 
 CMD ["backend/.venv/bin/uvicorn", "hypomnema.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8073", "--log-level", "info"]

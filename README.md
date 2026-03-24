@@ -1,127 +1,112 @@
 <p align="center">
-  <img src="./frontend/public/hypomnema.png" alt="Hypomnema logo" width="180">
+  <img src="./frontend/public/hypomnema_text.png" alt="Hypomnema" width="360">
 </p>
 
-# Hypomnema
+<p align="center">
+  <strong>An automated ontological synthesizer.</strong><br>
+  Drop in notes, PDFs, and URLs. Get back a living knowledge network.
+</p>
 
-Hypomnema is a research notebook that organizes itself.
+<p align="center">
+  <a href="./LICENSE">AGPL-3.0</a> &middot;
+  <a href="./CHANGELOG.md">Changelog</a> &middot;
+  <a href="./DEVELOPMENT.md">Development</a>
+</p>
 
-You drop in quick thoughts, PDFs, DOCX files, or Markdown notes. The app stores the raw text, extracts the main concepts, links related ideas together, and lets you move through your material as a living network instead of a folder tree.
+---
 
-## What It Is For
+Hypomnema extracts concepts from your research material, deduplicates them, links them with typed relationships, and renders the result as an explorable 3D network. No folders, no tags, no manual organization.
 
-Hypomnema is built for people doing serious reading, writing, and synthesis:
+## Features
 
-- capturing fleeting ideas without stopping to tag or file them
-- pulling concepts out of notes and documents automatically
-- showing which ideas connect, support, contradict, or extend each other
-- helping you spot clusters, bridges, and missing links in your research
-
-It is not meant to be a manual PKM system where you spend time maintaining folders, backlinks, and taxonomy by hand.
-
-## How It Feels To Use
-
-The app is centered around a few simple views:
-
-- `Stream`: your chronological inbox for scribbles and uploaded files
-- `Document view`: the full text of one note or file, plus the concepts extracted from it
-- `Engram view`: a concept page showing connected documents and related concepts
-- `Search`: two modes, one for finding documents and one for exploring concept relationships
-- `Visualization`: a 3D spatial map of your concept network — constellation-style nodes sized by PageRank, cinematic camera controls, cluster color reveal on focus
-- `Settings`: where you choose or update the language model provider used for extraction
-
-In practice, the workflow is:
-
-1. Write a note or upload a file.
-2. Let the app process it in the background.
-3. Open the document to see which concepts were extracted.
-4. Follow those concepts into other related material.
-5. Use search and visualization when you want a wider view of the territory.
-
-## What Hypomnema Does Behind The Scenes
-
-When you add material, Hypomnema:
-
-- saves the original text in a local SQLite database
-- generates embeddings so related material can be found semantically
-- creates concept nodes called "engrams"
-- stores deterministic alias keys for those engrams
-- deduplicates new entities by exact name, alias lookup, and embedding similarity
-- links those engrams with relationship types such as support, contradiction, critique, or extension
-- builds projection data for the visualization view
-
-The point is not just storage. The point is to turn a pile of notes into something you can think with.
-
-## First-Run Setup
-
-On first launch, Hypomnema asks you to choose:
-
-- an embedding provider
-- optionally, an LLM provider for concept extraction and edge generation
-
-Important user-facing detail:
-
-- the embedding choice is effectively permanent for that database, because changing embedding models would make old vectors incompatible
-- the LLM provider can be changed later in Settings
-
-API keys are stored locally and encrypted at rest.
-
-## What You Can Add
-
-Today, the app accepts:
-
-- plain text scribbles
-- `PDF` files
-- `DOCX` files
-- `Markdown` files
-
-The backend also supports scheduled feed ingestion for always-on/server setups, but the current user interface is mainly focused on manual capture and exploration.
-
-## Running Modes
-
-Hypomnema can be used in three ways:
-
-- `Local mode`: runs on your machine and opens in the browser
-- `Server mode`: runs as an always-on private service for continuous ingestion and access from multiple devices
-- `Desktop mode`: packaged desktop app with the same core workflow
-
-All three modes use the same basic model: capture material, process it, then navigate it by concept.
+- **Zero-friction input** — scribbles, PDF/DOCX/Markdown upload, URL scraping, RSS/YouTube feeds
+- **Automatic ontology** — LLM-powered entity extraction, multi-stage deduplication (exact match, alias index, KNN, vector similarity, concept hash), typed edge generation (supports, contradicts, critiques, extends, ...)
+- **3D visualization** — constellation-mode point cloud with PageRank node sizing, GLSL shaders, cluster color reveal, cinematic auto-orbit
+- **Full-text + semantic search** — FTS5 for keyword search, sqlite-vec for vector similarity
+- **Multi-provider** — Claude, Gemini, OpenAI, Ollama for LLM; local sentence-transformers, OpenAI, or Google for embeddings. Hot-swappable at runtime.
+- **Single-file database** — everything in one portable SQLite file. No Postgres, no external services.
+- **Encrypted at rest** — API keys stored with Fernet encryption
 
 ## Quick Start
 
-If you just want to use the app locally:
+### Local development
 
 ```bash
 cd backend
-uv sync
+uv sync --extra local-embeddings
 uv run hypomnema dev
 ```
 
-Then open `http://localhost:3000`.
+Opens `http://localhost:3073`. Requires Python 3.12+, Node.js 20+, and [uv](https://docs.astral.sh/uv/).
 
-You will need:
+### Docker
 
-- Python 3.12+
-- Node.js 20+
-- `uv`
+```bash
+docker compose up --build
+```
 
-The app will install frontend dependencies automatically if needed.
+Runs at `http://localhost:8073`. Data persists in `./data/`.
 
-## Current Product Scope
+Set a passphrase for remote access:
 
-What is already present in the app:
+```bash
+HYPOMNEMA_PASSPHRASE=your-secret docker compose up --build
+```
 
-- first-run setup wizard
-- chronological note/file stream
-- file upload and text extraction
-- background ontology processing
-- document detail pages
-- concept detail pages
-- document search
-- knowledge-graph search
-- interactive visualization
-- provider settings with runtime LLM switching
+### Desktop
 
-## Development Notes
+Pre-built binaries for macOS, Windows, and Linux are available on the [Releases](../../releases) page. See [BUILD.md](./desktop/BUILD.md) for building from source.
 
-This README is intentionally user-facing. For implementation details and developer workflow, see [DEVELOPMENT.md](./DEVELOPMENT.md).
+## Configuration
+
+All settings use the `HYPOMNEMA_` prefix. Copy [`.env.example`](./.env.example) for a full reference.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HYPOMNEMA_LLM_PROVIDER` | `mock` | `claude`, `google`, `openai`, `ollama`, or `mock` |
+| `HYPOMNEMA_EMBEDDING_PROVIDER` | `local` | `local`, `openai`, or `google` |
+| `HYPOMNEMA_ANTHROPIC_API_KEY` | | Required if using Claude |
+| `HYPOMNEMA_GOOGLE_API_KEY` | | Required if using Gemini |
+| `HYPOMNEMA_OPENAI_API_KEY` | | Required if using OpenAI |
+| `HYPOMNEMA_PASSPHRASE` | | Pre-set auth passphrase (server/Docker mode) |
+| `HYPOMNEMA_DB_PATH` | `data/hypomnema.db` | SQLite database location |
+
+LLM provider and API keys can also be configured at runtime via the Settings UI. Embedding provider is chosen at first-run setup — changing it later triggers a full knowledge graph rebuild.
+
+## Architecture
+
+Three-layer stack, single codebase:
+
+- **Backend** — Python / FastAPI: orchestrates LLM calls, document parsing, embedding, feed scheduling
+- **Database** — SQLite + WAL mode + [sqlite-vec](https://github.com/asg017/sqlite-vec): single portable file for all data and vector search
+- **Frontend** — Next.js PWA: renders the topological UI, queries the backend API
+
+### Deployment modes
+
+| Mode | Command | Use case |
+|------|---------|----------|
+| Local | `uv run hypomnema dev` | Development, personal use |
+| Server | `uv run hypomnema serve` | Always-on, remote access via Tailscale/LAN |
+| Docker | `docker compose up` | Self-hosted server, single container |
+| Desktop | Download from Releases | Native app (Tauri + PyInstaller sidecar) |
+
+## Contributing
+
+```bash
+# Backend
+cd backend && uv sync --extra local-embeddings
+uv run ruff check .
+uv run mypy .
+uv run pytest
+
+# Frontend
+cd frontend && npm ci
+npm run typecheck
+npm test
+```
+
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for architecture details and implementation notes.
+
+## License
+
+[AGPL-3.0](./LICENSE)

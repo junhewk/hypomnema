@@ -1,5 +1,9 @@
-"""SQLite engine: connection factory, PRAGMAs, sqlite-vec extension."""
+"""SQLite engine: connection factory, pool, PRAGMAs, sqlite-vec extension."""
 
+from __future__ import annotations
+
+import asyncio
+import logging
 import sqlite3
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -7,6 +11,8 @@ from pathlib import Path
 
 import aiosqlite
 import sqlite_vec
+
+logger = logging.getLogger(__name__)
 
 
 async def get_connection(db_path: Path | str, sqlite_vec_ext_path: str = "") -> aiosqlite.Connection:
@@ -43,3 +49,44 @@ async def connect(db_path: Path | str, sqlite_vec_ext_path: str = "") -> AsyncGe
         yield db
     finally:
         await db.close()
+
+
+# ---------------------------------------------------------------------------
+# Connection pool
+# ---------------------------------------------------------------------------
+
+
+class ConnectionPool:
+    """Small async connection pool for SQLite.
+
+    Wraps an ``asyncio.Queue`` of pre-configured ``aiosqlite.Connection``
+    objects. Each request borrows a connection and returns it after use.
+    """
+
+    def __init__(self, size: int = 3) -> None:
+        self._size = size
+        self._queue: asyncio.Queue[aiosqlite.Connection] = asyncio.Queue(maxsize=size)
+        self._all: list[aiosqlite.Connection] = []
+
+    async def open(self, db_path: Path | str, sqlite_vec_ext_path: str = "") -> None:
+        """Create *size* connections and add them to the pool."""
+        for _ in range(self._size):
+            conn = await get_connection(db_path, sqlite_vec_ext_path)
+            self._all.append(conn)
+            await self._queue.put(conn)
+        logger.info("Connection pool opened with %d connections", self._size)
+
+    async def close(self) -> None:
+        """Close every connection in the pool."""
+        for conn in self._all:
+            await conn.close()
+        self._all.clear()
+
+    @asynccontextmanager
+    async def acquire(self) -> AsyncGenerator[aiosqlite.Connection, None]:
+        """Borrow a connection from the pool; return it when done."""
+        conn = await self._queue.get()
+        try:
+            yield conn
+        finally:
+            await self._queue.put(conn)

@@ -1,5 +1,13 @@
 # Building Hypomnema Desktop
 
+> **macOS Sequoia+ (15.0+):** Apple has tightened Gatekeeper enforcement.
+> Unsigned apps are blocked entirely — the old `xattr -cr` workaround no
+> longer works reliably. The build script now applies **ad-hoc code signing**
+> automatically when no `APPLE_SIGNING_IDENTITY` env var is set. This allows
+> the app to launch via right-click > Open, but users will still see a
+> "developer cannot be verified" prompt. For distribution without warnings,
+> set up proper Apple Developer signing (see Code Signing section below).
+
 Each platform must be built natively — no cross-compilation.
 
 ## Prerequisites (all platforms)
@@ -57,13 +65,15 @@ The app is distributed unsigned. Each platform shows a warning on first launch.
 
 ### macOS
 
-Gatekeeper blocks unsigned apps. After installing, run:
+The build script automatically applies **ad-hoc code signing** (`codesign --force --deep -s -`) when no `APPLE_SIGNING_IDENTITY` env var is set. This is sufficient for local development and lets the app launch via right-click > Open on Sequoia+.
+
+If you encounter Gatekeeper issues on older macOS versions, run:
 
 ```bash
 xattr -cr /Applications/Hypomnema.app
 ```
 
-To sign properly: enroll in Apple Developer Program ($99/yr), then set `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID` env vars before running `cargo tauri build`. Tauri handles notarization automatically with these set.
+To sign properly for distribution: enroll in Apple Developer Program ($99/yr), then set `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID` env vars before running `cargo tauri build`. Tauri handles notarization automatically with these set.
 
 ### Windows
 
@@ -83,12 +93,11 @@ AppImage works unsigned. No action needed.
 
 ## Uploading releases
 
-Use the release script to upload to Gitea:
+Use the release script to upload to GitHub:
 
 ```bash
-python desktop/packaging/release.py \
+GITHUB_TOKEN=your-token python desktop/packaging/release.py \
   --version v0.1.0 \
   --artifact <path-to-artifact> \
-  --gitea-url http://100.122.128.11:3000 \
-  --repo jk/hypomnema
+  --repo your-org/hypomnema
 ```

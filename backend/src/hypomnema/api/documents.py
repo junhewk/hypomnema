@@ -7,7 +7,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request, Response, UploadFile
 
 import httpx
 
@@ -22,8 +22,14 @@ from hypomnema.ontology.pipeline import link_document, process_document, update_
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
-# Draft = scribble that was never processed (no tidy_text yet)
 _DRAFT_FILTER = "source_type = 'scribble' AND processed = 0 AND tidy_text IS NULL"
+
+
+async def _remove_document_associations(db: DB, document_id: str) -> None:
+    """Delete engram links, embeddings, and edges tied to a document."""
+    await db.execute("DELETE FROM document_engrams WHERE document_id = ?", (document_id,))
+    await db.execute("DELETE FROM document_embeddings WHERE document_id = ?", (document_id,))
+    await db.execute("DELETE FROM edges WHERE source_document_id = ?", (document_id,))
 
 
 async def _queue_processing_metadata(db: DB, doc: Document) -> Document:
@@ -231,19 +237,47 @@ async def update_document(
     updated_row = await cursor.fetchone()
     await cursor.close()
 
-    # Clean up old associations
-    await db.execute("DELETE FROM document_engrams WHERE document_id = ?", (document_id,))
-    await db.execute("DELETE FROM document_embeddings WHERE document_id = ?", (document_id,))
-    await db.execute("DELETE FROM edges WHERE source_document_id = ?", (document_id,))
+    await _remove_document_associations(db, document_id)
     await db.commit()
 
     doc = await _queue_processing_metadata(db, Document.from_row(updated_row))
 
-    # Re-run ontology pipeline in background with current revision
     revision = updated_row["revision"]
     background_tasks.add_task(_run_ontology_pipeline, request.app, document_id, revision)
 
     return DocumentOut.model_validate(doc, from_attributes=True)
+
+
+@router.delete("/{document_id}", status_code=204)
+async def delete_document(document_id: str, db: DB) -> Response:
+    """Delete a document and clean up all associated data."""
+    cursor = await db.execute("SELECT id FROM documents WHERE id = ?", (document_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    await _remove_document_associations(db, document_id)
+
+    # FTS cleanup handled by trigger
+    await db.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+
+    # Garbage-collect orphaned engrams: materialize IDs once, delete from all tables
+    await db.execute("DROP TABLE IF EXISTS _orphan_engrams")
+    await db.execute("""
+        CREATE TEMP TABLE _orphan_engrams AS
+        SELECT e.id FROM engrams e
+        LEFT JOIN document_engrams de ON e.id = de.engram_id
+        LEFT JOIN edges src ON e.id = src.source_engram_id
+        LEFT JOIN edges tgt ON e.id = tgt.target_engram_id
+        WHERE de.document_id IS NULL AND src.id IS NULL AND tgt.id IS NULL
+    """)
+    for table in ("engram_aliases", "projections", "engram_embeddings", "engrams"):
+        await db.execute(f"DELETE FROM {table} WHERE engram_id IN (SELECT id FROM _orphan_engrams)")  # noqa: S608
+    await db.execute("DROP TABLE IF EXISTS _orphan_engrams")
+    await db.commit()
+
+    return Response(status_code=204)
 
 
 @router.get("", response_model=list[DocumentWithEngrams])

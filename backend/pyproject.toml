@@ -2,6 +2,7 @@
 name = "hypomnema"
 version = "0.1.0"
 description = "Automated Ontological Synthesizer"
+license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115,<1",
@@ -12,7 +13,6 @@ dependencies = [
     "pydantic-settings>=2.7,<3",
     "anthropic>=0.42,<1",
     "google-genai>=1.5,<2",
-    "sentence-transformers>=3.4,<4",
     "apscheduler>=3.11,<4",
     "python-multipart>=0.0.18,<1",
     "pypdf>=5.0,<6",
@@ -27,6 +27,9 @@ dependencies = [
     "openai>=1.60,<2",
     "platformdirs>=4,<5",
 ]
+
+[project.optional-dependencies]
+local-embeddings = ["sentence-transformers>=3.4,<4"]
 
 [dependency-groups]
 dev = [

@@ -22,6 +22,14 @@ COOKIE_NAME = "hypomnema_session"
 COOKIE_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
 EXEMPT_PREFIXES = ("/api/health", "/api/auth/")
 
+
+def _is_https(request: Request) -> bool:
+    """Detect HTTPS via X-Forwarded-Proto (set by reverse proxies) or scheme."""
+    return (
+        request.headers.get("x-forwarded-proto") == "https"
+        or request.url.scheme == "https"
+    )
+
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
@@ -165,6 +173,7 @@ async def auth_setup(request: Request) -> JSONResponse:
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=_is_https(request),
     )
     return response
 
@@ -195,6 +204,7 @@ async def auth_login(request: Request) -> JSONResponse:
         max_age=COOKIE_MAX_AGE,
         httponly=True,
         samesite="lax",
+        secure=_is_https(request),
     )
     return response
 
