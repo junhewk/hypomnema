@@ -30,9 +30,15 @@ def build() -> None:
         print(f"Error: {spec_file} not found", file=sys.stderr)
         sys.exit(1)
 
-    # Run PyInstaller
+    # Run PyInstaller — dist and build dirs go under packaging/
     subprocess.run(
-        [sys.executable, "-m", "PyInstaller", "--noconfirm", str(spec_file)],
+        [
+            sys.executable, "-m", "PyInstaller",
+            "--noconfirm",
+            "--distpath", str(PACKAGING_DIR / "dist"),
+            "--workpath", str(PACKAGING_DIR / "build"),
+            str(spec_file),
+        ],
         cwd=str(REPO_ROOT),
         check=True,
     )

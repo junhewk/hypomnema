@@ -4,7 +4,7 @@
 
 Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontological Synthesizer that builds a knowledge graph from zero-friction inputs, extracts deduplicated concept nodes (Engrams), generates typed relational edges, and visualizes structural gaps. This plan breaks the full build into dependency-ordered phases, each driven by tests written first.
 
-**Stack:** Python/FastAPI backend, SQLite (WAL + sqlite-vec) database, Next.js PWA frontend.
+**Stack:** Python / NiceGUI + FastAPI (single process), SQLite (WAL + sqlite-vec) database.
 
 ## Progress
 
@@ -31,13 +31,15 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 | P18 — Tauri Desktop Packaging | Done | 0 new tests (scaffolding only) | Health endpoint, static file serving, desktop config mode, Tauri sidecar, PyInstaller spec |
 | P19 — Viz Overhaul | Done | 0 new (updated 1 existing) | Constellation nodes, PageRank sizing, GLSL shader cleanup, radial reveal, auto-orbit, collapsible sidebar |
 
+**Note:** Phases P0-P19 were completed under the original Next.js + Tauri architecture. The project has since been rewritten to NiceGUI (v0.2.0). The backend logic (P1-P10, P15-P16) is preserved in `src/hypomnema/`. The frontend (P11-P14, P17, P19) was replaced by NiceGUI pages in `src/hypomnema/ui/`. Desktop packaging (P18) was replaced by pywebview via `uv run hypomnema desktop`.
+
 ### Implementation Notes (P0+P1+P2+P3+P4)
 
-- **Dev tooling added beyond plan:** `ruff` (lint), `mypy` strict with pydantic plugin (typecheck), `tsc --noEmit` (frontend typecheck). Dev deps use `[dependency-groups]` not `[project.optional-dependencies]`.
+- **Dev tooling added beyond plan:** `ruff` (lint), `mypy` strict with pydantic plugin (typecheck). Dev deps use `[dependency-groups]` not `[project.optional-dependencies]`.
 - **FTS5 trigger pattern:** Plan specified `DELETE FROM documents_fts` in update/delete triggers. This causes "database disk image is malformed" with external content FTS5. Fixed to use the correct `INSERT INTO fts(fts, ...) VALUES('delete', ...)` pattern.
 - **vec0 idempotency:** `CREATE VIRTUAL TABLE ... USING vec0` does not support `IF NOT EXISTS`. Schema uses `_table_exists()` helper querying `sqlite_master`.
 - **Models simplified:** Shared `_parse_iso_datetime()` helper and generic `_from_row(cls, row)` using `dict(row)` unpacking instead of per-model field-by-field constructors.
-- **Frontend:** Next.js 16.1.6 (latest stable), vitest 4, `ApiClient.request()` detects `FormData` body to skip `Content-Type: application/json` header.
+- **Frontend (v0.1.0, now replaced):** Originally Next.js; rewritten to NiceGUI in v0.2.0. All UI is now Python in `src/hypomnema/ui/`.
 - **Line length:** 120 (not 100) — practical for SQL strings in tests.
 - **LLM async, embeddings sync:** LLM methods are async (network I/O); embedding methods are sync (CPU-bound local compute). `complete_json()` parses text output as JSON — no provider-specific structured output modes.
 - **mypy strict compliance:** `json.loads()` returns `Any`, so `complete_json()` uses `dict(json.loads(text))` to satisfy `no-any-return`. Runtime validation uses proper exceptions (not `assert`) since asserts are stripped with `-O`.
@@ -92,37 +94,12 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **Feed update 404 detection:** Explicit existence check before `update_feed_source()` rather than string-matching on ValueError messages. Avoids fragile coupling to error message text.
 - **`document_engrams` index:** Added `idx_document_engrams_engram` on `document_engrams(engram_id)` — the composite PK `(document_id, engram_id)` cannot serve queries filtering by `engram_id` first.
 - **Viz endpoints are stubs:** Return empty lists; Phase 10 fills in the UMAP/clustering pipeline.
-- **CORS:** Allows `localhost:3000` and `127.0.0.1:3000` for frontend dev.
-- **Single client boundary:** `app/page.tsx` is a server component rendering `<StreamPage />` (client). All interactive pieces live under this one `"use client"` boundary — no benefit to server-rendering when data comes from the local backend via client-side fetch.
-- **No state library:** React 19 hooks suffice. `useDocuments` is ~100 lines with polling. A library can be introduced if patterns repeat.
-- **Dark mode via `prefers-color-scheme`:** CSS custom properties (`--surface`, `--border`, `--muted`, `--accent`, source-type colors) in `globals.css` respond to the media query. No class-based toggle.
-- **Dot-grid background:** Faint `radial-gradient` pattern evokes the knowledge graph. Uses `color-mix()` for theme-adaptive opacity.
-- **DocumentCard memoized:** `React.memo()` prevents re-renders during polling when document data hasn't changed.
-- **Polling change detection:** `useDocuments` compares IDs and `processed` status before replacing state — returns same reference on no-op polls to avoid cascading re-renders.
-- **Textarea auto-resize via rAF:** `requestAnimationFrame` batches the height read/write to avoid forced reflow on every keystroke.
-- **Processing status as dot:** Documents have `processed: 0|1|2`. Small colored dot (amber/blue/green) with CSS pulse animation for in-progress states.
-- **Source-type left border:** DocumentCard uses a colored left border (blue=scribble, purple=file, amber=feed) via CSS variables instead of inline Tailwind color classes.
-- **Shared test factory:** `__tests__/helpers/makeDocument.ts` exports `makeDoc()` and `makeDocs()` used across all component/hook test files.
-- **`SOURCE_STYLES` typed with `SourceType`:** Record key uses the union type from `types.ts` for compile-time exhaustiveness.
-- **NetworkPanel reused across pages:** `DocumentDetailPage` and `EngramDetailPage` both render `NetworkPanel` with the same props interface (`documentEngramIds`, `engramDetails`, `isLoading`). The singleton Set trick highlights "this page's engrams" at full opacity while dimming neighbors.
-- **`resolveEngram` shared utility:** Extracted to `lib/resolveEngram.ts` — both `NetworkPanel` and `SearchPage` need the same fallback logic (truncated ID when engram details aren't loaded yet). Avoids copy-paste.
-- **Search hook debounce:** `useSearch` uses a 300ms `setTimeout` debounce with `useRef` timer + `activeRequestRef` race guard. Sets `isLoading=true` immediately (before debounce fires) for responsive "Searching…" feedback.
-- **URL sync via `replaceState`:** SearchPage syncs `q` and `mode` to URL params on every change. No debounce needed — `replaceState` is near-free and ensures shareable URLs.
-- **`useSearchParams` requires Suspense:** Next.js App Router mandates a `<Suspense>` boundary around components using `useSearchParams()`. Search route wraps `<SearchPage>` accordingly.
-- **Engram detail page structure:** `EngramDetailPage` fetches engram + cluster docs via `useEngram`, then neighbor details via `useEngrams`. Teal left border (`var(--engram)`) provides visual continuity with `EngramBadge`.
-- **Score badge uses accent color:** `DocumentCard` detects `ScoredDocument` via `"score" in doc` and renders an amber accent pill (`var(--accent)`) to distinguish relevance scores from timestamps.
-- **Shared test helpers:** `__tests__/helpers/mockResponse.ts` exports `mockJsonResponse()` and `mockErrorResponse()` used across all hook/component tests. `makeEngram.ts` exports factories for `Engram`, `Edge`, `EngramDetail`, `DocumentDetail`.
-- **Next.js 16 async params:** `app/engrams/[id]/page.tsx` uses `params: Promise<{ id: string }>` with `await params` — required pattern for dynamic route params in Next.js 16.
-- **React Three Fiber + drei for 3D viz:** R3F v9 gives declarative React API over Three.js. `drei` provides `OrbitControls` (camera) and `Html` (tooltip/label overlays). `next/dynamic` with `ssr: false` on a `"use client"` page avoids SSR issues with WebGL — Next.js 16 disallows `ssr: false` in Server Components.
-- **GL primitives, not meshes:** Engrams rendered as `THREE.Points` (GPU point sprites), edges as `THREE.LineSegments`. Two draw calls total. `sizeAttenuation={false}` keeps points constant screen-size regardless of zoom.
-- **`VizEdge` as `Pick<Edge, ...>`:** Lightweight projection of the full `Edge` type — avoids duplicate interface while selecting only the 4 fields needed for visualization.
-- **`load_edges()` in projection module:** Backend edge query extracted to `visualization/projection.py` alongside `load_projections`/`load_clusters`/`load_gaps`. Selects only needed columns (`source_engram_id`, `target_engram_id`, `predicate`, `confidence`) with `VizEdge` response schema. Limit 5000 prevents unbounded queries.
-- **Pre-allocated edge buffer:** `buildEdgeBuffer` two-pass approach: count valid edges first, then fill a pre-allocated `Float32Array` directly — avoids dynamic `number[]` growth + conversion copy.
-- **Cluster lookup via Map:** `clusterMap` built once via `useMemo` when clusters change. Tooltip `clusterLabel` derivation uses O(1) Map lookup instead of O(N) `clusters.find()` — important since `handlePointerMove` fires on every mouse movement.
-- **Golden-angle HSL cluster palette:** `clusterColor(id)` uses `hue = (id * 137.508) % 360` with `s=70%, l=60%` for luminous colors on the dark viewport. Noise points (`cluster_id` null or -1) get muted gray matching `--muted`.
-- **Atmospheric dark viewport:** Viz page uses dedicated `#08080a` background with faint teal/amber radial gradients, scene fog for depth perception, and `depthWrite: false` on transparent primitives to prevent z-fighting.
-- **Glass morphism overlays:** Nav pills, tooltip, and cluster labels use `backdrop-filter: blur()` with semi-transparent backgrounds via `color-mix()` — bridges HTML overlays into the 3D space visually.
-- **Raycaster threshold:** `Points: { threshold: 0.3 }` provides reasonable hit detection for point sprites. Cast as `unknown as RaycasterParameters` due to R3F typing gap — only `RaycasterParameters` type imported (not `import * as THREE`).
+- **CORS:** Not needed since NiceGUI serves both UI and API from the same origin.
+- **Dark theme:** CSS custom properties for surfaces, borders, accents, source-type colors. NiceGUI dark mode enabled globally.
+- **Processing status as dot:** Documents have `processed: 0|1|2`. Small colored indicator for in-progress states.
+- **Source-type left border:** Document cards use a colored left border (blue=scribble, purple=file, amber=feed).
+- **`load_edges()` in projection module:** Backend edge query extracted to `visualization/projection.py` alongside `load_projections`/`load_clusters`/`load_gaps`. Selects only needed columns (`source_engram_id`, `target_engram_id`, `predicate`, `confidence`). Limit 5000 prevents unbounded queries.
+- **Golden-angle HSL cluster palette:** `cluster_color(id)` uses `hue = (id * 137.508) % 360` with `s=70%, l=60%` for luminous colors on the dark viewport. Noise points (`cluster_id` null or -1) get muted gray.
 
 ### Implementation Notes (P16)
 
@@ -136,33 +113,21 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 - **Ollama uses httpx directly:** `POST /api/generate` with `stream: false`. No `ollama` Python package dependency. httpx already a project dependency.
 - **OpenAI `base_url` exposed:** Allows pointing at Together, Groq, vLLM, or any OpenAI-compatible API. Empty string = default OpenAI endpoint.
 - **Mock providers excluded from `/api/settings/providers`:** Mock LLM/embeddings remain for testing only — not user-facing in the settings UI or provider lists.
-- **Dirty-field tracking in settings UI:** Frontend tracks which fields the user actually modified. Untouched API key fields (showing masked values) are not sent in PUT, preventing overwrite of stored keys with masked strings.
-- **Provider cards instead of dropdown:** Settings UI uses stacked `border-l-2` cards matching the DocumentCard pattern, with active provider indicated by amber accent border + green status dot.
+- **Settings UI:** NiceGUI settings page (`ui/pages/settings.py`) with provider cards and API key fields. Dirty-field tracking prevents overwriting stored keys with masked strings.
 - **New dependencies:** `cryptography>=44,<45` (Fernet), `openai>=1.60,<2` (OpenAI LLM + embeddings). Both added to pyproject.toml with mypy overrides for missing stubs.
 - **Existing test updated:** `test_config.py::test_invalid_llm_provider_rejected` was using `"openai"` as invalid provider — updated to `"nonexistent"` since OpenAI is now valid.
 
 ### Implementation Notes (P17+P18)
 
-- **LayoutShell wraps all pages:** `LayoutShell` component provides a single `VizDataProvider` wrapping with conditional layout — sidebar + main for normal pages, full-screen passthrough for `/viz`. Avoids duplicate providers and context loss on navigation.
-- **Sidebar component:** Persistent left sidebar (`w-56`, `bg-surface`) with logo, nav items (Stream, Search, Settings), viz minimap, and full viz link. `NavItem` extracted as shared component used by both main nav and viz link.
-- **Sidebar active indicator:** CSS `::before` pseudo-element with `var(--accent)` left border, height animated on active/hover states via `data-active` attribute.
-- **VizMinimap performance:** Uses R3F `frameloop="demand"` with a `SlowTicker` component that calls `invalidate()` at 10fps via `setInterval`. `IntersectionObserver` defers Canvas mounting until the minimap is in viewport. No continuous 60fps loop.
-- **VizDataProvider context:** `useVizDataContext.tsx` wraps `useVizData()` in React Context. `useVizDataCtx()` throws if used outside provider (no conditional hook fallback — React Rules of Hooks). Both minimap and full viz share the same fetched data.
+- **Page layout with sidebar:** `ui/layout.py` provides `page_layout()` which renders the collapsible sidebar + main content area. Each page calls `page_layout()` at the top.
+- **Sidebar:** Quasar left drawer with mini mode toggle. Nav items (Stream, Search, Settings), viz minimap, and full viz link. Collapse button toggles between icon-only and expanded view.
+- **Viz minimap:** `ui/viz/minimap.py` renders a small 3d-force-graph preview in the sidebar, loaded asynchronously after page render.
 - **Editable documents:** `PATCH /api/documents/{id}` endpoint updates text/title, resets `processed=0`, cleans up `document_engrams`, `document_embeddings`, and `edges WHERE source_document_id = id`, then re-runs ontology pipeline in background. Uses `UPDATE ... RETURNING *` to avoid redundant re-SELECT.
 - **DocumentUpdate schema:** `text: str | None = None`, `title: str | None = None`. Rejects empty body (both None).
-- **ScribbleInput edit mode:** `editingDocument` prop pre-fills title/text, changes button to "Save & Reprocess", shows cancel button. Calls `api.updateDocument()` instead of `api.createScribble()`.
-- **Draft auto-save:** `localStorage` persistence with 500ms debounce. Restores on mount, clears on successful save. Subtle "draft saved"/"draft restored" animation via `.draft-status` CSS class.
-- **"Continue" button on DocumentCard:** Visible on hover for scribble-type documents. Uses `.continue-btn` CSS class with fade-in transition and `::before` arrow prefix.
-- **Editor surface styling:** `.editor-surface` class with gradient background and `::before` left-margin line that fades in on `:focus-within` — manuscript editing feel.
-- **Per-page nav removed:** All inline `← back` links and pill-style nav headers stripped from StreamPage, SearchPage, DocumentDetailPage, EngramDetailPage, SettingsPage. VizPage keeps full-screen canvas, nav pills removed.
-- **Health endpoint:** `GET /api/health` → `{"status": "ok"}` — used by Tauri sidecar to poll backend readiness.
-- **Static file serving:** `main.py` mounts `StaticFiles(directory=settings.static_dir, html=True)` at `/` when `static_dir` is set. API routes take precedence (registered first).
-- **Desktop config mode:** `mode: Literal["local", "server", "desktop"]`. Desktop forces `host = "127.0.0.1"`, defaults `db_path` to `platformdirs.user_data_dir("hypomnema")`.
-- **LocalEmbeddingModel guarded import:** `main.py` wraps import in try/except ImportError, falls back to MockEmbeddingModel. Allows cloud-only builds (no torch/transformers).
-- **Next.js static export:** `next.config.ts` adds `output: process.env.NEXT_EXPORT === "1" ? "export" : undefined`. Normal dev/build workflow unaffected.
-- **Desktop entry point:** `desktop.py` resolves paths for both PyInstaller frozen bundles and dev layout, parses `--port`, runs uvicorn.
-- **Tauri v2 sidecar pattern:** `desktop/src-tauri/src/lib.rs` spawns PyInstaller'd backend, polls `GET /api/health` until ready, redirects window to `http://127.0.0.1:<port>`.
-- **PyInstaller spec:** Cloud-only profile excludes `torch`, `transformers`, `sentence-transformers`. Includes `sqlite_vec` via custom hook.
+- **Health endpoint:** `GET /api/health` → `{"status": "ok"}`.
+- **Desktop config mode:** `mode: Literal["local", "server", "desktop"]`. Desktop uses NiceGUI `native=True` (pywebview) with random ephemeral port.
+- **LocalEmbeddingModel guarded import:** Falls back to MockEmbeddingModel on ImportError. Allows cloud-only builds (no torch/transformers).
+- **PyInstaller spec:** In `packaging/`. Cloud-only profile excludes `torch`, `transformers`, `sentence-transformers`. Includes `sqlite_vec` via custom hook.
 
 ---
 
@@ -170,85 +135,97 @@ Hypomnema is a greenfield project (only SPEC.md exists). It's an Automated Ontol
 
 ```
 hypomnema/
-├── backend/
-│   ├── pyproject.toml                    # uv-managed
-│   ├── src/hypomnema/
-│   │   ├── main.py                       # FastAPI app factory + lifespan
-│   │   ├── config.py                     # Pydantic Settings
-│   │   ├── crypto.py                     # Fernet encryption for API keys at rest
-│   │   ├── db/
-│   │   │   ├── engine.py                 # get_db(), PRAGMAs, sqlite-vec loading
-│   │   │   ├── schema.py                 # CREATE TABLE/VIRTUAL TABLE, FTS5
-│   │   │   ├── models.py                 # Pydantic models
-│   │   │   └── settings_store.py         # Key-value settings CRUD with encryption
-│   │   ├── llm/
-│   │   │   ├── base.py                   # LLMClient Protocol
-│   │   │   ├── claude.py                 # Anthropic implementation
-│   │   │   ├── google.py                 # Gemini implementation
-│   │   │   ├── openai.py                 # OpenAI implementation (supports base_url)
-│   │   │   ├── ollama.py                 # Ollama REST API implementation
-│   │   │   ├── factory.py                # build_llm() factory for lifespan + hot-swap
-│   │   │   └── mock.py                   # Deterministic mock for tests
-│   │   ├── embeddings/
-│   │   │   ├── base.py                   # EmbeddingModel Protocol
-│   │   │   ├── local_gpu.py              # sentence-transformers
-│   │   │   ├── openai.py                 # OpenAI embeddings
-│   │   │   ├── google.py                 # Google embeddings
-│   │   │   └── mock.py                   # Hash-seeded PRNG vectors
-│   │   ├── ingestion/
-│   │   │   ├── scribble.py               # Text input handler
-│   │   │   ├── file_parser.py            # PDF/DOCX/MD extraction
-│   │   │   └── feeds.py                  # RSS, scrape, YouTube transcript
-│   │   ├── triage/
-│   │   │   └── bouncer.py                # Cheap relevance filter
-│   │   ├── ontology/
-│   │   │   ├── extractor.py              # LLM entity extraction
-│   │   │   ├── normalizer.py             # Canonical string normalization
-│   │   │   ├── engram.py                 # Concept hash, dedup, creation
-│   │   │   ├── linker.py                 # Top-K retrieval + predicate assignment
-│   │   │   └── pipeline.py              # Orchestrates extract → link flow
-│   │   ├── search/
-│   │   │   ├── doc_search.py             # Semantic + lexical (FTS5) hybrid
-│   │   │   └── knowledge_search.py       # Graph edge/predicate queries
-│   │   ├── visualization/
-│   │   │   └── projection.py             # UMAP, clustering, gap detection
-│   │   ├── scheduler/
-│   │   │   └── cron.py                   # APScheduler within FastAPI lifespan
-│   │   └── api/
-│   │       ├── documents.py              # CRUD + PATCH edit with re-processing
-│   │       ├── engrams.py
-│   │       ├── search.py
-│   │       ├── visualization.py
-│   │       ├── feeds.py
-│   │       ├── health.py                 # GET /api/health (desktop sidecar polling)
-│   │       └── settings.py              # Settings API + LLM hot-swap
-│   └── tests/
-│       ├── conftest.py                   # Shared fixtures: tmp_db, mock_llm, mock_embeddings
-│       ├── fixtures/                     # sample.pdf, sample.docx, sample.md
-│       └── test_*/                       # Mirror of src/ structure
-├── frontend/
-│   ├── package.json                      # Next.js 16+, vitest, playwright, tailwind
-│   ├── src/
-│   │   ├── app/                          # App Router pages
-│   │   ├── components/                   # Sidebar, LayoutShell, VizMinimap, ScribbleInput, DocumentCard, etc.
-│   │   ├── lib/api.ts                    # Typed fetch wrapper
-│   │   ├── lib/types.ts                  # TS types matching backend models
-│   │   ├── lib/vizTransforms.ts          # Shared buffer builders for viz (points, edges, colors)
-│   │   └── hooks/                        # useDocuments, useEngrams, useSearch, useSettings, useVizDataContext
-│   ├── __tests__/
-│   └── e2e/
-├── desktop/
-│   ├── src-tauri/                        # Tauri v2 app (Rust)
-│   │   ├── Cargo.toml
-│   │   ├── tauri.conf.json
-│   │   ├── src/lib.rs                    # Sidecar spawn, health poll, window redirect
-│   │   └── capabilities/default.json
-│   └── packaging/
-│       ├── build.py                      # Orchestrates: next export → pyinstaller → tauri build
-│       ├── hypomnema.spec                # PyInstaller spec (cloud-only, no torch)
-│       └── hooks/hook-sqlite_vec.py      # PyInstaller hook for sqlite_vec
-├── start-web.sh                          # Local mode: localhost, auto-open browser
-└── start-server.sh                       # Server mode: Tailscale bind, 24/7
+├── pyproject.toml                        # uv-managed, single package
+├── src/hypomnema/
+│   ├── cli.py                            # CLI entry point (dev/serve/desktop/eval)
+│   ├── main.py                           # FastAPI app factory + lifespan
+│   ├── config.py                         # Pydantic Settings
+│   ├── crypto.py                         # Fernet encryption for API keys at rest
+│   ├── tidy.py                           # Tidy text rewriting levels
+│   ├── token_utils.py                    # Token counting utilities
+│   ├── db/
+│   │   ├── engine.py                     # get_connection(), PRAGMAs, sqlite-vec, ConnectionPool
+│   │   ├── schema.py                     # CREATE TABLE/VIRTUAL TABLE, FTS5, migrations
+│   │   ├── models.py                     # Pydantic models
+│   │   └── settings_store.py             # Key-value settings CRUD with encryption
+│   ├── llm/
+│   │   ├── base.py                       # LLMClient Protocol
+│   │   ├── claude.py                     # Anthropic implementation
+│   │   ├── google.py                     # Gemini implementation
+│   │   ├── openai.py                     # OpenAI implementation (supports base_url)
+│   │   ├── ollama.py                     # Ollama REST API implementation
+│   │   ├── factory.py                    # build_llm() factory for lifespan + hot-swap
+│   │   └── mock.py                       # Deterministic mock for tests
+│   ├── embeddings/
+│   │   ├── base.py                       # EmbeddingModel Protocol
+│   │   ├── local_gpu.py                  # sentence-transformers
+│   │   ├── openai.py                     # OpenAI embeddings
+│   │   ├── google.py                     # Google embeddings
+│   │   ├── factory.py                    # build_embeddings() factory
+│   │   └── mock.py                       # Hash-seeded PRNG vectors
+│   ├── ingestion/
+│   │   ├── scribble.py                   # Text input handler
+│   │   ├── file_parser.py                # PDF/DOCX/MD extraction
+│   │   └── feeds.py                      # RSS, scrape, YouTube transcript
+│   ├── triage/
+│   │   └── bouncer.py                    # Cheap relevance filter
+│   ├── ontology/
+│   │   ├── extractor.py                  # LLM entity extraction
+│   │   ├── normalizer.py                 # Canonical string normalization
+│   │   ├── engram.py                     # Concept hash, dedup, creation
+│   │   ├── linker.py                     # Top-K retrieval + predicate assignment
+│   │   ├── pipeline.py                   # Orchestrates extract → link flow
+│   │   └── queue.py                      # OntologyQueue for background processing
+│   ├── search/
+│   │   ├── doc_search.py                 # Semantic + lexical (FTS5) hybrid
+│   │   └── knowledge_search.py           # Graph edge/predicate queries
+│   ├── visualization/
+│   │   └── projection.py                 # UMAP, clustering, gap detection
+│   ├── scheduler/
+│   │   └── cron.py                       # APScheduler within app lifespan
+│   ├── maintenance/                      # DB maintenance utilities
+│   ├── evals/                            # Eval harnesses (tidy-text, engram-dedupe)
+│   ├── api/
+│   │   ├── auth.py                       # Passphrase auth middleware
+│   │   ├── backup.py                     # Database backup endpoint
+│   │   ├── documents.py                  # CRUD + PATCH edit with re-processing
+│   │   ├── engrams.py
+│   │   ├── search.py
+│   │   ├── viz.py
+│   │   ├── feeds.py
+│   │   ├── health.py                     # GET /api/health
+│   │   ├── settings.py                   # Settings API + LLM hot-swap
+│   │   └── schemas.py                    # Shared API schemas
+│   └── ui/
+│       ├── app.py                        # NiceGUI configure() — mounts routers, registers pages
+│       ├── layout.py                     # Sidebar + page_layout() shell
+│       ├── theme.py                      # CSS custom properties, dark theme
+│       ├── utils.py                      # UI helper functions
+│       ├── components/
+│       │   └── document_card.py          # Reusable document card component
+│       ├── pages/
+│       │   ├── stream.py                 # / — chronological document stream
+│       │   ├── search.py                 # /search — full-text + semantic search
+│       │   ├── document.py               # /documents/{id} — document detail
+│       │   ├── engram.py                 # /engrams/{id} — engram detail
+│       │   ├── settings.py               # /settings — provider config
+│       │   ├── setup.py                  # /setup — first-run setup wizard
+│       │   └── viz.py                    # /viz — full 3D visualization
+│       └── viz/
+│           ├── graph.py                  # 3d-force-graph integration
+│           ├── minimap.py                # Sidebar minimap renderer
+│           └── transforms.py             # PageRank, color/size data prep
+├── tests/
+│   ├── conftest.py                       # Shared fixtures: tmp_db, mock_llm, mock_embeddings
+│   ├── fixtures/                         # sample.pdf, sample.docx, sample.md
+│   └── test_*/                           # Mirror of src/ structure
+├── static/                               # Icon and logo images
+├── packaging/
+│   ├── build.py                          # PyInstaller build orchestrator
+│   ├── hypomnema.spec                    # PyInstaller spec (cloud-only, no torch)
+│   └── hooks/                            # PyInstaller hooks (sqlite_vec)
+├── Dockerfile
+└── docker-compose.yml
 ```
 
 ---
@@ -354,11 +331,13 @@ CREATE TABLE settings (
 
 **Cronjobs:** APScheduler (async) within FastAPI lifespan, registered from `feed_sources` table.
 
-**Frontend API Mocking:** `msw` (Mock Service Worker) for vitest; Playwright e2e runs against real backend with `HYPOMNEMA_LLM_PROVIDER=mock`.
+**UI:** NiceGUI serves Python-rendered pages (no separate frontend build). API routers are mounted on the same NiceGUI/FastAPI app. Tests use `HYPOMNEMA_LLM_PROVIDER=mock`.
 
 ---
 
 ## Phase Dependency Graph
+
+**Note:** P11-P14 and P17-P19 were originally Next.js/React. These have been replaced by NiceGUI pages in `src/hypomnema/ui/`. The backend phases (P1-P10, P15-P16) remain structurally intact.
 
 ```
 P0 (Scaffold)
@@ -373,14 +352,11 @@ P0 (Scaffold)
      │   │           └─ P10 (Viz Pipeline)   ← can parallel with P6, P8
      │   └─ P6 (also needs embeddings directly)
      └─ P9 (API Layer — needs all backend modules)
-         ├─ P11 (Frontend: Stream)
-         │   └─ P12 (Frontend: Doc Detail + Network)
-         │       └─ P13 (Frontend: Search + Clusters)
-         │           └─ P14 (Frontend: Viz Canvas)
+         ├─ P11–P14 (UI Pages — now NiceGUI)
          └─ P15 (Deployment + Integration)
          └─ P16 (Multi-Provider + Settings)
              └─ P17 (UX Overhaul — Sidebar, Edit, Minimap)
-                 └─ P18 (Tauri Desktop Packaging)
+                 └─ P18 (Desktop — now pywebview)
 ```
 
 ---
@@ -393,15 +369,12 @@ P0 (Scaffold)
 
 **Tests first:**
 - `tests/test_config.py` — `Settings()` loads defaults; env vars override; mode validates to `local`|`server`
-- `frontend/__tests__/lib/api.test.ts` — API client defaults to `localhost:8000`; env override works
 
 **Build:**
-- `backend/pyproject.toml` (uv) with all deps: `fastapi`, `uvicorn`, `aiosqlite`, `sqlite-vec`, `anthropic`, `google-genai`, `sentence-transformers`, `apscheduler`, `pydantic-settings`, `python-multipart`, `pypdf`, `python-docx`, `feedparser`, `youtube-transcript-api`, `umap-learn`, `scikit-learn`, `httpx`; dev: `pytest`, `pytest-asyncio`
-- `backend/src/hypomnema/config.py` — Pydantic `Settings`
-- `frontend/package.json` — Next.js 16+, TS, vitest, playwright, tailwind
-- `frontend/src/lib/api.ts` — skeleton typed fetch wrapper
+- `pyproject.toml` (uv) with all deps: `nicegui`, `fastapi`, `aiosqlite`, `sqlite-vec`, `anthropic`, `google-genai`, `sentence-transformers`, `apscheduler`, `pydantic-settings`, `pypdf`, `python-docx`, `feedparser`, `youtube-transcript-api`, `umap-learn`, `scikit-learn`, `httpx`, `cryptography`, `openai`, `platformdirs`, `opendataloader-pdf`, `trafilatura`; dev: `pytest`, `pytest-asyncio`, `mypy`, `ruff`
+- `src/hypomnema/config.py` — Pydantic `Settings`
 
-**Acceptance:** `uv run pytest` and `npm test` both green, zero import errors.
+**Acceptance:** `uv run pytest` green, zero import errors.
 
 ---
 
@@ -549,23 +522,21 @@ DELETE /api/feeds/{id}                → 204
 
 ---
 
-### Phases 11–14 — Frontend (sequential)
+### Phases 11–14 — Frontend (sequential, originally Next.js — now NiceGUI)
+
+**Note:** These phases were originally implemented as a Next.js frontend. In v0.2.0, the frontend was rewritten to NiceGUI pages in `src/hypomnema/ui/`. The descriptions below reflect the original plan; the current implementation uses NiceGUI equivalents.
 
 **P11 — Core Layout + Chronological Stream:**
-Tests: API client deserialization, ScribbleInput submit/clear, DocumentCard rendering, useDocuments hook, Playwright e2e for landing page.
-Build: `app/page.tsx`, `ScribbleInput`, `DocumentCard`, `FileDropZone`, `useDocuments`, `lib/api.ts`
+Build: `ui/pages/stream.py`, `ui/components/document_card.py`, `ui/layout.py`
 
-**P12 — Document Detail + Actor-Network View:**
-Tests: NetworkPanel renders engram badges + edge labels, click navigation, Playwright e2e.
-Build: `app/documents/[id]/page.tsx`, `NetworkPanel`, `EngramBadge`, `useEngrams`
+**P12 — Document Detail + Network View:**
+Build: `ui/pages/document.py`, `ui/pages/engram.py`
 
-**P13 — Search + Engram Cluster Views:**
-Tests: SearchBar mode toggle, doc/knowledge results rendering, Playwright e2e.
-Build: `app/search/page.tsx`, `app/engrams/[id]/page.tsx`, `SearchBar`, `useSearch`
+**P13 — Search + Engram Views:**
+Build: `ui/pages/search.py`
 
 **P14 — Visualization Canvas:**
-Tests: Canvas renders points colored by cluster, gap regions highlighted, click tooltip, Playwright zoom/pan.
-Build: `app/viz/page.tsx`, `VizCanvas` (d3 or canvas2d — start 2D, not Three.js)
+Build: `ui/pages/viz.py`, `ui/viz/graph.py` (3d-force-graph via JS interop)
 
 ---
 
@@ -576,7 +547,7 @@ Build: `app/viz/page.tsx`, `VizCanvas` (d3 or canvas2d — start 2D, not Three.j
 **Tests first** (`test_integration/test_full_pipeline.py`):
 - Scribble → engrams → edges; two related docs create edges; file upload → engrams; search returns results after ingestion; projections computed
 
-**Build:** `start-web.sh` (uvicorn localhost + next dev + browser open), `start-server.sh` (bind 0.0.0.0/Tailscale + next start)
+**Build:** `cli.py` entry point with `dev`/`serve`/`desktop` subcommands
 
 ### Phase 16 — Multi-Provider Support + Settings UI
 
@@ -591,7 +562,7 @@ Build: `app/viz/page.tsx`, `VizCanvas` (d3 or canvas2d — start 2D, not Three.j
 - `test_embeddings/test_google_embed.py` — protocol, dimension, normalized output
 - `test_api/test_settings.py` — masked GET, provider update, key encryption, embedding rejection, providers list, hot-swap
 
-**Build:** `crypto.py`, `db/settings_store.py`, `llm/openai.py`, `llm/ollama.py`, `llm/factory.py`, `embeddings/openai.py`, `embeddings/google.py`, `api/settings.py`, expanded `config.py`, updated `main.py` lifespan. Frontend: `SettingsPage`, `useSettings` hook, settings API methods, provider types.
+**Build:** `crypto.py`, `db/settings_store.py`, `llm/openai.py`, `llm/ollama.py`, `llm/factory.py`, `embeddings/openai.py`, `embeddings/google.py`, `api/settings.py`, expanded `config.py`, updated lifespan. UI: `ui/pages/settings.py`.
 
 **API additions:**
 ```
@@ -609,15 +580,11 @@ GET    /api/settings/providers      → ProvidersResponse (available providers)
 - `DocumentUpdate` schema in `api/schemas.py`
 - Tests: `test_api/test_documents.py::TestUpdateDocument` — 5 tests
 
-**Frontend:**
-- `LayoutShell` — conditional sidebar/fullscreen layout with single `VizDataProvider`
-- `Sidebar` — persistent nav with logo, active indicators, minimap
-- `VizMinimap` — low-fps R3F canvas with IntersectionObserver lazy loading
-- `useVizDataContext` — React Context sharing viz data between minimap and full page
-- `ScribbleInput` — 10-row editor, localStorage draft auto-save, edit mode
-- `DocumentCard` — "continue" button on hover for scribbles
-- All pages: removed inline nav headers/back links
-- `api.ts` — `updateDocument()` method
+**UI (originally Next.js, now NiceGUI):**
+- `ui/layout.py` — `page_layout()` with collapsible sidebar, minimap, nav items
+- `ui/viz/minimap.py` — sidebar minimap renderer
+- `ui/components/document_card.py` — document card with "continue" button for scribbles
+- `ui/pages/stream.py` — scribble editor with edit mode
 
 **API addition:**
 ```
@@ -626,62 +593,36 @@ PATCH  /api/documents/{id}          → DocumentOut (edit + reprocess)
 
 ---
 
-### Phase 18 — Tauri Desktop Packaging
+### Phase 18 — Desktop Packaging
 
-**Goal:** Package as native desktop app via Tauri v2 sidecar pattern.
+**Goal:** Run as a native desktop app.
 
-**Backend changes (benefits both web + desktop):**
-- `GET /api/health` endpoint for sidecar polling
-- Static file serving via `StaticFiles` mount when `static_dir` is set
+**Original approach (v0.1.0):** Tauri v2 sidecar pattern with PyInstaller'd backend.
+
+**Current approach (v0.2.0):** NiceGUI's built-in `native=True` mode via pywebview. Run with `uv run hypomnema desktop`. No Tauri, no Rust, no separate frontend build.
+
+**Backend changes preserved:**
+- `GET /api/health` endpoint
 - `desktop` config mode (localhost, platformdirs data dir)
-- `desktop.py` entry point for PyInstaller sidecar
 - Guarded `LocalEmbeddingModel` import for cloud-only builds
-
-**Desktop scaffolding (`desktop/`):**
-- Tauri v2 app: sidecar spawn → health poll → window redirect
-- PyInstaller spec: cloud-only profile excluding torch
-- Build orchestrator: next export → pyinstaller → tauri build
-
-**Frontend change:**
-- `next.config.ts` conditional `output: "export"` via `NEXT_EXPORT=1` env var
+- PyInstaller spec in `packaging/` for standalone distribution
 
 ---
 
-### Phase 19 — Viz Overhaul ("Minority Report" Spatial UX)
+### Phase 19 — Viz Overhaul
 
-**Goal:** Transform visualization from bloated glow nodes into a cinematic constellation display with gestural 3D controls and a collapsible sidebar.
+**Goal:** Constellation-mode visualization with PageRank sizing, cluster colors, and cinematic orbit.
 
-**Viz transforms (`vizTransforms.ts`):**
-- `computePageRank()` — power iteration (damping=0.85, 20 iterations) with confidence-weighted edges, returns normalized [0,1] scores
-- `buildColorBuffer()` — constellation mode: warm neutral white default, cluster color on focus, `"all"` for minimap
-- `buildSizeBuffer()` — PageRank-based sizing: 4px base, 85th percentile threshold scales to 18px
-- `buildEdgeColorBuffer()` — per-vertex edge colors with opacity baked in via premultiplied mix toward background (LineBasicMaterial has no per-vertex alpha)
-- Named constants: `COLOR_NEUTRAL`, `COLOR_EDGE_DEFAULT`, `COLOR_VIZ_BG`
+**Original (v0.1.0):** React Three Fiber + custom GLSL shaders in Next.js.
 
-**VizScene shaders and animation:**
-- Crisp fragment shader (core/body/halo smoothstep) replacing 3-layer glow
-- `uReveal` uniform — radial reveal animation over ~2s on page load
-- `uTime` uniform — 6% ambient breathing oscillation, phase-offset by position.x
-- `ShaderAnimator` component (merged RevealAnimator + TimeDriver) — stops reveal after completion
-- `AutoOrbitController` — cinematic rotation (speed 0.5), stops on pointerdown/wheel
-- Edge vertex colors via `LineBasicMaterial({ vertexColors: true })`
+**Current (v0.2.0):** 3d-force-graph via NiceGUI JavaScript interop (`ui/viz/graph.py`).
 
-**Collapsible sidebar:**
-- `useSidebarContext.tsx` — React context + localStorage persistence (`hypomnema-sidebar-collapsed`)
-- `Sidebar.tsx` — lucide-react icons (Rows3, Search, Settings), collapsed `w-14` icon-only / expanded `w-56`
-- `LayoutShell.tsx` — always renders sidebar (removed viz passthrough ternary), wraps in `SidebarProvider`
-- `MobileNav.tsx` — icons from `NAV_ITEMS`, no collapse on mobile
+**Viz transforms (`ui/viz/transforms.py`):**
+- `compute_page_rank()` — power iteration (damping=0.85, 20 iterations) with confidence-weighted edges
+- Color and size data preparation for 3d-force-graph nodes/edges
+- Cluster color palette via golden-angle HSL
 
-**VizPage changes:**
-- Removed fixed positioning and back button
-- Escape only clears focused node (no navigation)
-- Auto-orbit state + callbacks passed to VizScene and VizControlsHUD
-
-**HUD relabeling:** spatial language — "orbit" (not "orbit / sweep"), "spread" (not "explode"), "push / pull" (not "yank depth"), auto-orbit toggle button
-
-**Tooltip/card readability:** forced dark-mode CSS (`.viz-tooltip`), increased font sizes (13px name, 11px cluster)
-
-**CSS additions:** `.sidebar-transition`, `.sidebar-label-fade`, `[data-collapsed]` active indicator morphs to centered bottom dot
+**Collapsible sidebar:** `ui/layout.py` — Quasar drawer with mini mode, Material icons, collapse toggle
 
 ---
 
@@ -738,8 +679,8 @@ This is a policy snapshot, not a permanent truth. Re-check platform docs before 
 ## Verification
 
 After each phase, run:
-- **Backend:** `cd backend && uv run pytest tests/test_<phase>/ -v`
-- **Frontend:** `cd frontend && npm test` (vitest) and `npx playwright test` (e2e)
-- **Full suite:** `cd backend && uv run pytest` — all prior phases' tests must stay green (regression)
+- **Tests:** `uv run pytest tests/test_<phase>/ -v`
+- **Full suite:** `uv run pytest` — all prior phases' tests must stay green (regression)
+- **Linting:** `uv run ruff check .` and `uv run mypy .`
 
-Final integration: `./start-web.sh`, create a scribble, verify engrams appear, search returns it, visualization canvas renders.
+Final integration: `uv run hypomnema dev`, create a scribble, verify engrams appear, search returns it, visualization canvas renders.

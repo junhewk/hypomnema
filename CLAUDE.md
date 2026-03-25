@@ -12,11 +12,11 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 
 ## Architecture
 
-**Three-layer stack, single codebase:**
+**Single Python stack, single codebase:**
 
-- **Backend:** Python / FastAPI — orchestrates LLM calls, document parsing, embedding, cronjobs
+- **App:** [NiceGUI](https://nicegui.io/) serves both the UI (Python pages/components) and the FastAPI API. No separate frontend build, no Node.js.
 - **Database:** SQLite with WAL mode + `sqlite-vec` extension — single portable `.db` file for all data and vector search
-- **Frontend:** Next.js PWA — thin client that renders the topological UI, queries the backend API
+- **Backend:** Python / FastAPI routers — orchestrate LLM calls, document parsing, embedding, cronjobs
 
 ### Data Flow
 
@@ -28,14 +28,14 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 
 ### Deployment Modes
 
-- **Local mode** (`uv run hypomnema dev`) — binds to localhost:8073/3073, opens browser, hot-reload enabled
-- **Server mode** (`uv run hypomnema serve` or `HYPOMNEMA_HOST=<ip> uv run hypomnema serve`) — defaults to remote/server networking, runs production frontend, 24/7 continuous ingestion
-- **Docker mode** (`docker compose up`) — single container, static frontend served by FastAPI, port 8073
-- **Desktop mode** (`HYPOMNEMA_MODE=desktop`) — Tauri v2 native app, PyInstaller'd backend as sidecar, static frontend served via FastAPI `StaticFiles`, cloud-only embeddings (no torch)
+- **Local mode** (`uv run hypomnema dev`) — binds to localhost:8073, opens browser, hot-reload enabled
+- **Server mode** (`uv run hypomnema serve` or `HYPOMNEMA_HOST=<ip> uv run hypomnema serve`) — defaults to remote/server networking, 24/7 continuous ingestion
+- **Docker mode** (`docker compose up`) — single container, port 8073
+- **Desktop mode** (`uv run hypomnema desktop`) — native window via pywebview, no browser required
 
 ### Running
 
-All commands run from `backend/`:
+All commands run from the project root:
 
 ```bash
 # Development (localhost, hot-reload, auto-opens browser)
@@ -45,15 +45,15 @@ uv run hypomnema dev --no-browser
 # Production / server mode (Tailscale / remote access)
 uv run hypomnema serve
 HYPOMNEMA_HOST=<tailscale-ip> uv run hypomnema serve
-HYPOMNEMA_HOST=<tailscale-ip> uv run hypomnema serve --build  # force frontend rebuild
+
+# Desktop (native window via pywebview)
+uv run hypomnema desktop
 
 # Docker
 docker compose up --build                      # single container, port 8073
 
 # Tests
-cd backend && uv run pytest                    # all backend tests
-cd frontend && npm test                        # vitest
-cd frontend && npx playwright test             # e2e
+uv run pytest                                  # all backend tests
 ```
 
 ### Configuration
@@ -69,30 +69,29 @@ All settings use `HYPOMNEMA_` env prefix. Key env vars:
 
 LLM provider and API keys can also be configured at runtime via the Settings UI (`/settings`). DB settings override env vars for LLM-related fields. Embedding provider can be changed at runtime via Settings — this triggers a full knowledge graph rebuild (all engrams/edges deleted, documents reprocessed).
 
-### Frontend Layout
+### UI Layout (NiceGUI)
 
-- **Collapsible sidebar** (`Sidebar.tsx`) with lucide-react icons and nav items (Stream, Search, Settings), viz minimap, and full viz link — collapses to icon-only (`w-14`) via toggle, state persisted in localStorage via `SidebarProvider` context
-- **LayoutShell** wraps all pages including `/viz` — sidebar is always visible (no full-screen passthrough). `SidebarProvider` + `VizDataProvider` at root level
-- **MobileNav** hamburger drawer replaces sidebar on mobile, with matching icons
-- **VizDataProvider** context shares viz data between sidebar minimap and full viz page (single fetch)
-- **Documents are editable** — "continue" button on scribble cards loads into edit mode with draft auto-save via localStorage
+- **Collapsible sidebar** (`ui/layout.py`) with Material icons and nav items (Stream, Search, Settings), viz minimap, and full viz link — collapses to icon-only via Quasar drawer mini mode, state toggled via button
+- **`page_layout()`** wraps all pages — renders sidebar + main content container. Each page uses `@ui.page` decorator.
+- **Viz minimap** in sidebar — loads projection data and renders a small 3d-force-graph preview
+- **Documents are editable** — "continue" button on scribble cards loads into edit mode with draft handling
+- **Pages** (`ui/pages/`): `stream.py`, `search.py`, `document.py`, `engram.py`, `settings.py`, `setup.py`, `viz.py`
+- **Components** (`ui/components/`): `document_card.py` and other reusable UI elements
+- **Viz** (`ui/viz/`): `graph.py` (3d-force-graph integration), `minimap.py`, `transforms.py` (data preparation)
 
 ### Visualization
 
-- **Constellation mode** — nodes render as warm neutral white dots by default; cluster colors reveal on focus (click a node to light up its cluster)
-- **PageRank sizing** — power iteration (damping=0.85, 20 iterations) using edge confidence as weights; nodes above 85th percentile scale up to 18px, rest stay at 4px base
-- **Custom GLSL shaders** — crisp dot + subtle halo (core/body/halo smoothstep), replacing bloated glow
-- **Radial reveal** — nodes animate outward from origin over ~2s on page load (`uReveal` uniform)
-- **Node breathing** — 6% ambient size oscillation, phase-offset by position for async feel (`uTime` uniform)
-- **Auto-orbit** — cinematic slow rotation (speed 0.5) toggled via HUD; stops on any user interaction
-- **Edge highlighting** — focused node's edges glow in cluster color; others dim. Opacity baked into vertex colors (premultiplied mix toward background) since `LineBasicMaterial` has no per-vertex alpha
-- **HUD controls** — spatial language labels (spread, push/pull, orbit), auto-orbit toggle
+- **3d-force-graph** — rendered via NiceGUI's `ui.html`/JavaScript interop, replacing the old Three.js/R3F approach
+- **PageRank sizing** — power iteration (damping=0.85, 20 iterations) using edge confidence as weights; nodes above 85th percentile scale up, rest stay at base size
+- **Cluster colors** — golden-angle HSL palette for distinct cluster coloring; noise points get muted gray
+- **Auto-orbit** — cinematic slow rotation toggled via HUD; stops on user interaction
+- **Edge highlighting** — focused node's edges glow in cluster color; others dim
 
 ## Key Design Constraints
 
 - Single `.db` file, no PostgreSQL — optional Docker for deployment
 - Flat database: no file/folder hierarchy, all structure is dynamic from graph edges
-- Frontend does no heavy compute — pure rendering client
+- UI is server-rendered Python (NiceGUI) — no separate frontend build or Node.js dependency
 - Entity deduplication is multi-stage: exact name, persisted alias index, KNN alias overlap, vector similarity, then concept-hash fallback
 - Edge generation uses Top-K retrieval to bound LLM API costs
 - Embedding provider changeable at runtime — triggers full knowledge graph rebuild (documents preserved)

@@ -33,11 +33,15 @@ try:
 except ImportError:
     traf_data = []
 
+# Static assets (icon, etc.)
+static_dir = repo_root / "static"
+static_data = [(str(static_dir), "static")] if static_dir.is_dir() else []
+
 a = Analysis(
     [str(repo_root / "src" / "hypomnema" / "cli.py")],
     pathex=[str(repo_root / "src")],
     binaries=extra_binaries,
-    datas=traf_data,
+    datas=traf_data + static_data,
     hiddenimports=[
         "hypomnema",
         "hypomnema.cli",

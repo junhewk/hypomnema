@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./frontend/public/hypomnema_text.png" alt="Hypomnema" width="360">
+  <img src="./hypomnema_text.png" alt="Hypomnema" width="360">
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@ Hypomnema extracts concepts from your research material, deduplicates them, link
 - **Smart PDF extraction** — layout-aware parsing via [opendataloader-pdf](https://github.com/opendataloader-project/opendataloader-pdf) with column detection and structure preservation; pypdf fallback
 - **Automatic ontology** — LLM-powered entity extraction, multi-stage deduplication (exact match, alias index, KNN, vector similarity, concept hash), typed edge generation (supports, contradicts, critiques, extends, ...)
 - **Title + TL;DR** — files and URL fetches get an LLM-generated title revision and concise summary; scribbles get full tidy rewriting
-- **3D visualization** — constellation-mode point cloud with PageRank node sizing, GLSL shaders, cluster color reveal, cinematic auto-orbit
+- **3D visualization** — constellation-mode point cloud with PageRank node sizing, cluster color reveal, cinematic auto-orbit (via 3d-force-graph)
 - **Full-text + semantic search** — FTS5 for keyword search, sqlite-vec for vector similarity
 - **Multi-provider** — Claude, Gemini, OpenAI, Ollama for LLM; local sentence-transformers, OpenAI, or Google for embeddings. Hot-swappable at runtime.
 - **Single-file database** — everything in one portable SQLite file. No Postgres, no external services.
@@ -34,12 +34,11 @@ Hypomnema extracts concepts from your research material, deduplicates them, link
 ### Local development
 
 ```bash
-cd backend
 uv sync --extra local-embeddings
 uv run hypomnema dev
 ```
 
-Opens `http://localhost:3073`. Requires Python 3.12+, Node.js 20+, and [uv](https://docs.astral.sh/uv/).
+Opens `http://localhost:8073`. Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ### Docker
 
@@ -57,7 +56,11 @@ HYPOMNEMA_PASSPHRASE=your-secret docker compose up --build
 
 ### Desktop
 
-Pre-built binaries for macOS, Windows, and Linux are available on the [Releases](../../releases) page. See [BUILD.md](./desktop/BUILD.md) for building from source.
+```bash
+uv run hypomnema desktop
+```
+
+Opens a native window via [pywebview](https://pywebview.flowrl.com/). No browser required.
 
 ## Configuration
 
@@ -77,11 +80,11 @@ LLM provider and API keys can also be configured at runtime via the Settings UI.
 
 ## Architecture
 
-Three-layer stack, single codebase:
+Single Python stack, single codebase:
 
-- **Backend** — Python / FastAPI: orchestrates LLM calls, document parsing, embedding, feed scheduling
+- **App** — [NiceGUI](https://nicegui.io/) serves both the UI and the FastAPI API. No separate frontend build step, no Node.js.
 - **Database** — SQLite + WAL mode + [sqlite-vec](https://github.com/asg017/sqlite-vec): single portable file for all data and vector search
-- **Frontend** — Next.js PWA: renders the topological UI, queries the backend API
+- **Backend** — Python / FastAPI routers: orchestrate LLM calls, document parsing, embedding, feed scheduling
 
 ### Deployment modes
 
@@ -90,21 +93,15 @@ Three-layer stack, single codebase:
 | Local | `uv run hypomnema dev` | Development, personal use |
 | Server | `uv run hypomnema serve` | Always-on, remote access via Tailscale/LAN |
 | Docker | `docker compose up` | Self-hosted server, single container |
-| Desktop | Download from Releases | Native app (Tauri + PyInstaller sidecar) |
+| Desktop | `uv run hypomnema desktop` | Native window via pywebview |
 
 ## Contributing
 
 ```bash
-# Backend
-cd backend && uv sync --extra local-embeddings
+uv sync --extra local-embeddings
 uv run ruff check .
 uv run mypy .
 uv run pytest
-
-# Frontend
-cd frontend && npm ci
-npm run typecheck
-npm test
 ```
 
 See [DEVELOPMENT.md](./DEVELOPMENT.md) for architecture details and implementation notes.

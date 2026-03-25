@@ -16,16 +16,20 @@ _NAV_ITEMS = [
 _ICON_PATH = Path(__file__).resolve().parent.parent.parent.parent / "static" / "icon.png"
 
 
-def sidebar(*, mini: bool = False) -> None:
+def sidebar(*, mini: bool = False) -> ui.element:
     """Render the collapsible navigation sidebar.
 
     Args:
         mini: Start in mini (icon-only) mode. Drawer stays visible but narrow.
+
+    Returns:
+        The drawer element (for toggling from a mobile hamburger button).
     """
     is_mini = {"value": mini}
 
-    with ui.left_drawer(value=True, bordered=True).classes("px-2 py-4") as drawer:
-        drawer.props(f"width=200 mini-width=56 {'mini' if mini else ''}")
+    # value=None lets Quasar auto-show above 1024px and hide on mobile
+    with ui.left_drawer(value=None, bordered=True).classes("px-2 py-4") as drawer:
+        drawer.props(f"width=200 mini-width=56 breakpoint=1024 {'mini' if mini else ''}")
 
         # Elements that hide when mini — wrapped in a container with a CSS class
         # Quasar mini mode collapses the drawer width; we hide text/minimap via JS
@@ -117,6 +121,8 @@ def sidebar(*, mini: bool = False) -> None:
         if mini:
             _apply_mini(True)
 
+    return drawer
+
 
 def page_layout(title: str | None = None) -> ui.element:
     """Create the standard page layout with sidebar.
@@ -128,11 +134,23 @@ def page_layout(title: str | None = None) -> ui.element:
         '<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600'
         '&display=swap" rel="stylesheet">'
     )
-    from hypomnema.ui.theme import CUSTOM_CSS
+    from hypomnema.ui.theme import CUSTOM_CSS, MOBILE_CSS
 
     ui.add_head_html(CUSTOM_CSS)
+    ui.add_head_html(MOBILE_CSS)
 
-    sidebar()
+    drawer = sidebar()
+
+    # Mobile header with hamburger toggle — hidden on desktop via CSS
+    with ui.header().classes("mobile-header").style(
+        "background: #0d0d0d; border-bottom: 1px solid #1e1e1e; padding: 8px 16px"
+    ):
+        ui.button(icon="menu", on_click=lambda: drawer.toggle()).props(  # type: ignore[attr-defined]
+            'flat dense round color="grey-6"'
+        )
+        ui.label("hypomnema").classes(
+            "text-sm font-bold tracking-wider uppercase ml-2"
+        ).style("color: #d4d4d4; letter-spacing: 0.15em")
 
     container = ui.element("main").classes("mx-auto max-w-2xl px-4 py-8 w-full")
     return container

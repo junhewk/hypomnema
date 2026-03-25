@@ -37,7 +37,7 @@ dev = [
     "mypy>=1.14,<2",
     "ruff>=0.9,<1",
 ]
-desktop = ["pyinstaller>=6,<7"]
+desktop = ["pyinstaller>=6,<7", "pywebview>=5,<6"]
 
 [project.scripts]
 hypomnema = "hypomnema.cli:main"

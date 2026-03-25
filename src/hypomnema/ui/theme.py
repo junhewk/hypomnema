@@ -93,3 +93,24 @@ body {
 .animate-pulse-dot { animation: pulse-dot 1.5s ease-in-out infinite; }
 </style>
 """
+
+# Mobile-responsive CSS — hides header on desktop, adjusts padding on mobile
+MOBILE_CSS = """
+<style>
+/* Mobile header: only visible below 1024px */
+.mobile-header { display: none !important; }
+
+@media (max-width: 1023px) {
+    .mobile-header { display: flex !important; align-items: center; }
+
+    /* Tighten main content padding on small screens */
+    main.mx-auto { padding-left: 12px; padding-right: 12px; padding-top: 16px; }
+
+    /* Cards full-width on mobile */
+    .q-card { border-radius: 4px !important; }
+}
+
+/* Prevent horizontal overflow on small screens */
+html, body { overflow-x: hidden; max-width: 100vw; }
+</style>
+"""

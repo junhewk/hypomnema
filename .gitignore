@@ -36,3 +36,5 @@ build/
 
 # NiceGUI
 .nicegui/
+.playwright-cli/
+viz-*.png
