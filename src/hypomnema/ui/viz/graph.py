@@ -153,8 +153,7 @@ _GRAPH_INIT_JS = """
     panel.innerHTML = '<div style="padding:16px">'
       + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
       + '<div style="font-size:14px;font-weight:500">' + (node.name || node.id) + '</div>'
-      + '<div onclick="document.getElementById(\'hypo-detail-panel\').style.width=\'0\';'
-      + 'document.getElementById(\'hypo-detail-panel\').style.padding=\'0\'" '
+      + '<div id="hypo-panel-close" '
       + 'style="cursor:pointer;color:#4a4a4a;font-size:16px">&times;</div></div>'
       + '<div style="font-size:10px;color:#6b6b6b;margin-bottom:12px">cluster '
       + (node.cluster_id != null ? node.cluster_id : 'none')
@@ -167,6 +166,8 @@ _GRAPH_INIT_JS = """
       + edgesHtml + '</div>';
     panel.style.width = '280px';
     panel.style.padding = '0';
+    var closeBtn = document.getElementById('hypo-panel-close');
+    if (closeBtn) closeBtn.onclick = function() { panel.style.width = '0'; };
   }
 
   const graphData = {{GRAPH_DATA}};
