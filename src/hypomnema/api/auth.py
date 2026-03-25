@@ -19,7 +19,13 @@ if TYPE_CHECKING:
 
 COOKIE_NAME = "hypomnema_session"
 COOKIE_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
-EXEMPT_PREFIXES = ("/api/health", "/api/auth/")
+EXEMPT_PREFIXES = (
+    "/api/health",
+    "/api/auth/",
+    # NiceGUI internal paths — must be reachable for the UI to load
+    "/_nicegui/",
+    "/_nicegui",
+)
 
 
 def _is_https(request: Request) -> bool:
@@ -69,8 +75,10 @@ class PassphraseAuthMiddleware:
         path: str = scope.get("path", "")
         method: str = scope.get("method", "GET").upper()
 
-        # Exempt CORS preflight and auth/health paths
-        if method == "OPTIONS" or any(path.startswith(prefix) for prefix in EXEMPT_PREFIXES):
+        # Exempt CORS preflight, non-API paths (NiceGUI pages), and auth/health
+        is_api = path.startswith("/api/")
+        is_exempt = any(path.startswith(prefix) for prefix in EXEMPT_PREFIXES)
+        if method == "OPTIONS" or not is_api or is_exempt:
             await self.app(scope, receive, send)
             return
 
