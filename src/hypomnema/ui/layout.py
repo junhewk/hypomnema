@@ -13,11 +13,14 @@ _NAV_ITEMS = [
 ]
 
 
-def sidebar(*, collapsed: bool = False, overlay: bool = True) -> None:
-    """Render the collapsible navigation sidebar."""
-    mini_prop = "mini-to-overlay" if overlay else ""
-    with ui.left_drawer(value=not collapsed, bordered=True).classes("px-2 py-4") as drawer:
-        drawer.props(f"width=200 mini-width=56 {mini_prop}".strip())
+def sidebar(*, mini: bool = False) -> None:
+    """Render the collapsible navigation sidebar.
+
+    Args:
+        mini: Start in mini (icon-only) mode. Drawer stays visible but narrow.
+    """
+    with ui.left_drawer(value=True, bordered=True).classes("px-2 py-4") as drawer:
+        drawer.props(f"width=200 mini-width=56 mini-to-overlay {'mini' if mini else ''}")
 
         # Logo
         ui.label("hypomnema").classes(
