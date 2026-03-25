@@ -107,82 +107,75 @@ def _build_graph_data(
 
 _GRAPH_DIV = '<div id="force-graph-container" style="width:100%; height:100%; background:{{BG_COLOR}};"></div>'
 
-_GRAPH_SCRIPT = """
-<script type="module">
-import ForceGraph3D from 'https://esm.sh/3d-force-graph@1?deps=three@0.175';
-import SpriteText from 'https://esm.sh/three-spritetext@1';
+# JavaScript executed via ui.run_javascript (no <script> tags)
+_GRAPH_INIT_JS = """
+(async () => {
+  const {default: ForceGraph3D} = await import('https://esm.sh/3d-force-graph@1?deps=three@0.175');
+  const {default: SpriteText} = await import('https://esm.sh/three-spritetext@1');
 
-const container = document.getElementById('force-graph-container');
-const graphData = {{GRAPH_DATA}};
+  const container = document.getElementById('force-graph-container');
+  if (!container) { console.error('force-graph-container not found'); return; }
 
-const graph = new ForceGraph3D(container)
-  .backgroundColor('{{BG_COLOR}}')
-  .graphData(graphData)
-  .nodeVal(d => d.size)
-  .nodeColor(d => d.color)
-  .nodeOpacity(0.9)
-  .nodeResolution(16)
-  .nodeLabel(d => d.name)
-  .nodeThreeObjectExtend(true)
-  .nodeThreeObject(node => {
-    if (!node.show_label) return null;
-    const sprite = new SpriteText(node.name);
-    sprite.color = 'rgba(200,200,200,0.85)';
-    sprite.textHeight = Math.max(1.2, node.size * 0.4);
-    sprite.backgroundColor = 'rgba(10,10,10,0.6)';
-    sprite.padding = 1;
-    sprite.borderRadius = 2;
-    sprite.position.y = node.size * 0.15 + 2;
-    return sprite;
-  })
-  .linkColor(link => {
-    const opacity = 0.08 + link.confidence * 0.15;
-    const v = Math.round(opacity * 255);
-    return `rgba(${v},${v},${v},${opacity})`;
-  })
-  .linkWidth(0.3)
-  .linkOpacity(1.0)
-  .onNodeClick(node => {
-    if (node && node.id) {
-      window.__hypomnema_node_click(node.id, node.name);
-    }
-  })
-  .onNodeDragEnd(node => {
-    // When user drags a node, fix it at the new position
-    node.fx = node.x;
-    node.fy = node.y;
-    node.fz = node.z;
-  });
+  const graphData = {{GRAPH_DATA}};
 
-// Disable force simulation (using UMAP fixed positions)
-graph.d3Force('charge', null);
-graph.d3Force('link', null);
-graph.d3Force('center', null);
+  const graph = new ForceGraph3D(container)
+    .backgroundColor('{{BG_COLOR}}')
+    .graphData(graphData)
+    .nodeVal(d => d.size)
+    .nodeColor(d => d.color)
+    .nodeOpacity(0.9)
+    .nodeResolution(16)
+    .nodeLabel(d => d.name)
+    .nodeThreeObjectExtend(true)
+    .nodeThreeObject(node => {
+      if (!node.show_label) return null;
+      const sprite = new SpriteText(node.name);
+      sprite.color = 'rgba(200,200,200,0.85)';
+      sprite.textHeight = Math.max(1.2, node.size * 0.4);
+      sprite.backgroundColor = 'rgba(10,10,10,0.6)';
+      sprite.padding = 1;
+      sprite.borderRadius = 2;
+      sprite.position.y = node.size * 0.15 + 2;
+      return sprite;
+    })
+    .linkColor(link => {
+      const opacity = 0.08 + link.confidence * 0.15;
+      const v = Math.round(opacity * 255);
+      return `rgba(${v},${v},${v},${opacity})`;
+    })
+    .linkWidth(0.3)
+    .linkOpacity(1.0)
+    .onNodeClick(node => {
+      if (node && node.id && window.__hypomnema_node_click) {
+        window.__hypomnema_node_click(node.id, node.name);
+      }
+    })
+    .onNodeDragEnd(node => {
+      node.fx = node.x;
+      node.fy = node.y;
+      node.fz = node.z;
+    });
 
-// Fit camera to data after initial render
-setTimeout(() => {
-  graph.zoomToFit(400, 50);
-}, 500);
+  graph.d3Force('charge', null);
+  graph.d3Force('link', null);
+  graph.d3Force('center', null);
 
-// Expose graph for Python control
-window.__hypomnema_graph = graph;
+  setTimeout(() => graph.zoomToFit(400, 50), 500);
 
-// Spread update function
-window.__hypomnema_update_spread = (factor) => {
-  const nodes = graph.graphData().nodes;
-  nodes.forEach(n => {
-    if (n._ox === undefined) { n._ox = n.fx; n._oy = n.fy; n._oz = n.fz; }
-    n.fx = n._ox * factor;
-    n.fy = n._oy * factor;
-    n.fz = n._oz * factor;
-    n.x = n.fx;
-    n.y = n.fy;
-    n.z = n.fz;
-  });
-  graph.graphData(graph.graphData());
-  setTimeout(() => graph.zoomToFit(300, 50), 100);
-};
-</script>
+  window.__hypomnema_graph = graph;
+  window.__hypomnema_update_spread = (factor) => {
+    const nodes = graph.graphData().nodes;
+    nodes.forEach(n => {
+      if (n._ox === undefined) { n._ox = n.fx; n._oy = n.fy; n._oz = n.fz; }
+      n.fx = n._ox * factor;
+      n.fy = n._oy * factor;
+      n.fz = n._oz * factor;
+      n.x = n.fx; n.y = n.fy; n.z = n.fz;
+    });
+    graph.graphData(graph.graphData());
+    setTimeout(() => graph.zoomToFit(300, 50), 100);
+  };
+})();
 """
 
 
@@ -209,14 +202,16 @@ async def render_graph(
 
     graph_data = _build_graph_data(projections, edges, spread)
 
-    # Build the HTML div + script separately (NiceGUI forbids <script> in ui.html)
+    # Render div via ui.html, init graph via ui.run_javascript (runs after DOM is ready)
     div_html = _GRAPH_DIV.replace("{{BG_COLOR}}", _BG_COLOR)
-    script_html = _GRAPH_SCRIPT.replace("{{GRAPH_DATA}}", json.dumps(graph_data))
-    script_html = script_html.replace("{{BG_COLOR}}", _BG_COLOR)
+    init_js = _GRAPH_INIT_JS.replace("{{GRAPH_DATA}}", json.dumps(graph_data))
+    init_js = init_js.replace("{{BG_COLOR}}", _BG_COLOR)
 
     with container:
         graph_div = ui.html(div_html).style(f"width: 100%; height: {height}")
-    ui.add_body_html(script_html)
+
+    # Run after DOM is ready (ui.run_javascript waits for client connection)
+    ui.timer(0.5, lambda: ui.run_javascript(init_js), once=True)
 
     # Wire up node click callback via JavaScript bridge
     if on_node_click:

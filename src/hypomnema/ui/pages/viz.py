@@ -79,28 +79,9 @@ async def viz_page() -> None:
         # HUD overlay — bottom
         node_count = result.get("node_count", 0)
         edge_count = result.get("edge_count", 0)
-        with ui.element("div").classes(
-            "absolute bottom-3 left-3 right-3 flex items-end justify-between pointer-events-none"
-        ).style("z-index: 20"):
-            with ui.card().classes("pointer-events-auto").style(
-                "background: rgba(13,13,13,0.75); border: 1px solid #1e1e1e; "
-                "backdrop-filter: blur(8px); padding: 8px 12px"
-            ):
-                ui.label("spread").classes("text-xs tracking-wider uppercase mb-1").style(
-                    "color: #4a4a4a; font-size: 9px; letter-spacing: 0.1em"
-                )
-                spread_slider = ui.slider(
-                    min=0.3, max=3.0, step=0.05, value=1.0,
-                ).props('dense dark color="grey-6"').classes("w-36")
-
-                def _on_spread(e: object) -> None:
-                    val = spread_slider.value
-                    ui.run_javascript(f"if(window.__hypomnema_update_spread) window.__hypomnema_update_spread({val})")
-
-                spread_slider.on("update:model-value", _on_spread)
-
-            ui.label(
-                f"{node_count} nodes / {edge_count} edges"
-            ).classes("pointer-events-auto text-xs").style(
-                "color: #333; font-family: 'JetBrains Mono', monospace; font-size: 10px"
-            )
+        # Stats overlay — bottom right
+        ui.label(
+            f"{node_count} nodes / {edge_count} edges"
+        ).classes("absolute bottom-3 right-3 text-xs pointer-events-none").style(
+            "z-index: 20; color: #333; font-family: 'JetBrains Mono', monospace; font-size: 10px"
+        )
