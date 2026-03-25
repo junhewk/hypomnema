@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import UTC
+
 from nicegui import app, ui
 
 from hypomnema.ui.layout import page_layout
@@ -10,11 +12,11 @@ from hypomnema.ui.theme import SOURCE_STYLES
 
 def _time_ago(iso: str) -> str:
     """Format ISO timestamp as relative time."""
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     try:
         dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        diff = datetime.now(tz=timezone.utc) - dt
+        diff = datetime.now(tz=UTC) - dt
         seconds = int(diff.total_seconds())
         if seconds < 60:
             return f"{seconds}s ago"

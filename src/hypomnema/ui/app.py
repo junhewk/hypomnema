@@ -59,6 +59,11 @@ def configure(settings: Settings | None = None) -> None:
     app.on_shutdown(_shutdown)
 
     # Import UI pages (registers @ui.page routes)
+    import hypomnema.ui.pages.document  # noqa: F401
+    import hypomnema.ui.pages.engram  # noqa: F401
+    import hypomnema.ui.pages.search  # noqa: F401
+    import hypomnema.ui.pages.settings  # noqa: F401
+    import hypomnema.ui.pages.setup  # noqa: F401
     import hypomnema.ui.pages.stream  # noqa: F401
 
     # Placeholder pages for routes not yet implemented
@@ -197,22 +202,6 @@ async def _shutdown() -> None:
 def _register_placeholder_pages() -> None:
     """Register placeholder pages for routes not yet implemented."""
 
-    @ui.page("/search")
-    def search_page() -> None:
-        from hypomnema.ui.layout import page_layout
-
-        with page_layout("Search"):
-            ui.label("Search").classes("text-lg font-medium mb-4")
-            ui.label("Coming soon.").classes("text-muted text-xs")
-
-    @ui.page("/settings")
-    def settings_page() -> None:
-        from hypomnema.ui.layout import page_layout
-
-        with page_layout("Settings"):
-            ui.label("Settings").classes("text-lg font-medium mb-4")
-            ui.label("Coming soon.").classes("text-muted text-xs")
-
     @ui.page("/viz")
     def viz_page() -> None:
         from hypomnema.ui.layout import page_layout
@@ -220,19 +209,3 @@ def _register_placeholder_pages() -> None:
         with page_layout("Visualization"):
             ui.label("Visualization").classes("text-lg font-medium mb-4")
             ui.label("Coming soon.").classes("text-muted text-xs")
-
-    @ui.page("/documents/{doc_id}")
-    def document_page(doc_id: str) -> None:
-        from hypomnema.ui.layout import page_layout
-
-        with page_layout("Document"):
-            ui.label(f"Document: {doc_id}").classes("text-lg font-medium mb-4")
-            ui.label("Detail page coming soon.").classes("text-muted text-xs")
-
-    @ui.page("/setup")
-    def setup_page() -> None:
-        from hypomnema.ui.layout import page_layout
-
-        with page_layout("Setup"):
-            ui.label("Setup").classes("text-lg font-medium mb-4")
-            ui.label("First-run wizard coming soon.").classes("text-muted text-xs")
