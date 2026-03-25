@@ -77,9 +77,7 @@ class TestOpenAILLMClient:
         successful_response.incomplete_details = None
         successful_response.status = "completed"
 
-        client._client.responses.create = AsyncMock(
-            side_effect=[incomplete_response, successful_response]
-        )
+        client._client.responses.create = AsyncMock(side_effect=[incomplete_response, successful_response])
 
         result = await client.complete_json("test")
 

@@ -5,10 +5,9 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from hypomnema.embeddings.base import EmbeddingModel
-
 if TYPE_CHECKING:
     from hypomnema.config import Settings
+    from hypomnema.embeddings.base import EmbeddingModel
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +42,7 @@ def build_embeddings(settings: Settings) -> EmbeddingModel:
 
             return LocalEmbeddingModel(model_name=settings.embedding_model)
         except ImportError:
-            logger.warning(
-                "Local embedding model dependencies are unavailable, falling back to mock embeddings"
-            )
+            logger.warning("Local embedding model dependencies are unavailable, falling back to mock embeddings")
             from hypomnema.embeddings.mock import MockEmbeddingModel
 
             return MockEmbeddingModel(dimension=settings.embedding_dim)

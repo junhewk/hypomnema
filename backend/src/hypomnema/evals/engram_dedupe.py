@@ -11,8 +11,6 @@ from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-import numpy as np
-
 from hypomnema.db.schema import create_tables
 from hypomnema.db.sync_adapter import SyncConnection
 from hypomnema.embeddings.factory import build_embeddings
@@ -28,6 +26,7 @@ from hypomnema.ontology.engram import (
 )
 
 if TYPE_CHECKING:
+    import numpy as np
     from numpy.typing import NDArray
 
     from hypomnema.config import Settings
@@ -429,9 +428,7 @@ def _load_engram_rows(db_path: Path) -> list[sqlite3.Row]:
     connection = sqlite3.connect(db_path)
     connection.row_factory = sqlite3.Row
     try:
-        cursor = connection.execute(
-            "SELECT canonical_name FROM engrams ORDER BY canonical_name"
-        )
+        cursor = connection.execute("SELECT canonical_name FROM engrams ORDER BY canonical_name")
         return list(cursor.fetchall())
     finally:
         connection.close()
@@ -439,21 +436,9 @@ def _load_engram_rows(db_path: Path) -> list[sqlite3.Row]:
 
 def build_markdown_summary(report: EngramDedupeEvalReport) -> str:
     """Render a short markdown summary for local review."""
-    adjusted_gains = [
-        case.case_id
-        for case in report.cases
-        if not case.baseline.passed and case.adjusted.passed
-    ]
-    hardened_gains = [
-        case.case_id
-        for case in report.cases
-        if not case.adjusted.passed and case.hardened.passed
-    ]
-    hardened_regressions = [
-        case.case_id
-        for case in report.cases
-        if case.adjusted.passed and not case.hardened.passed
-    ]
+    adjusted_gains = [case.case_id for case in report.cases if not case.baseline.passed and case.adjusted.passed]
+    hardened_gains = [case.case_id for case in report.cases if not case.adjusted.passed and case.hardened.passed]
+    hardened_regressions = [case.case_id for case in report.cases if case.adjusted.passed and not case.hardened.passed]
 
     lines = [
         "# Engram Dedupe Eval",

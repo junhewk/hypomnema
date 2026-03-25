@@ -21,9 +21,7 @@ from hypomnema.ontology.linker import (
 )
 
 
-async def _insert_engrams(
-    db, embeddings: MockEmbeddingModel
-) -> tuple[Engram, Engram, Engram]:
+async def _insert_engrams(db, embeddings: MockEmbeddingModel) -> tuple[Engram, Engram, Engram]:
     """Insert 3 engrams with embeddings and commit."""
     names = ["actor-network theory", "translation", "sociology"]
     descriptions = [
@@ -108,13 +106,11 @@ class TestAssignPredicates:
     async def test_assigns_valid_predicates(self) -> None:
         source = self._make_engram("s1", "actor-network theory", "Sociological framework")
         target = self._make_engram("t1", "translation", "Process of network building")
-        llm = MockLLMClient(responses={
-            "Source concept:": {
-                "edges": [
-                    {"target": "translation", "predicate": "related_to", "confidence": 0.9}
-                ]
+        llm = MockLLMClient(
+            responses={
+                "Source concept:": {"edges": [{"target": "translation", "predicate": "related_to", "confidence": 0.9}]}
             }
-        })
+        )
         proposed = await assign_predicates(llm, source, [target])
         assert len(proposed) == 1
         assert proposed[0].predicate == "related_to"
@@ -132,13 +128,13 @@ class TestAssignPredicates:
     async def test_filters_invalid_predicates(self) -> None:
         source = self._make_engram("s1", "actor-network theory")
         target = self._make_engram("t1", "translation")
-        llm = MockLLMClient(responses={
-            "Source concept:": {
-                "edges": [
-                    {"target": "translation", "predicate": "bogus_predicate", "confidence": 0.8}
-                ]
+        llm = MockLLMClient(
+            responses={
+                "Source concept:": {
+                    "edges": [{"target": "translation", "predicate": "bogus_predicate", "confidence": 0.8}]
+                }
             }
-        })
+        )
         proposed = await assign_predicates(llm, source, [target])
         assert proposed == []
 
@@ -146,13 +142,13 @@ class TestAssignPredicates:
     async def test_filters_unknown_targets(self) -> None:
         source = self._make_engram("s1", "actor-network theory")
         target = self._make_engram("t1", "translation")
-        llm = MockLLMClient(responses={
-            "Source concept:": {
-                "edges": [
-                    {"target": "unknown_concept", "predicate": "related_to", "confidence": 0.8}
-                ]
+        llm = MockLLMClient(
+            responses={
+                "Source concept:": {
+                    "edges": [{"target": "unknown_concept", "predicate": "related_to", "confidence": 0.8}]
+                }
             }
-        })
+        )
         proposed = await assign_predicates(llm, source, [target])
         assert proposed == []
 
@@ -160,13 +156,11 @@ class TestAssignPredicates:
     async def test_clamps_confidence(self) -> None:
         source = self._make_engram("s1", "actor-network theory")
         target = self._make_engram("t1", "translation")
-        llm = MockLLMClient(responses={
-            "Source concept:": {
-                "edges": [
-                    {"target": "translation", "predicate": "related_to", "confidence": 5.0}
-                ]
+        llm = MockLLMClient(
+            responses={
+                "Source concept:": {"edges": [{"target": "translation", "predicate": "related_to", "confidence": 5.0}]}
             }
-        })
+        )
         proposed = await assign_predicates(llm, source, [target])
         assert len(proposed) == 1
         assert proposed[0].confidence == 1.0
@@ -176,16 +170,12 @@ class TestAssignPredicates:
         source = self._make_engram("s1", "actor-network theory")
         target = self._make_engram("t1", "translation")
         # Use a key that matches text in the document context
-        llm = MockLLMClient(responses={
-            "Source concept:": {
-                "edges": [
-                    {"target": "translation", "predicate": "related_to", "confidence": 0.8}
-                ]
+        llm = MockLLMClient(
+            responses={
+                "Source concept:": {"edges": [{"target": "translation", "predicate": "related_to", "confidence": 0.8}]}
             }
-        })
-        proposed = await assign_predicates(
-            llm, source, [target], document_text="Some context about ANT."
         )
+        proposed = await assign_predicates(llm, source, [target], document_text="Some context about ANT.")
         assert len(proposed) == 1
 
 
@@ -244,12 +234,8 @@ class TestCreateEdge:
     @pytest.mark.asyncio
     async def test_different_predicates_both_created(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         e1, e2, _ = await _insert_engrams(tmp_db, mock_embeddings)
-        p1 = ProposedEdge(
-            source_engram_id=e1.id, target_engram_id=e2.id, predicate="related_to"
-        )
-        p2 = ProposedEdge(
-            source_engram_id=e1.id, target_engram_id=e2.id, predicate="supports"
-        )
+        p1 = ProposedEdge(source_engram_id=e1.id, target_engram_id=e2.id, predicate="related_to")
+        p2 = ProposedEdge(source_engram_id=e1.id, target_engram_id=e2.id, predicate="supports")
         edge1 = await create_edge(tmp_db, p1)
         edge2 = await create_edge(tmp_db, p2)
         assert edge1 is not None

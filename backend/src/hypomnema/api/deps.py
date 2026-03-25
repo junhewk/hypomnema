@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, HTTPException, Request
 
 if TYPE_CHECKING:
     import asyncio
+    from collections.abc import AsyncGenerator
 
     import aiosqlite
 
@@ -55,7 +55,7 @@ def get_fernet_key(request: Request) -> bytes:
     return request.app.state.fernet_key  # type: ignore[no-any-return]
 
 
-def get_llm_lock(request: Request) -> "asyncio.Lock":
+def get_llm_lock(request: Request) -> asyncio.Lock:
     return request.app.state.llm_lock  # type: ignore[no-any-return]
 
 

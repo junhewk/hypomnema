@@ -151,13 +151,9 @@ class TestSemanticSearch:
         assert results == []
 
     @pytest.mark.asyncio
-    async def test_respects_limit(
-        self, tmp_db: aiosqlite.Connection, mock_embeddings: MockEmbeddingModel
-    ) -> None:
+    async def test_respects_limit(self, tmp_db: aiosqlite.Connection, mock_embeddings: MockEmbeddingModel) -> None:
         for i in range(5):
-            await _insert_doc_with_embedding(
-                tmp_db, f"d{i}", f"Topic number {i}", mock_embeddings
-            )
+            await _insert_doc_with_embedding(tmp_db, f"d{i}", f"Topic number {i}", mock_embeddings)
 
         results = await semantic_search(tmp_db, "Topic", mock_embeddings, limit=1)
         assert len(results) == 1
@@ -241,26 +237,16 @@ class TestSearchDocuments:
     async def test_hybrid_returns_results(
         self, tmp_db: aiosqlite.Connection, mock_embeddings: MockEmbeddingModel
     ) -> None:
-        await _insert_doc_with_embedding(
-            tmp_db, "d1", "Machine learning algorithms", mock_embeddings
-        )
-        await _insert_doc_with_embedding(
-            tmp_db, "d2", "Deep neural networks", mock_embeddings
-        )
+        await _insert_doc_with_embedding(tmp_db, "d1", "Machine learning algorithms", mock_embeddings)
+        await _insert_doc_with_embedding(tmp_db, "d2", "Deep neural networks", mock_embeddings)
 
         results = await search_documents(tmp_db, "machine learning", mock_embeddings)
         assert len(results) >= 1
 
     @pytest.mark.asyncio
-    async def test_limit_applied(
-        self, tmp_db: aiosqlite.Connection, mock_embeddings: MockEmbeddingModel
-    ) -> None:
+    async def test_limit_applied(self, tmp_db: aiosqlite.Connection, mock_embeddings: MockEmbeddingModel) -> None:
         for i in range(5):
-            await _insert_doc_with_embedding(
-                tmp_db, f"d{i}", f"Research topic {i}", mock_embeddings
-            )
+            await _insert_doc_with_embedding(tmp_db, f"d{i}", f"Research topic {i}", mock_embeddings)
 
-        results = await search_documents(
-            tmp_db, "research", mock_embeddings, limit=2
-        )
+        results = await search_documents(tmp_db, "research", mock_embeddings, limit=2)
         assert len(results) <= 2

@@ -6,10 +6,11 @@ import dataclasses
 import json
 import logging
 from datetime import UTC, datetime
-from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
+
     import aiosqlite
 
     from hypomnema.embeddings.base import EmbeddingModel
@@ -40,15 +41,11 @@ async def _fetch_document(db: aiosqlite.Connection, document_id: str) -> Documen
     return Document.from_row(row)
 
 
-async def _check_revision(
-    db: aiosqlite.Connection, document_id: str, expected_revision: int | None
-) -> bool:
+async def _check_revision(db: aiosqlite.Connection, document_id: str, expected_revision: int | None) -> bool:
     """Return True if current revision matches expected. None = always True (batch mode)."""
     if expected_revision is None:
         return True
-    cursor = await db.execute(
-        "SELECT revision FROM documents WHERE id = ?", (document_id,)
-    )
+    cursor = await db.execute("SELECT revision FROM documents WHERE id = ?", (document_id,))
     row = await cursor.fetchone()
     await cursor.close()
     if row is None:
@@ -123,11 +120,13 @@ async def process_document(
     effective_tidy_level = _resolve_document_tidy_level(doc, tidy_level)
 
     # Extract entities + tidy memo
+    summary_only = doc.source_type in ("file", "url")
     result = await extract_entities(
         llm,
         doc.text,
         tidy_level=effective_tidy_level,
         source_mime_type=doc.mime_type,
+        summary_only=summary_only,
         progress_callback=progress_callback,
     )
 
@@ -135,7 +134,9 @@ async def process_document(
 
     # Post-LLM revision check — before any DB writes
     if not await _check_revision(db, document_id, expected_revision):
-        logger.warning("process_document: stale revision after LLM work for %s (expected %s)", document_id, expected_revision)
+        logger.warning(
+            "process_document: stale revision after LLM work for %s (expected %s)", document_id, expected_revision
+        )
         return []
 
     # Store tidy memo fields
@@ -146,9 +147,7 @@ async def process_document(
         )
 
     if not extracted:
-        await db.execute(
-            "UPDATE documents SET processed = 1 WHERE id = ?", (document_id,)
-        )
+        await db.execute("UPDATE documents SET processed = 1 WHERE id = ?", (document_id,))
         await db.commit()
         return []
 
@@ -182,9 +181,7 @@ async def process_document(
         engrams.append(engram)
 
     # Mark processed
-    await db.execute(
-        "UPDATE documents SET processed = 1 WHERE id = ?", (document_id,)
-    )
+    await db.execute("UPDATE documents SET processed = 1 WHERE id = ?", (document_id,))
     await db.commit()
     return engrams
 
@@ -240,7 +237,9 @@ async def retidy_document(
     )
 
     if not await _check_revision(db, document_id, expected_revision):
-        logger.warning("retidy_document: stale revision after LLM work for %s (expected %s)", document_id, expected_revision)
+        logger.warning(
+            "retidy_document: stale revision after LLM work for %s (expected %s)", document_id, expected_revision
+        )
         return False
 
     await db.execute(
@@ -278,9 +277,7 @@ async def link_document(
 
     # Get engrams linked to this document
     cursor = await db.execute(
-        "SELECT e.* FROM engrams e "
-        "JOIN document_engrams de ON e.id = de.engram_id "
-        "WHERE de.document_id = ?",
+        "SELECT e.* FROM engrams e JOIN document_engrams de ON e.id = de.engram_id WHERE de.document_id = ?",
         (document_id,),
     )
     engram_rows = await cursor.fetchall()
@@ -288,9 +285,7 @@ async def link_document(
     engrams = [Engram.from_row(r) for r in engram_rows]
 
     if not engrams:
-        await db.execute(
-            "UPDATE documents SET processed = 2 WHERE id = ?", (document_id,)
-        )
+        await db.execute("UPDATE documents SET processed = 2 WHERE id = ?", (document_id,))
         await db.commit()
         return []
 
@@ -302,9 +297,7 @@ async def link_document(
             if not neighbor_pairs:
                 continue
             neighbors = [n for n, _sim in neighbor_pairs]
-            proposed = await assign_predicates(
-                llm, engram, neighbors, document_text=doc.text
-            )
+            proposed = await assign_predicates(llm, engram, neighbors, document_text=doc.text)
             for p in proposed:
                 p_with_doc = dataclasses.replace(p, source_document_id=document_id)
                 edge = await create_edge(db, p_with_doc)
@@ -315,14 +308,14 @@ async def link_document(
 
     # Post-LLM revision check — before committing edges
     if not await _check_revision(db, document_id, expected_revision):
-        logger.warning("link_document: stale revision after LLM work for %s (expected %s)", document_id, expected_revision)
+        logger.warning(
+            "link_document: stale revision after LLM work for %s (expected %s)", document_id, expected_revision
+        )
         await db.rollback()
         return []
 
     # Mark processed=2
-    await db.execute(
-        "UPDATE documents SET processed = 2 WHERE id = ?", (document_id,)
-    )
+    await db.execute("UPDATE documents SET processed = 2 WHERE id = ?", (document_id,))
     await db.commit()
     return all_edges
 

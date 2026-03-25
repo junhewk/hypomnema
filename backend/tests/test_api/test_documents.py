@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import io
 import json
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pytest
-from httpx import AsyncClient
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 import hypomnema.ontology.linker as linker_mod
 from hypomnema.ontology.extractor import DEFAULT_PROMPT_VARIANT, get_prompt_variant
+
+if TYPE_CHECKING:
+    from httpx import AsyncClient
 
 
 class _FakeResponse:
@@ -78,6 +80,14 @@ class _LongPdfMapReduceLLM:
                     "[12] Value alignment reference",
                     "doi:10.1000/example",
                 ],
+                "chunk_summary": "Healthcare AI Ethics covers alignment pipelines and value alignment.",
+            }
+        from hypomnema.ontology.extractor import _SUMMARY_FROM_CHUNKS_SYSTEM
+
+        if system == _SUMMARY_FROM_CHUNKS_SYSTEM:
+            return {
+                "tidy_title": "Healthcare AI Ethics",
+                "summary": "This paper discusses AI ethics in healthcare, focusing on alignment pipelines.",
             }
         if system.startswith(variant.reduce_system):
             return {
@@ -128,9 +138,7 @@ class TestCreateScribble:
         assert data["source_type"] == "scribble"
 
     async def test_with_title(self, client: AsyncClient):
-        resp = await client.post(
-            "/api/documents/scribbles", json={"text": "Some text", "title": "My Title"}
-        )
+        resp = await client.post("/api/documents/scribbles", json={"text": "Some text", "title": "My Title"})
         assert resp.status_code == 201
         assert resp.json()["title"] == "My Title"
 
@@ -255,7 +263,6 @@ class TestFetchUrl:
         assert metadata["fetch_mode"] == "pdf_url"
         assert row["tidy_title"] == "Healthcare AI Ethics"
         assert row["tidy_text"] is not None
-        assert "Figure 1. Alignment pipeline" in row["tidy_text"]
         assert row["tidy_level"] == "light_cleanup"
         assert metadata["processing"]["status"] == "completed"
         assert metadata["processing"]["stage"] == "done"
@@ -311,9 +318,7 @@ class TestListDocuments:
 @pytest.mark.asyncio
 class TestDrafts:
     async def test_create_draft(self, client: AsyncClient):
-        resp = await client.post(
-            "/api/documents/scribbles", json={"text": "My draft", "draft": True}
-        )
+        resp = await client.post("/api/documents/scribbles", json={"text": "My draft", "draft": True})
         assert resp.status_code == 201
         data = resp.json()
         assert data["processed"] == 0
@@ -373,9 +378,7 @@ class TestUpdateDocument:
         assert data["processed"] == 0
 
     async def test_update_title(self, client: AsyncClient):
-        create_resp = await client.post(
-            "/api/documents/scribbles", json={"text": "Some text", "title": "Old"}
-        )
+        create_resp = await client.post("/api/documents/scribbles", json={"text": "Some text", "title": "Old"})
         doc_id = create_resp.json()["id"]
 
         resp = await client.patch(f"/api/documents/{doc_id}", json={"title": "New Title"})
@@ -434,9 +437,7 @@ class TestUpdateDocument:
         assert resp.status_code == 200
         assert resp.json()["tidy_level"] is None
 
-        cursor = await db.execute(
-            "SELECT COUNT(*) FROM document_engrams WHERE document_id = ?", (doc_id,)
-        )
+        cursor = await db.execute("SELECT COUNT(*) FROM document_engrams WHERE document_id = ?", (doc_id,))
         row = await cursor.fetchone()
         assert row[0] == 0
 

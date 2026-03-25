@@ -13,6 +13,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class _Sentinel:
+    """Poison pill to signal queue shutdown."""
+
+
+_SENTINEL = _Sentinel()
+
+
 @dataclass
 class PipelineJob:
     document_id: str
@@ -24,7 +31,7 @@ class OntologyQueue:
 
     def __init__(self, app: FastAPI) -> None:
         self._app = app
-        self._queue: asyncio.Queue[PipelineJob] = asyncio.Queue()
+        self._queue: asyncio.Queue[PipelineJob | _Sentinel] = asyncio.Queue()
         self._worker_task: asyncio.Task[None] | None = None
 
     def start(self) -> None:
@@ -40,6 +47,9 @@ class OntologyQueue:
     async def _worker(self) -> None:
         while True:
             job = await self._queue.get()
+            if job is _SENTINEL:
+                self._queue.task_done()
+                return
             try:
                 from hypomnema.api.documents import _run_ontology_pipeline
 
@@ -55,8 +65,5 @@ class OntologyQueue:
 
     async def shutdown(self) -> None:
         if self._worker_task:
-            self._worker_task.cancel()
-            try:
-                await self._worker_task
-            except asyncio.CancelledError:
-                pass
+            await self._queue.put(_SENTINEL)
+            await self._worker_task

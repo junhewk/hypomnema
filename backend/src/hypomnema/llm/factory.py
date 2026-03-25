@@ -39,9 +39,7 @@ def base_url_for_provider(provider: str, settings: Settings) -> str:
             return ""
 
 
-def build_llm(
-    provider: str, *, api_key: str = "", model: str = "", base_url: str = ""
-) -> LLMClient:
+def build_llm(provider: str, *, api_key: str = "", model: str = "", base_url: str = "") -> LLMClient:
     """Build an LLM client for the given provider."""
     match provider:
         case "mock":

@@ -55,7 +55,5 @@ def fixtures_dir(tmp_path: Path) -> Path:
     """Directory containing sample.pdf, sample.docx, sample.md."""
     _create_sample_pdf(tmp_path / "sample.pdf", SAMPLE_TEXT)
     _create_sample_docx(tmp_path / "sample.docx", SAMPLE_TEXT)
-    (tmp_path / "sample.md").write_text(
-        f"# Sample\n\n{SAMPLE_TEXT}", encoding="utf-8"
-    )
+    (tmp_path / "sample.md").write_text(f"# Sample\n\n{SAMPLE_TEXT}", encoding="utf-8")
     return tmp_path

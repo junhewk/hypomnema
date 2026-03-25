@@ -9,14 +9,12 @@ import type {
   EmbeddingChangeStatus,
   ModelOption,
   ConnectivityCheckPayload,
-  TidyLevel,
 } from "@/lib/types";
 import {
   BASE_LLM_LABEL,
   BASE_LLM_MODEL,
   BASE_LLM_PROVIDER,
   PROVIDER_ICONS,
-  TIDY_LEVEL_OPTIONS,
 } from "@/lib/constants";
 
 function ProviderCard({
@@ -169,8 +167,6 @@ export function SettingsPage() {
   const [openaiKey, setOpenaiKey] = useState("");
   const [ollamaUrl, setOllamaUrl] = useState("");
   const [openaiUrl, setOpenaiUrl] = useState("");
-  const [tidyLevel, setTidyLevel] = useState<TidyLevel>("structured_notes");
-
   const [dirty, setDirty] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -187,7 +183,6 @@ export function SettingsPage() {
     setOpenaiKey(settings.openai_api_key);
     setOllamaUrl(settings.ollama_base_url);
     setOpenaiUrl(settings.openai_base_url);
-    setTidyLevel(settings.tidy_level);
     setDirty(new Set());
     setLlmProbe(null);
   }, [settings]);
@@ -291,7 +286,6 @@ export function SettingsPage() {
       if (dirty.has("openai_api_key")) payload.openai_api_key = openaiKey;
       if (dirty.has("ollama_base_url")) payload.ollama_base_url = ollamaUrl;
       if (dirty.has("openai_base_url")) payload.openai_base_url = openaiUrl;
-      if (dirty.has("tidy_level")) payload.tidy_level = tidyLevel;
 
       if (Object.keys(payload).length === 0) return;
 
@@ -473,40 +467,6 @@ export function SettingsPage() {
               </button>
             </div>
           </div>
-        </div>
-      </section>
-
-      <section className="mb-8">
-        <div className="mb-3 flex items-center gap-2">
-          <h2 className="font-mono text-[10px] font-bold uppercase tracking-widest text-muted/60">
-            Tidy Level
-          </h2>
-          <div className="h-px flex-1 bg-border" />
-        </div>
-
-        <div
-          className="animate-fade-up border-l-2 bg-surface-raised py-4 pr-4 pl-4"
-          style={{ borderLeftColor: "var(--engram)" }}
-        >
-          <FieldSelect
-            label="Default tidy level"
-            value={tidyLevel}
-            options={TIDY_LEVEL_OPTIONS.map((option) => ({
-              id: option.id,
-              name: option.name,
-            }))}
-            onChange={(v) => {
-              setTidyLevel(v as TidyLevel);
-              markDirty("tidy_level");
-            }}
-          />
-          <p className="font-mono text-[10px] leading-relaxed text-muted/50">
-            {TIDY_LEVEL_OPTIONS.find((option) => option.id === tidyLevel)?.description}
-          </p>
-          <p className="mt-2 font-mono text-[10px] leading-relaxed text-muted/35">
-            New processing uses this level immediately. Existing tidy text stays as-is until the
-            document is edited or re-tidied from the CLI.
-          </p>
         </div>
       </section>
 

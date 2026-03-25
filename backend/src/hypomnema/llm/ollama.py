@@ -31,7 +31,8 @@ class OllamaLLMClient:
 
     async def complete_json(self, prompt: str, *, system: str = "") -> dict[str, Any]:
         response = await self._http.post(
-            "/api/generate", json=self._payload(prompt, system=system, format="json"),
+            "/api/generate",
+            json=self._payload(prompt, system=system, format="json"),
         )
         response.raise_for_status()
         return parse_json_object(str(response.json()["response"]))

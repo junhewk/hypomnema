@@ -192,18 +192,21 @@ class TestJudgePayload:
         )
 
         assert _should_run_secondary_judge(case, report, "flagged") is False
-        assert _should_run_secondary_judge(
-            TidyTextEvalCase(
-                id="review-case",
-                input_text="rough note",
-                set="smoke",
-                dominant_locale="en",
-                style_target="notes-light",
-                manual_review=True,
-            ),
-            report,
-            "flagged",
-        ) is True
+        assert (
+            _should_run_secondary_judge(
+                TidyTextEvalCase(
+                    id="review-case",
+                    input_text="rough note",
+                    set="smoke",
+                    dominant_locale="en",
+                    style_target="notes-light",
+                    manual_review=True,
+                ),
+                report,
+                "flagged",
+            )
+            is True
+        )
 
 
 class TestReportOutput:

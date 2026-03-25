@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Request
@@ -26,12 +26,11 @@ async def backup_database(request: Request, db: DB) -> FileResponse:
     """
     settings = request.app.state.settings
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
     filename = f"hypomnema-backup-{timestamp}.db"
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
-    tmp.close()
-    backup_path = Path(tmp.name)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
+        backup_path = Path(tmp.name)
 
     # aiosqlite's backup() delegates to sqlite3.Connection.backup() in a thread
     dest_conn = sqlite3.connect(str(backup_path))

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 from hypomnema.evals.tidy_text import TidyTextEvalCase
 from hypomnema.evals.tidy_text_corpus import select_representative_cases
@@ -19,6 +19,9 @@ from hypomnema.evals.tidy_text_matrix import (
     write_generation_matrix_report,
 )
 from hypomnema.ontology.extractor import ExtractedEntity, ExtractionResult, ExtractionTrace
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 def _case(

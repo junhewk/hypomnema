@@ -14,8 +14,7 @@ async def insert_test_doc(
 ) -> str:
     """Insert a test document and return its id."""
     cursor = await db.execute(
-        "INSERT INTO documents (id, source_type, text, mime_type, metadata) "
-        "VALUES (?, ?, ?, ?, ?) RETURNING *",
+        "INSERT INTO documents (id, source_type, text, mime_type, metadata) VALUES (?, ?, ?, ?, ?) RETURNING *",
         (doc_id, source_type, text, mime_type, metadata),
     )
     row = await cursor.fetchone()

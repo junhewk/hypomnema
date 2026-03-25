@@ -5,11 +5,10 @@ from types import SimpleNamespace
 
 from hypomnema.api.schemas import ConnectivityCheckResponse
 from hypomnema.crypto import get_or_create_key
-from hypomnema.db.schema import create_tables, get_vec_table_embedding_dim
+from hypomnema.db.schema import get_vec_table_embedding_dim
 from hypomnema.db.settings_store import get_setting, set_setting
 from hypomnema.llm import base as llm_base
 from hypomnema.llm.mock import MockLLMClient
-from hypomnema.tidy import DEFAULT_TIDY_LEVEL
 
 
 class TestSettingsAPI:
@@ -22,8 +21,11 @@ class TestSettingsAPI:
 
         # Store an encrypted key
         await set_setting(
-            app.state.db, "openai_api_key", "sk-secret1234abcd",
-            fernet_key=fernet_key, encrypt_value=True,
+            app.state.db,
+            "openai_api_key",
+            "sk-secret1234abcd",
+            fernet_key=fernet_key,
+            encrypt_value=True,
         )
 
         response = await client.get("/api/settings")
@@ -35,7 +37,7 @@ class TestSettingsAPI:
         # Embedding info should be present
         assert "embedding_provider" in data
         assert "embedding_dim" in data
-        assert data["tidy_level"] == DEFAULT_TIDY_LEVEL
+        assert "tidy_level" not in data
 
     async def test_put_settings_updates_llm_provider(self, app, client):
         """PUT /api/settings should update LLM provider."""
@@ -50,22 +52,6 @@ class TestSettingsAPI:
         assert response.status_code == 200
         data = response.json()
         assert data["llm_provider"] == "ollama"
-
-    async def test_put_settings_updates_tidy_level(self, app, client):
-        """PUT /api/settings should persist the global tidy level."""
-        fernet_key = get_or_create_key(app.state.settings.db_path.parent)
-        app.state.fernet_key = fernet_key
-        app.state.llm_lock = asyncio.Lock()
-
-        response = await client.put(
-            "/api/settings",
-            json={"tidy_level": "full_revision"},
-        )
-        assert response.status_code == 200
-        data = response.json()
-        assert data["tidy_level"] == "full_revision"
-        assert app.state.settings.tidy_level == "full_revision"
-        assert await get_setting(app.state.db, "tidy_level", fernet_key=fernet_key) == "full_revision"
 
     async def test_put_settings_encrypts_api_key(self, app, client):
         """PUT /api/settings should encrypt API keys in DB."""
@@ -145,7 +131,9 @@ class TestSettingsAPI:
                 captured["system"] = system
                 return "wired"
 
-        def fake_build_llm(provider: str, *, api_key: str = "", model: str = "", base_url: str = "") -> llm_base.LLMClient:
+        def fake_build_llm(
+            provider: str, *, api_key: str = "", model: str = "", base_url: str = ""
+        ) -> llm_base.LLMClient:
             captured["provider"] = provider
             captured["api_key"] = api_key
             captured["model"] = model
@@ -265,6 +253,8 @@ class TestSettingsAPI:
         assert response.json()["status"] == "complete"
         assert await get_setting(app.state.db, "embedding_dim", fernet_key=fernet_key) == "3072"
         assert await get_setting(app.state.db, "embedding_model", fernet_key=fernet_key) == "text-embedding-3-large"
-        assert await get_setting(app.state.db, "openai_base_url", fernet_key=fernet_key) == "https://embeddings.example/v1"
+        assert (
+            await get_setting(app.state.db, "openai_base_url", fernet_key=fernet_key) == "https://embeddings.example/v1"
+        )
         assert await get_vec_table_embedding_dim(app.state.db, "engram_embeddings") == 3072
         assert await get_vec_table_embedding_dim(app.state.db, "document_embeddings") == 3072

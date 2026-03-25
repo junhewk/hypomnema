@@ -9,7 +9,6 @@ from collections import defaultdict, deque
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import numpy as np
 import sqlite_vec
 
 from hypomnema.ontology.engram import (
@@ -23,6 +22,8 @@ from hypomnema.ontology.normalizer import normalize
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+    import numpy as np
 _MIN_ALIAS_COMPONENT_COSINE = 0.65
 
 
@@ -136,16 +137,12 @@ def _ensure_alias_schema(connection: sqlite3.Connection) -> None:
             PRIMARY KEY (engram_id, alias_key)
         )
     """)
-    connection.execute(
-        "CREATE INDEX IF NOT EXISTS idx_engram_aliases_key ON engram_aliases(alias_key)"
-    )
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_engram_aliases_key ON engram_aliases(alias_key)")
     connection.commit()
 
 
 def _backfill_aliases(connection: sqlite3.Connection) -> None:
-    rows = connection.execute(
-        "SELECT id, canonical_name FROM engrams ORDER BY created_at, canonical_name"
-    ).fetchall()
+    rows = connection.execute("SELECT id, canonical_name FROM engrams ORDER BY created_at, canonical_name").fetchall()
     for row in rows:
         _store_aliases(connection, str(row["id"]), str(row["canonical_name"]))
     connection.commit()
@@ -215,15 +212,9 @@ def _scan_merge_families(connection: sqlite3.Connection) -> list[EngramMergeFami
         if mincosine_similarity is not None and mincosine_similarity < _MIN_ALIAS_COMPONENT_COSINE:
             continue
 
-        alias_keys = sorted(
-            alias_key
-            for alias_key, ids in alias_to_ids.items()
-            if len(ids & component_id_set) > 1
-        )
+        alias_keys = sorted(alias_key for alias_key, ids in alias_to_ids.items() if len(ids & component_id_set) > 1)
         merged_members = tuple(
-            member
-            for member in sorted(component_members, key=_survivor_rank)
-            if member.id != survivor.id
+            member for member in sorted(component_members, key=_survivor_rank) if member.id != survivor.id
         )
         families.append(
             EngramMergeFamily(
@@ -280,14 +271,8 @@ def _load_members(connection: sqlite3.Connection) -> list[EngramMergeMember]:
 def _load_embeddings(connection: sqlite3.Connection) -> dict[str, np.ndarray[Any, np.dtype[np.float32]]]:
     if not _table_exists(connection, "engram_embeddings"):
         return {}
-    rows = connection.execute(
-        "SELECT engram_id, embedding FROM engram_embeddings"
-    ).fetchall()
-    return {
-        str(row["engram_id"]): bytes_to_embedding(row["embedding"])
-        for row in rows
-        if row["embedding"] is not None
-    }
+    rows = connection.execute("SELECT engram_id, embedding FROM engram_embeddings").fetchall()
+    return {str(row["engram_id"]): bytes_to_embedding(row["embedding"]) for row in rows if row["embedding"] is not None}
 
 
 def _survivor_rank(member: EngramMergeMember) -> tuple[int, ... | str]:
@@ -421,8 +406,7 @@ def _merge_component_edges(
 ) -> None:
     placeholders = ", ".join("?" for _ in component_ids)
     rows = connection.execute(
-        f"SELECT * FROM edges WHERE source_engram_id IN ({placeholders}) "
-        f"OR target_engram_id IN ({placeholders})",
+        f"SELECT * FROM edges WHERE source_engram_id IN ({placeholders}) OR target_engram_id IN ({placeholders})",
         (*component_ids, *component_ids),
     ).fetchall()
     if not rows:

@@ -33,9 +33,7 @@ async def triage_document(
     Raises:
         ValueError: If document_id not found.
     """
-    cursor = await db.execute(
-        "SELECT id, text, triaged FROM documents WHERE id = ?", (document_id,)
-    )
+    cursor = await db.execute("SELECT id, text, triaged FROM documents WHERE id = ?", (document_id,))
     row = await cursor.fetchone()
     await cursor.close()
     if row is None:
@@ -63,8 +61,7 @@ async def triage_document(
     else:
         # Top-1 KNN against engram embeddings
         cursor = await db.execute(
-            "SELECT engram_id, distance FROM engram_embeddings "
-            "WHERE embedding MATCH ? AND k = 1 ORDER BY distance",
+            "SELECT engram_id, distance FROM engram_embeddings WHERE embedding MATCH ? AND k = 1 ORDER BY distance",
             (emb_bytes,),
         )
         knn_row = await cursor.fetchone()
@@ -84,8 +81,7 @@ async def triage_document(
 
     # Store document embedding
     await db.execute(
-        "INSERT OR IGNORE INTO document_embeddings (document_id, embedding) "
-        "VALUES (?, ?)",
+        "INSERT OR IGNORE INTO document_embeddings (document_id, embedding) VALUES (?, ?)",
         (document_id, emb_bytes),
     )
 
@@ -123,7 +119,5 @@ async def triage_pending_documents(
     await cursor.close()
     results: dict[str, bool] = {}
     for row in rows:
-        results[row["id"]] = await triage_document(
-            db, row["id"], embeddings, threshold=threshold
-        )
+        results[row["id"]] = await triage_document(db, row["id"], embeddings, threshold=threshold)
     return results

@@ -79,6 +79,7 @@ async def run_migrations(db: aiosqlite.Connection) -> None:
 # Migration 1 — baseline schema (the complete v0.1.0 schema)
 # ---------------------------------------------------------------------------
 
+
 async def _migration_001_baseline(db: aiosqlite.Connection) -> None:
     """Complete baseline: all tables, columns, indexes, FTS5, triggers."""
     await _create_core_tables_impl(db)
@@ -227,9 +228,7 @@ async def _migrate_add_columns(db: aiosqlite.Connection) -> None:
 
 async def _migrate_source_type_url(db: aiosqlite.Connection) -> bool:
     """Repair the documents schema and migrate it to accept the 'url' source type."""
-    cursor = await db.execute(
-        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'documents'"
-    )
+    cursor = await db.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'documents'")
     row = await cursor.fetchone()
     await cursor.close()
     if row is None:
@@ -237,10 +236,9 @@ async def _migrate_source_type_url(db: aiosqlite.Connection) -> bool:
     ddl = str(row["sql"]) if row["sql"] else ""
     needs_url_upgrade = "'url'" not in ddl
     has_legacy_documents = await _table_exists(db, "_documents_old")
-    has_legacy_document_refs = (
-        await _table_references_parent(db, "edges", "_documents_old")
-        or await _table_references_parent(db, "document_engrams", "_documents_old")
-    )
+    has_legacy_document_refs = await _table_references_parent(
+        db, "edges", "_documents_old"
+    ) or await _table_references_parent(db, "document_engrams", "_documents_old")
     has_legacy_document_objects = await _objects_bound_to_table(
         db,
         names=[
@@ -257,12 +255,7 @@ async def _migrate_source_type_url(db: aiosqlite.Connection) -> bool:
         table_name="_documents_old",
     )
 
-    if not (
-        needs_url_upgrade
-        or has_legacy_documents
-        or has_legacy_document_refs
-        or has_legacy_document_objects
-    ):
+    if not (needs_url_upgrade or has_legacy_documents or has_legacy_document_refs or has_legacy_document_objects):
         return False
 
     await db.commit()
@@ -275,9 +268,7 @@ async def _migrate_source_type_url(db: aiosqlite.Connection) -> bool:
             temp_base="_documents_migration_source",
         )
         legacy_documents_table = (
-            "_documents_old"
-            if has_legacy_documents and documents_source_table != "_documents_old"
-            else None
+            "_documents_old" if has_legacy_documents and documents_source_table != "_documents_old" else None
         )
 
         await _drop_documents_objects(db)
@@ -381,13 +372,8 @@ async def ensure_vec_tables(db: aiosqlite.Connection, embedding_dim: int = 384) 
     Returns True if an incompatible existing vec schema was rebuilt, which
     implies the knowledge graph was reset and documents need reprocessing.
     """
-    existing_dims = await _get_vec_table_dims(
-        db, ["engram_embeddings", "document_embeddings"]
-    )
-    needs_rebuild = any(
-        dim is not None and dim != embedding_dim
-        for dim in existing_dims.values()
-    )
+    existing_dims = await _get_vec_table_dims(db, ["engram_embeddings", "document_embeddings"])
+    needs_rebuild = any(dim is not None and dim != embedding_dim for dim in existing_dims.values())
     if needs_rebuild:
         await reset_knowledge_graph(db)
         await drop_vec_tables(db)
@@ -425,9 +411,7 @@ async def create_tables(db: aiosqlite.Connection, embedding_dim: int = 384) -> N
 
 
 async def _table_exists(db: aiosqlite.Connection, table_name: str) -> bool:
-    cursor = await db.execute(
-        "SELECT count(*) FROM sqlite_master WHERE name = ?", (table_name,)
-    )
+    cursor = await db.execute("SELECT count(*) FROM sqlite_master WHERE name = ?", (table_name,))
     row = await cursor.fetchone()
     if row is None:
         return False
@@ -575,9 +559,21 @@ async def _copy_documents_rows(
     or_ignore: bool,
 ) -> None:
     all_columns = [
-        "id", "source_type", "title", "text", "mime_type", "source_uri", "metadata",
-        "triaged", "processed", "revision", "tidy_title", "tidy_text", "tidy_level",
-        "created_at", "updated_at",
+        "id",
+        "source_type",
+        "title",
+        "text",
+        "mime_type",
+        "source_uri",
+        "metadata",
+        "triaged",
+        "processed",
+        "revision",
+        "tidy_title",
+        "tidy_text",
+        "tidy_level",
+        "created_at",
+        "updated_at",
     ]
     cursor = await db.execute(f"PRAGMA table_info({source_table})")  # noqa: S608
     source_columns = {str(row["name"]) for row in await cursor.fetchall()}
@@ -645,6 +641,7 @@ async def _rebuild_edges_table(db: aiosqlite.Connection) -> None:
 # Migration registry — keep at bottom so all functions are defined
 # ---------------------------------------------------------------------------
 
+
 def _register_migrations() -> None:
     _MIGRATIONS.clear()
     _MIGRATIONS.append((1, "baseline_schema", _migration_001_baseline))
@@ -656,6 +653,7 @@ _register_migrations()
 # ---------------------------------------------------------------------------
 # Public API (backward-compatible wrappers)
 # ---------------------------------------------------------------------------
+
 
 async def create_core_tables(db: aiosqlite.Connection) -> None:
     """Create all core tables via the migration framework.  Idempotent.

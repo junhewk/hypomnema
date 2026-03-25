@@ -14,14 +14,10 @@ router = APIRouter(prefix="/api/search", tags=["search"])
 
 
 @router.get("/documents", response_model=list[ScoredDocumentOut])
-async def search_documents_endpoint(
-    q: str, db: DB, embeddings: Embeddings
-) -> list[ScoredDocumentOut]:
+async def search_documents_endpoint(q: str, db: DB, embeddings: Embeddings) -> list[ScoredDocumentOut]:
     results = await search_documents(db, q, embeddings)
     return [
-        ScoredDocumentOut.model_validate(
-            {**result.document.model_dump(mode="python"), "score": result.score}
-        )
+        ScoredDocumentOut.model_validate({**result.document.model_dump(mode="python"), "score": result.score})
         for result in results
     ]
 

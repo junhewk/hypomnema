@@ -45,7 +45,7 @@ async def app(tmp_path: Path):
 
     yield test_app
 
-    await ontology_queue.shutdown()
+    await test_app.state.ontology_queue.shutdown()
     await db.close()
 
 
@@ -61,8 +61,7 @@ async def insert_engram(db: aiosqlite.Connection, name: str, *, description: str
     """Insert a test engram and return its id."""
     concept_hash = hashlib.sha256(name.encode()).hexdigest()[:16]
     cursor = await db.execute(
-        "INSERT INTO engrams (canonical_name, concept_hash, description) "
-        "VALUES (?, ?, ?) RETURNING id",
+        "INSERT INTO engrams (canonical_name, concept_hash, description) VALUES (?, ?, ?) RETURNING id",
         (name, concept_hash, description or f"Description of {name}"),
     )
     row = await cursor.fetchone()
@@ -74,8 +73,7 @@ async def insert_engram(db: aiosqlite.Connection, name: str, *, description: str
 async def insert_edge(db: aiosqlite.Connection, source_id: str, target_id: str, predicate: str = "relates_to") -> str:
     """Insert a test edge and return its id."""
     cursor = await db.execute(
-        "INSERT INTO edges (source_engram_id, target_engram_id, predicate) "
-        "VALUES (?, ?, ?) RETURNING id",
+        "INSERT INTO edges (source_engram_id, target_engram_id, predicate) VALUES (?, ?, ?) RETURNING id",
         (source_id, target_id, predicate),
     )
     row = await cursor.fetchone()

@@ -582,6 +582,7 @@ dependencies = [
     { name = "google-genai" },
     { name = "httpx" },
     { name = "openai" },
+    { name = "opendataloader-pdf" },
     { name = "platformdirs" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -623,6 +624,7 @@ requires-dist = [
     { name = "google-genai", specifier = ">=1.5,<2" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "openai", specifier = ">=1.60,<2" },
+    { name = "opendataloader-pdf", specifier = ">=2.0,<3" },
     { name = "platformdirs", specifier = ">=4,<5" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
@@ -1315,6 +1317,14 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c6/a1/a303104dc55fc546a3f6914c842d3da471c64eec92043aef8f652eb6c524/openai-1.109.1.tar.gz", hash = "sha256:d173ed8dbca665892a6db099b4a2dfac624f94d20a93f46eb0b56aae940ed869", size = 564133, upload-time = "2025-09-24T13:00:53.075Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1d/2a/7dd3d207ec669cacc1f186fd856a0f61dbc255d24f6fdc1a6715d6051b0f/openai-1.109.1-py3-none-any.whl", hash = "sha256:6bcaf57086cf59159b8e27447e4e7dd019db5d29a438072fbd49c290c7e65315", size = 948627, upload-time = "2025-09-24T13:00:50.754Z" },
+]
+
+[[package]]
+name = "opendataloader-pdf"
+version = "2.0.2"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/7d/5f3f19019e68ce9fe2f139206b29000dcda9fe130196d92412314bb16f78/opendataloader_pdf-2.0.2-py3-none-any.whl", hash = "sha256:834c6ed04509b17a593e0c991fe7753dcfeed907bed7ab1d54b909082a229bec", size = 22275730, upload-time = "2026-03-18T08:51:34.404Z" },
 ]
 
 [[package]]

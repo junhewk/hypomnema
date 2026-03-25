@@ -7,7 +7,7 @@ import logging
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 
-from hypomnema.api.deps import AppSettings, DB, FernetKey, LLMLock
+from hypomnema.api.deps import DB, AppSettings, FernetKey, LLMLock
 from hypomnema.api.schemas import (
     ChangeEmbeddingPayload,
     ConnectivityCheck,
@@ -66,12 +66,17 @@ def _build_response(settings: AppSettings, masked_keys: dict[str, str]) -> Setti
     return SettingsResponse(
         llm_provider=settings.llm_provider,
         llm_model=settings.llm_model,
-        anthropic_api_key=masked_keys.get("anthropic_api_key", mask_key(settings.anthropic_api_key) if settings.anthropic_api_key else ""),
-        google_api_key=masked_keys.get("google_api_key", mask_key(settings.google_api_key) if settings.google_api_key else ""),
-        openai_api_key=masked_keys.get("openai_api_key", mask_key(settings.openai_api_key) if settings.openai_api_key else ""),
+        anthropic_api_key=masked_keys.get(
+            "anthropic_api_key", mask_key(settings.anthropic_api_key) if settings.anthropic_api_key else ""
+        ),
+        google_api_key=masked_keys.get(
+            "google_api_key", mask_key(settings.google_api_key) if settings.google_api_key else ""
+        ),
+        openai_api_key=masked_keys.get(
+            "openai_api_key", mask_key(settings.openai_api_key) if settings.openai_api_key else ""
+        ),
         ollama_base_url=settings.ollama_base_url,
         openai_base_url=settings.openai_base_url,
-        tidy_level=settings.tidy_level,
         embedding_provider=settings.embedding_provider,
         embedding_model=settings.embedding_model,
         embedding_dim=settings.embedding_dim,
@@ -121,7 +126,9 @@ async def update_settings(
     # Persist each field to DB
     for key, value in updates.items():
         await set_setting(
-            db, key, value,
+            db,
+            key,
+            value,
             fernet_key=fernet_key,
             encrypt_value=key in _ENCRYPTED_KEYS,
         )
@@ -144,9 +151,7 @@ async def update_settings(
             request.app.state.llm = new_llm
 
     # Build masked response from already-decrypted settings
-    masked_keys = {
-        k: mask_key(v) for k, v in db_settings.items() if k in _ENCRYPTED_KEYS and v
-    }
+    masked_keys = {k: mask_key(v) for k, v in db_settings.items() if k in _ENCRYPTED_KEYS and v}
     return _build_response(new_settings, masked_keys)
 
 
@@ -207,11 +212,13 @@ async def complete_setup(
 
     # 5. Create vec tables
     from hypomnema.db.schema import ensure_vec_tables
+
     await ensure_vec_tables(db, dim)
 
     # 6. Reload settings and update app state
     db_settings = await get_all_settings(db, fernet_key=fernet_key)
     from hypomnema.config import Settings
+
     new_settings = Settings.with_db_overrides(settings, db_settings)
     request.app.state.settings = new_settings
 
@@ -231,6 +238,7 @@ async def complete_setup(
 
     # 9. Start feed scheduler
     from hypomnema.scheduler.cron import FeedScheduler
+
     scheduler = FeedScheduler(
         new_settings.db_path,
         sqlite_vec_path=new_settings.sqlite_vec_path,
@@ -245,6 +253,9 @@ async def complete_setup(
     # 9b. Start ontology processing queue
     from hypomnema.ontology.queue import OntologyQueue
 
+    old_queue: OntologyQueue | None = getattr(request.app.state, "ontology_queue", None)
+    if old_queue is not None:
+        await old_queue.shutdown()
     ontology_queue = OntologyQueue(request.app)
     ontology_queue.start()
     request.app.state.ontology_queue = ontology_queue
@@ -253,9 +264,7 @@ async def complete_setup(
     await set_setting(db, "setup_complete", "1", fernet_key=fernet_key, encrypt_value=False)
 
     # Build response
-    masked_keys = {
-        k: mask_key(v) for k, v in db_settings.items() if k in _ENCRYPTED_KEYS and v
-    }
+    masked_keys = {k: mask_key(v) for k, v in db_settings.items() if k in _ENCRYPTED_KEYS and v}
     return _build_response(new_settings, masked_keys)
 
 
@@ -472,6 +481,7 @@ async def change_embedding_provider(
     # Reload settings
     db_settings = await get_all_settings(db, fernet_key=fernet_key)
     from hypomnema.config import Settings
+
     new_settings = Settings.with_db_overrides(settings, db_settings)
     request.app.state.settings = new_settings
 
@@ -495,9 +505,7 @@ async def change_embedding_provider(
     request.app.state.embedding_change_status = change_status
 
     # Kick off background reprocessing (store ref to prevent GC)
-    request.app.state.embedding_change_task = asyncio.create_task(
-        _reprocess_all_documents(request.app, total)
-    )
+    request.app.state.embedding_change_task = asyncio.create_task(_reprocess_all_documents(request.app, total))
 
     return change_status
 
@@ -520,20 +528,19 @@ async def _reprocess_all_documents(app: FastAPI, total: int) -> None:
 
         if llm is None or embeddings is None:
             app.state.embedding_change_status = EmbeddingChangeStatus(
-                status="failed", total=total, processed=0,
+                status="failed",
+                total=total,
+                processed=0,
                 error="LLM or embedding model not configured",
             )
             return
 
         # Phase 1: extract engrams
-        cursor = await db.execute(
-            "SELECT id FROM documents WHERE processed = 0 ORDER BY created_at"
-        )
+        cursor = await db.execute("SELECT id FROM documents WHERE processed = 0 ORDER BY created_at")
         doc_ids = [row["id"] for row in await cursor.fetchall()]
         await cursor.close()
 
-        processed = 0
-        for doc_id in doc_ids:
+        for processed, doc_id in enumerate(doc_ids, 1):
             try:
                 await process_document(
                     db,
@@ -544,15 +551,14 @@ async def _reprocess_all_documents(app: FastAPI, total: int) -> None:
                 )
             except Exception:
                 logger.exception("Error processing document %s", doc_id)
-            processed += 1
             app.state.embedding_change_status = EmbeddingChangeStatus(
-                status="in_progress", total=total, processed=processed,
+                status="in_progress",
+                total=total,
+                processed=processed,
             )
 
         # Phase 2: link edges
-        cursor = await db.execute(
-            "SELECT id FROM documents WHERE processed = 1 ORDER BY created_at"
-        )
+        cursor = await db.execute("SELECT id FROM documents WHERE processed = 1 ORDER BY created_at")
         link_ids = [row["id"] for row in await cursor.fetchall()]
         await cursor.close()
 
@@ -571,13 +577,18 @@ async def _reprocess_all_documents(app: FastAPI, total: int) -> None:
             logger.exception("Failed to compute projections after reprocessing")
 
         app.state.embedding_change_status = EmbeddingChangeStatus(
-            status="complete", total=total, processed=total,
+            status="complete",
+            total=total,
+            processed=total,
         )
 
     except Exception as exc:
         logger.exception("Embedding change reprocessing failed")
         app.state.embedding_change_status = EmbeddingChangeStatus(
-            status="failed", total=total, processed=0, error=str(exc),
+            status="failed",
+            total=total,
+            processed=0,
+            error=str(exc),
         )
 
 

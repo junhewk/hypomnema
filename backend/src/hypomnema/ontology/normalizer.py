@@ -25,7 +25,7 @@ def normalize(name: str) -> str:
 _SYNONYM_SYSTEM = (
     "You are a terminology normalizer. Given a JSON list of entity names, "
     "group synonyms and pick one canonical name per group. "
-    "Return ONLY valid JSON: {\"mapping\": {\"original\": \"canonical\", ...}}. "
+    'Return ONLY valid JSON: {"mapping": {"original": "canonical", ...}}. '
     "Every input name must appear as a key. Names that aren't synonyms map to themselves."
 )
 

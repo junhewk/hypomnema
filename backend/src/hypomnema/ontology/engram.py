@@ -276,9 +276,7 @@ async def match_existing_engram(
     use_direct_alias_lookup: bool = True,
 ) -> EngramMatch | None:
     """Find an existing engram for a candidate according to the dedupe policy."""
-    cursor = await db.execute(
-        "SELECT * FROM engrams WHERE canonical_name = ?", (canonical_name,)
-    )
+    cursor = await db.execute("SELECT * FROM engrams WHERE canonical_name = ?", (canonical_name,))
     row = await cursor.fetchone()
     await cursor.close()
     if row is not None:
@@ -291,8 +289,7 @@ async def match_existing_engram(
 
     emb_bytes = embedding_to_bytes(embedding)
     cursor = await db.execute(
-        "SELECT engram_id, distance FROM engram_embeddings "
-        "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+        "SELECT engram_id, distance FROM engram_embeddings WHERE embedding MATCH ? AND k = ? ORDER BY distance",
         (emb_bytes, knn_limit),
     )
     knn_matches = await cursor.fetchall()
@@ -302,7 +299,8 @@ async def match_existing_engram(
         candidate_ids = [match_row["engram_id"] for match_row in knn_matches]
         placeholders = ", ".join("?" for _ in candidate_ids)
         cursor2 = await db.execute(
-            f"SELECT * FROM engrams WHERE id IN ({placeholders})", candidate_ids  # noqa: S608
+            f"SELECT * FROM engrams WHERE id IN ({placeholders})",
+            candidate_ids,  # noqa: S608
         )
         engram_rows = {row["id"]: Engram.from_row(row) for row in await cursor2.fetchall()}
         await cursor2.close()
@@ -319,9 +317,7 @@ async def match_existing_engram(
                 return EngramMatch(engram, "vector_similarity", cosine_similarity=cosine_sim)
 
     concept_hash = compute_concept_hash(embedding)
-    cursor = await db.execute(
-        "SELECT * FROM engrams WHERE concept_hash = ?", (concept_hash,)
-    )
+    cursor = await db.execute("SELECT * FROM engrams WHERE concept_hash = ?", (concept_hash,))
     row = await cursor.fetchone()
     await cursor.close()
     if row is not None:
@@ -371,8 +367,7 @@ async def get_or_create_engram(
     concept_hash = compute_concept_hash(embedding)
     emb_bytes = embedding_to_bytes(embedding)
     cursor = await db.execute(
-        "INSERT INTO engrams (canonical_name, concept_hash, description) "
-        "VALUES (?, ?, ?) RETURNING *",
+        "INSERT INTO engrams (canonical_name, concept_hash, description) VALUES (?, ?, ?) RETURNING *",
         (canonical_name, concept_hash, description),
     )
     row = await cursor.fetchone()

@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import sqlite3
-from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import aiosqlite
 import sqlite_vec
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncGenerator
 
 logger = logging.getLogger(__name__)
 

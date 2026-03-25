@@ -7,8 +7,8 @@ import pytest
 import hypomnema.ontology.extractor as extractor_mod
 from hypomnema.llm.mock import MockLLMClient
 from hypomnema.ontology.extractor import (
-    DEFAULT_TIDY_LEVEL,
     DEFAULT_PROMPT_VARIANT,
+    DEFAULT_TIDY_LEVEL,
     ExtractionError,
     ExtractionResult,
     ExtractionTrace,
@@ -114,7 +114,7 @@ class PdfTieredLLM:
                     "Healthcare AI Ethics",
                     "2 Background",
                     "Figure 1. Alignment pipeline",
-                    "\"Quoted\" alignment evidence 2024",
+                    '"Quoted" alignment evidence 2024',
                     "doi:10.1000/example",
                     "[12] Value alignment reference",
                 ],
@@ -125,7 +125,7 @@ class PdfTieredLLM:
                     "Healthcare AI Ethics",
                     "2 Background",
                     "Figure 1. Alignment pipeline",
-                    "\"Quoted\" alignment evidence 2024",
+                    '"Quoted" alignment evidence 2024',
                     "doi:10.1000/example",
                     "[12] Value alignment reference",
                 ],
@@ -152,9 +152,10 @@ class PdfStructuredLLM:
         if system.startswith(variant.map_system) or system.startswith(extractor_mod._TIDY_ONLY_MAP_SYSTEM):
             polished = (
                 "This section compares strong alignment and weak alignment with human values. "
-                "The discussion focuses on alignment failures and value transfer under RLHF with GPT-4 in Section 5.1 and \"Chinese room\"."
-                if self.valid_polished else
-                "This section preserves strong alignment and weak alignment only."
+                "The discussion focuses on alignment failures and value transfer"
+                ' under RLHF with GPT-4 in Section 5.1 and "Chinese room".'
+                if self.valid_polished
+                else "This section preserves strong alignment and weak alignment only."
             )
             return {
                 "title_candidates": ["Strong and weak alignment of large language models with human values"],
@@ -181,16 +182,18 @@ class PdfStructuredLLM:
 class TestExtractEntities:
     @pytest.mark.asyncio
     async def test_extracts_entities_from_text(self) -> None:
-        llm = MockLLMClient(responses={
-            "Actor-Network": {
-                "entities": [
-                    {"name": "Actor-Network Theory", "description": "A sociological framework"},
-                    {"name": "Bruno Latour", "description": "French philosopher"},
-                ],
-                "tidy_title": "Actor-Network Theory Overview",
-                "tidy_text": "ANT was proposed by Latour.",
+        llm = MockLLMClient(
+            responses={
+                "Actor-Network": {
+                    "entities": [
+                        {"name": "Actor-Network Theory", "description": "A sociological framework"},
+                        {"name": "Bruno Latour", "description": "French philosopher"},
+                    ],
+                    "tidy_title": "Actor-Network Theory Overview",
+                    "tidy_text": "ANT was proposed by Latour.",
+                }
             }
-        })
+        )
         result = await extract_entities(llm, "Actor-Network Theory was proposed by Latour.")
         assert isinstance(result, ExtractionResult)
         assert len(result.entities) == 2
@@ -213,44 +216,44 @@ class TestExtractEntities:
 
     @pytest.mark.asyncio
     async def test_llm_returns_empty_entities(self) -> None:
-        llm = MockLLMClient(responses={
-            "trivial": {"entities": []}
-        })
+        llm = MockLLMClient(responses={"trivial": {"entities": []}})
         result = await extract_entities(llm, "trivial text")
         assert result.entities == []
 
     @pytest.mark.asyncio
     async def test_extraction_error_on_malformed(self) -> None:
-        llm = MockLLMClient(responses={
-            "bad": {"entities": "not a list"}
-        })
+        llm = MockLLMClient(responses={"bad": {"entities": "not a list"}})
         with pytest.raises(ExtractionError, match="not a list"):
             await extract_entities(llm, "bad input")
 
     @pytest.mark.asyncio
     async def test_extracted_entity_fields(self) -> None:
-        llm = MockLLMClient(responses={
-            "epistemology": {
-                "entities": [
-                    {"name": "Epistemology", "description": "Study of knowledge"},
-                ]
+        llm = MockLLMClient(
+            responses={
+                "epistemology": {
+                    "entities": [
+                        {"name": "Epistemology", "description": "Study of knowledge"},
+                    ]
+                }
             }
-        })
+        )
         result = await extract_entities(llm, "epistemology is the study of knowledge")
         assert result.entities[0].name == "Epistemology"
         assert result.entities[0].description == "Study of knowledge"
 
     @pytest.mark.asyncio
     async def test_skips_nameless_entities(self) -> None:
-        llm = MockLLMClient(responses={
-            "mixed": {
-                "entities": [
-                    {"name": "Valid", "description": "A concept"},
-                    {"name": "", "description": "No name"},
-                    {"name": "  ", "description": "Whitespace name"},
-                ]
+        llm = MockLLMClient(
+            responses={
+                "mixed": {
+                    "entities": [
+                        {"name": "Valid", "description": "A concept"},
+                        {"name": "", "description": "No name"},
+                        {"name": "  ", "description": "Whitespace name"},
+                    ]
+                }
             }
-        })
+        )
         result = await extract_entities(llm, "mixed entities")
         assert len(result.entities) == 1
         assert result.entities[0].name == "Valid"
@@ -261,10 +264,12 @@ class TestExtractEntities:
 
         The extractor should fall back to the 'items' key for entities.
         """
-        data = {"items": [
-            {"name": "Phenomenology", "description": "Study of experience"},
-            {"name": "Husserl", "description": "German philosopher"},
-        ]}
+        data = {
+            "items": [
+                {"name": "Phenomenology", "description": "Study of experience"},
+                {"name": "Husserl", "description": "German philosopher"},
+            ]
+        }
         result = _parse_extraction_result(data)
         assert len(result.entities) == 2
         assert result.entities[0].name == "Phenomenology"
@@ -274,22 +279,22 @@ class TestExtractEntities:
 
     @pytest.mark.asyncio
     async def test_tidy_fields_optional(self) -> None:
-        llm = MockLLMClient(responses={
-            "no-tidy": {"entities": [{"name": "X", "description": "Y"}]}
-        })
+        llm = MockLLMClient(responses={"no-tidy": {"entities": [{"name": "X", "description": "Y"}]}})
         result = await extract_entities(llm, "no-tidy data")
         assert result.tidy_title is None
         assert result.tidy_text is None
 
     @pytest.mark.asyncio
     async def test_records_single_call_trace(self) -> None:
-        llm = MockLLMClient(responses={
-            "trace-doc": {
-                "entities": [{"name": "Concept", "description": "Desc"}],
-                "tidy_title": "Trace Title",
-                "tidy_text": "Trace body.",
+        llm = MockLLMClient(
+            responses={
+                "trace-doc": {
+                    "entities": [{"name": "Concept", "description": "Desc"}],
+                    "tidy_title": "Trace Title",
+                    "tidy_text": "Trace body.",
+                }
             }
-        })
+        )
         trace = ExtractionTrace()
         result = await extract_entities(
             llm,
@@ -376,13 +381,15 @@ class TestMapReduce:
     @pytest.mark.asyncio
     async def test_short_text_uses_single_call(self) -> None:
         """Documents < 8000 chars should use the single-call path."""
-        llm = MockLLMClient(responses={
-            "Short doc": {
-                "entities": [{"name": "Concept", "description": "A concept"}],
-                "tidy_title": "Short Title",
-                "tidy_text": "Cleaned up short doc.",
+        llm = MockLLMClient(
+            responses={
+                "Short doc": {
+                    "entities": [{"name": "Concept", "description": "A concept"}],
+                    "tidy_title": "Short Title",
+                    "tidy_text": "Cleaned up short doc.",
+                }
             }
-        })
+        )
         result = await extract_entities(llm, "Short doc about a concept.")
         assert result.tidy_title == "Short Title"
         assert len(result.entities) == 1
@@ -394,10 +401,7 @@ class TestMapReduce:
     ) -> None:
         monkeypatch.setattr(extractor_mod, "_FINAL_RENDER_EVIDENCE_CHARS", 10)
         llm = RoutedLLM()
-        text = (
-            ("CHUNK_ALPHA " * 380) + "\n\n"
-            + ("CHUNK_BETA " * 380)
-        )
+        text = ("CHUNK_ALPHA " * 380) + "\n\n" + ("CHUNK_BETA " * 380)
 
         result = await extract_entities(llm, text)
 
@@ -442,10 +446,7 @@ class TestMapReduce:
                 return await super().complete_json(prompt, system=system)
 
         llm = SynonymLLM()
-        text = (
-            ("CHUNK_ALPHA " * 380) + "\n\n"
-            + ("CHUNK_BETA " * 380)
-        )
+        text = ("CHUNK_ALPHA " * 380) + "\n\n" + ("CHUNK_BETA " * 380)
 
         result = await extract_entities(llm, text)
 
@@ -473,8 +474,7 @@ class TestMapReduce:
     async def test_pdf_light_cleanup_uses_deterministic_stitch_without_reduce(self) -> None:
         llm = PdfTieredLLM()
         text = " ".join(
-            f"Section{index:03d} Figure{index:03d} quote[{index:03d}] doi:10.1000/{index:03d}"
-            for index in range(1200)
+            f"Section{index:03d} Figure{index:03d} quote[{index:03d}] doi:10.1000/{index:03d}" for index in range(1200)
         )
         trace = ExtractionTrace()
 
@@ -498,8 +498,7 @@ class TestMapReduce:
     async def test_pdf_editorial_polish_uses_deterministic_stitch_without_reduce(self) -> None:
         llm = PdfTieredLLM()
         text = " ".join(
-            f"Section{index:03d} Figure{index:03d} quote[{index:03d}] doi:10.1000/{index:03d}"
-            for index in range(1200)
+            f"Section{index:03d} Figure{index:03d} quote[{index:03d}] doi:10.1000/{index:03d}" for index in range(1200)
         )
         trace = ExtractionTrace()
 
@@ -522,10 +521,7 @@ class TestMapReduce:
     @pytest.mark.asyncio
     async def test_pdf_balanced_uses_valid_polished_block_from_typed_artifact(self) -> None:
         llm = PdfStructuredLLM(valid_polished=True)
-        text = " ".join(
-            f"Section{index:03d} GPT-4 RLHF Chinese room value alignment"
-            for index in range(1200)
-        )
+        text = " ".join(f"Section{index:03d} GPT-4 RLHF Chinese room value alignment" for index in range(1200))
         trace = ExtractionTrace()
 
         result = await render_tidy_text(
@@ -545,10 +541,7 @@ class TestMapReduce:
     @pytest.mark.asyncio
     async def test_pdf_balanced_rejects_polished_block_missing_numeric_anchor(self) -> None:
         llm = PdfStructuredLLM(valid_polished=False)
-        text = " ".join(
-            f"Section{index:03d} GPT-4 RLHF Chinese room value alignment"
-            for index in range(1200)
-        )
+        text = " ".join(f"Section{index:03d} GPT-4 RLHF Chinese room value alignment" for index in range(1200))
         trace = ExtractionTrace()
 
         result = await render_tidy_text(
@@ -565,10 +558,12 @@ class TestMapReduce:
         assert trace.pdf_debug["rejected_polished_blocks"] >= 1
 
     def test_deterministic_pdf_title_skips_affiliation_lines(self) -> None:
-        title = extractor_mod._deterministic_pdf_title((
-            "1 Oxford Internet Institute, University of Oxford, 1 St Giles', Oxford, OX1 3JS, UK",
-            "The Debate on the Ethics of AI in Health Care",
-            "This review examines healthcare AI ethics through beneficence and autonomy.",
-        ))
+        title = extractor_mod._deterministic_pdf_title(
+            (
+                "1 Oxford Internet Institute, University of Oxford, 1 St Giles', Oxford, OX1 3JS, UK",
+                "The Debate on the Ethics of AI in Health Care",
+                "This review examines healthcare AI ethics through beneficence and autonomy.",
+            )
+        )
 
         assert title == "The Debate on the Ethics of AI in Health Care"

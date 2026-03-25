@@ -20,9 +20,9 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 
 ### Data Flow
 
-1. **Ingestion** — manual scribbles, file throws (PDF/DOCX/MD), or automated periodic feeds (RSS, scrapes, transcripts)
+1. **Ingestion** — manual scribbles, file throws (PDF/DOCX/MD), or automated periodic feeds (RSS, scrapes, transcripts). PDFs extracted via opendataloader-pdf (layout-aware markdown) with pypdf fallback.
 2. **Triage ("The Bouncer")** — cheap LLM/embedding filter gates automated feeds to protect API budget
-3. **Ontology Engine** — capable LLM extracts entities, normalizes to canonical strings, generates embeddings, then deduplicates engrams in this order: exact canonical name, direct alias-index lookup, lexical alias overlap on KNN candidates, vector similarity, and concept-hash fallback. Targeted LLM call assigns typed predicates (contradicts, provides methodology for, etc.)
+3. **Ontology Engine** — capable LLM extracts entities, normalizes to canonical strings, generates embeddings, then deduplicates engrams in this order: exact canonical name, direct alias-index lookup, lexical alias overlap on KNN candidates, vector similarity, and concept-hash fallback. Targeted LLM call assigns typed predicates (contradicts, provides methodology for, etc.). For files/URLs, also generates a title revision and TL;DR summary (not a full rewrite). Scribbles get full tidy rewriting with configurable tidy levels (internal only, not exposed in UI).
 4. **Storage** — raw text stored in central `text` column; structure lives entirely in Engram nodes and edges
 5. **Visualization** — UMAP/t-SNE projection, spatial clustering, gap highlighting
 

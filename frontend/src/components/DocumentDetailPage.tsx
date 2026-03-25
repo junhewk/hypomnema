@@ -12,6 +12,24 @@ import { BackButton } from "./BackButton";
 import { NetworkPanel } from "./NetworkPanel";
 import { StatusDot } from "./StatusDot";
 
+const SUMMARY_MAX_LENGTH = 600;
+
+function RawText({ text, mimeType, muted }: { text: string; mimeType?: string | null; muted?: boolean }) {
+  const base = muted ? "text-xs text-muted/60" : "text-sm";
+  if (mimeType === "text/markdown") {
+    return (
+      <div className={`prose-mono ${muted ? "text-xs text-muted/60" : ""}`}>
+        <ReactMarkdown>{text}</ReactMarkdown>
+      </div>
+    );
+  }
+  return (
+    <p className={`font-mono ${base} leading-relaxed whitespace-pre-wrap`}>
+      {text}
+    </p>
+  );
+}
+
 interface DocumentDetailPageProps {
   id: string;
 }
@@ -128,7 +146,19 @@ export function DocumentDetailPage({ id }: DocumentDetailPageProps) {
           </div>
 
           <div className="mb-8" data-testid="document-text">
-            {doc.tidy_text ? (
+            {doc.tidy_text && doc.tidy_text.length < SUMMARY_MAX_LENGTH ? (
+              <>
+                <div className="mb-4 border-l-2 border-accent/30 pl-3">
+                  <span className="font-mono text-[10px] uppercase tracking-wider text-muted/40">
+                    TL;DR
+                  </span>
+                  <p className="mt-1 font-mono text-xs leading-relaxed text-muted/80">
+                    {doc.tidy_text}
+                  </p>
+                </div>
+                <RawText text={doc.text} mimeType={doc.mime_type} />
+              </>
+            ) : doc.tidy_text ? (
               <>
                 <div className="tidy-surface prose-mono">
                   <ReactMarkdown>{doc.tidy_text}</ReactMarkdown>
@@ -137,21 +167,13 @@ export function DocumentDetailPage({ id }: DocumentDetailPageProps) {
                   <summary className="raw-text-toggle font-mono text-[10px] uppercase tracking-wider text-muted/40 hover:text-muted/70">
                     Original text
                   </summary>
-                  {doc.mime_type === "text/markdown" ? (
-                    <div className="mt-3 prose-mono text-xs text-muted/60">
-                      <ReactMarkdown>{doc.text}</ReactMarkdown>
-                    </div>
-                  ) : (
-                    <p className="mt-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-muted/60">
-                      {doc.text}
-                    </p>
-                  )}
+                  <div className="mt-3">
+                    <RawText text={doc.text} mimeType={doc.mime_type} muted />
+                  </div>
                 </details>
               </>
             ) : (
-              <p className="font-mono text-sm leading-relaxed whitespace-pre-wrap">
-                {doc.text}
-              </p>
+              <RawText text={doc.text} mimeType={doc.mime_type} />
             )}
           </div>
 

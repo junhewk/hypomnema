@@ -17,9 +17,7 @@ from hypomnema.search.knowledge_search import get_edges_for_engram
 router = APIRouter(prefix="/api/engrams", tags=["engrams"])
 
 _DOCS_FOR_ENGRAM_SQL = (
-    "SELECT d.* FROM documents d "
-    "JOIN document_engrams de ON d.id = de.document_id "
-    "WHERE de.engram_id = ?"
+    "SELECT d.* FROM documents d JOIN document_engrams de ON d.id = de.document_id WHERE de.engram_id = ?"
 )
 
 

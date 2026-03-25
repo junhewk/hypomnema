@@ -25,9 +25,7 @@ async def test_scribble_to_engrams_to_edges(
     edges = await link_document(tmp_db, doc.id, int_llm)
     assert isinstance(edges, list)
 
-    cursor = await tmp_db.execute(
-        "SELECT processed FROM documents WHERE id = ?", (doc.id,)
-    )
+    cursor = await tmp_db.execute("SELECT processed FROM documents WHERE id = ?", (doc.id,))
     row = await cursor.fetchone()
     await cursor.close()
     assert row is not None
@@ -51,9 +49,7 @@ async def test_two_related_docs_create_engrams(
     await link_document(tmp_db, doc2.id, int_llm)
 
     for doc_id in (doc1.id, doc2.id):
-        cursor = await tmp_db.execute(
-            "SELECT processed FROM documents WHERE id = ?", (doc_id,)
-        )
+        cursor = await tmp_db.execute("SELECT processed FROM documents WHERE id = ?", (doc_id,))
         row = await cursor.fetchone()
         await cursor.close()
         assert row is not None

@@ -31,10 +31,7 @@ async def get_edges_for_engram(
 
     Optionally filter by predicate.
     """
-    query = (
-        "SELECT * FROM edges "
-        "WHERE (source_engram_id = ? OR target_engram_id = ?)"
-    )
+    query = "SELECT * FROM edges WHERE (source_engram_id = ? OR target_engram_id = ?)"
     params: list[str | int] = [engram_id, engram_id]
     if predicate is not None:
         query += " AND predicate = ?"
@@ -94,9 +91,7 @@ async def get_neighborhood(
     Returns None if the center engram does not exist.
     """
     # Fetch center engram
-    cursor = await db.execute(
-        "SELECT * FROM engrams WHERE id = ?", (engram_id,)
-    )
+    cursor = await db.execute("SELECT * FROM engrams WHERE id = ?", (engram_id,))
     row = await cursor.fetchone()
     await cursor.close()
     if row is None:
@@ -117,9 +112,7 @@ async def get_neighborhood(
         frontier_list = list(frontier)
 
         query = (
-            f"SELECT * FROM edges WHERE "
-            f"(source_engram_id IN ({placeholders}) OR "
-            f"target_engram_id IN ({placeholders}))"
+            f"SELECT * FROM edges WHERE (source_engram_id IN ({placeholders}) OR target_engram_id IN ({placeholders}))"
         )
         params: list[str] = frontier_list + frontier_list
         if predicate is not None:

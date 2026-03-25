@@ -82,9 +82,7 @@ class TestStripHtml:
 
 class TestFetchRss:
     def test_parses_entries(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(SAMPLE_RSS)
-        )
+        monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(SAMPLE_RSS))
         items = fetch_rss("https://example.com/feed.xml")
         assert len(items) == 2
         assert items[0].title == "Entry One"
@@ -92,9 +90,7 @@ class TestFetchRss:
         assert items[0].text == "First entry content."
 
     def test_empty_feed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(EMPTY_RSS)
-        )
+        monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(EMPTY_RSS))
         items = fetch_rss("https://example.com/feed.xml")
         assert items == []
 
@@ -104,16 +100,12 @@ class TestFetchRss:
         <item><title></title><link>https://example.com/x</link>
         <description></description></item>
         </channel></rss>"""
-        monkeypatch.setattr(
-            httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(rss)
-        )
+        monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(rss))
         items = fetch_rss("https://example.com/feed.xml")
         assert items == []
 
     def test_preserves_published(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(SAMPLE_RSS)
-        )
+        monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(SAMPLE_RSS))
         items = fetch_rss("https://example.com/feed.xml")
         assert items[0].metadata is not None
         assert "published" in items[0].metadata
@@ -133,32 +125,24 @@ class TestFetchRss:
 
 class TestFetchScrape:
     def test_extracts_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(SAMPLE_HTML)
-        )
+        monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(SAMPLE_HTML))
         items = fetch_scrape("https://example.com/page")
         assert len(items) == 1
         assert "Hello world." in items[0].text
 
     def test_extracts_title(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(SAMPLE_HTML)
-        )
+        monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(SAMPLE_HTML))
         items = fetch_scrape("https://example.com/page")
         assert items[0].title == "Test Page"
 
     def test_empty_page_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response("")
-        )
+        monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(""))
         with pytest.raises(ValueError, match="No extractable text"):
             fetch_scrape("https://example.com/page")
 
     def test_follows_redirects(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Just verify follow_redirects is used (Client is constructed with it)
-        monkeypatch.setattr(
-            httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(SAMPLE_HTML)
-        )
+        monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(SAMPLE_HTML))
         items = fetch_scrape("https://example.com/redirect")
         assert len(items) == 1
 
@@ -183,9 +167,7 @@ class TestFetchYoutube:
         <item><title>Vid 1</title><link>https://www.youtube.com/watch?v=vid1</link>
         <description>Desc</description></item>
         </channel></rss>"""
-        monkeypatch.setattr(
-            httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(channel_rss)
-        )
+        monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(channel_rss))
         monkeypatch.setattr(
             "hypomnema.ingestion.feeds._fetch_transcript",
             lambda vid: f"transcript for {vid}",
@@ -205,16 +187,12 @@ class TestFetchYoutube:
         <item><title>Vid 1</title><link>https://www.youtube.com/watch?v=vid1</link>
         <description>Desc</description></item>
         </channel></rss>"""
-        monkeypatch.setattr(
-            httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(channel_rss)
-        )
+        monkeypatch.setattr(httpx.Client, "get", lambda self, url, **kw: _mock_httpx_response(channel_rss))
 
         def fail_transcript(vid: str) -> str:
             raise RuntimeError("no transcript")
 
-        monkeypatch.setattr(
-            "hypomnema.ingestion.feeds._fetch_transcript", fail_transcript
-        )
+        monkeypatch.setattr("hypomnema.ingestion.feeds._fetch_transcript", fail_transcript)
         items = fetch_youtube("https://www.youtube.com/feeds/videos.xml?channel_id=UC123")
         assert items == []
 
@@ -258,10 +236,14 @@ class TestIngestFeedItems:
 
     @pytest.mark.asyncio
     async def test_metadata_stored(self, tmp_db: Any) -> None:
-        items = [FetchedItem(
-            title="T1", text="Content", source_uri="https://example.com/1",
-            metadata={"published": "2024-01-01"},
-        )]
+        items = [
+            FetchedItem(
+                title="T1",
+                text="Content",
+                source_uri="https://example.com/1",
+                metadata={"published": "2024-01-01"},
+            )
+        ]
         docs = await ingest_feed_items(tmp_db, items)
         assert docs[0].metadata == {"published": "2024-01-01"}
 
@@ -286,7 +268,8 @@ class TestPollFeed:
         self, tmp_db: Any, sample_feed_source: FeedSource, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setitem(
-            feeds_mod._FETCHERS, "rss",
+            feeds_mod._FETCHERS,
+            "rss",
             lambda url, timeout: [FetchedItem(title="T", text="C", source_uri="https://example.com/r1")],
         )
         docs = await poll_feed(tmp_db, sample_feed_source)
@@ -296,7 +279,8 @@ class TestPollFeed:
     async def test_dispatches_scrape(self, tmp_db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
         source = await create_feed_source(tmp_db, "Scrape", "scrape", "https://example.com/page")
         monkeypatch.setitem(
-            feeds_mod._FETCHERS, "scrape",
+            feeds_mod._FETCHERS,
+            "scrape",
             lambda url, timeout: [FetchedItem(title="P", text="Page", source_uri=url)],
         )
         docs = await poll_feed(tmp_db, source)
@@ -306,7 +290,8 @@ class TestPollFeed:
     async def test_dispatches_youtube(self, tmp_db: Any, monkeypatch: pytest.MonkeyPatch) -> None:
         source = await create_feed_source(tmp_db, "YT", "youtube", "https://www.youtube.com/watch?v=abc")
         monkeypatch.setitem(
-            feeds_mod._FETCHERS, "youtube",
+            feeds_mod._FETCHERS,
+            "youtube",
             lambda url, timeout: [FetchedItem(title="V", text="Trans", source_uri=url, metadata={"video_id": "abc"})],
         )
         docs = await poll_feed(tmp_db, source)
@@ -319,9 +304,7 @@ class TestPollFeed:
         monkeypatch.setitem(feeds_mod._FETCHERS, "rss", lambda url, timeout: [])
         assert sample_feed_source.last_fetched is None
         await poll_feed(tmp_db, sample_feed_source)
-        cursor = await tmp_db.execute(
-            "SELECT last_fetched FROM feed_sources WHERE id = ?", (sample_feed_source.id,)
-        )
+        cursor = await tmp_db.execute("SELECT last_fetched FROM feed_sources WHERE id = ?", (sample_feed_source.id,))
         row = await cursor.fetchone()
         await cursor.close()
         assert row["last_fetched"] is not None
@@ -330,8 +313,13 @@ class TestPollFeed:
     async def test_unknown_type_raises(self, tmp_db: Any) -> None:
         # Create a FeedSource with invalid type directly via model
         source = FeedSource(
-            id="fake", name="Bad", feed_type="invalid", url="http://x",
-            schedule="* * * * *", active=True, last_fetched=None,
+            id="fake",
+            name="Bad",
+            feed_type="invalid",
+            url="http://x",
+            schedule="* * * * *",
+            active=True,
+            last_fetched=None,
             created_at="2024-01-01T00:00:00+00:00",
         )
         with pytest.raises(ValueError, match="Unknown feed type"):

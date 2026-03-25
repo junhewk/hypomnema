@@ -25,8 +25,7 @@ async def create_scribble(
         raise ValueError("Scribble text must not be empty")
 
     cursor = await db.execute(
-        "INSERT INTO documents (source_type, title, text) "
-        "VALUES ('scribble', ?, ?) RETURNING *",
+        "INSERT INTO documents (source_type, title, text) VALUES ('scribble', ?, ?) RETURNING *",
         (title, stripped),
     )
     row = await cursor.fetchone()

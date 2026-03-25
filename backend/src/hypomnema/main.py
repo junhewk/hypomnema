@@ -27,12 +27,14 @@ def _configure_json_logging() -> None:
 
     class _JsonFormatter(logging.Formatter):
         def format(self, record: logging.LogRecord) -> str:
-            return _json.dumps({
-                "ts": self.formatTime(record, self.datefmt),
-                "level": record.levelname,
-                "logger": record.name,
-                "msg": record.getMessage(),
-            })
+            return _json.dumps(
+                {
+                    "ts": self.formatTime(record, self.datefmt),
+                    "level": record.levelname,
+                    "logger": record.name,
+                    "msg": record.getMessage(),
+                }
+            )
 
     handler = logging.StreamHandler()
     handler.setFormatter(_JsonFormatter())
@@ -68,15 +70,18 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Pre-hash passphrase from env var (server/Docker mode)
     if settings.mode == "server" and settings.passphrase:
-        from hypomnema.db.settings_store import get_setting, set_setting
         from hypomnema.crypto import hash_passphrase
+        from hypomnema.db.settings_store import get_setting, set_setting
 
         existing = await get_setting(db, "auth_passphrase_hash", fernet_key=fernet_key)
         if not existing:
             hashed = hash_passphrase(settings.passphrase)
             await set_setting(
-                db, "auth_passphrase_hash", hashed,
-                fernet_key=fernet_key, encrypt_value=True,
+                db,
+                "auth_passphrase_hash",
+                hashed,
+                fernet_key=fernet_key,
+                encrypt_value=True,
             )
             logger.info("Pre-set passphrase from HYPOMNEMA_PASSPHRASE env var")
 
@@ -85,6 +90,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Embedding change status
     from hypomnema.api.schemas import EmbeddingChangeStatus
+
     app.state.embedding_change_status = EmbeddingChangeStatus()
     app.state.embedding_change_task = None
 
@@ -143,7 +149,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         if vec_schema_rebuilt:
             logger.warning(
-                "Embedding dimension mismatch detected; rebuilt vec tables for %s dimensions and queued full reprocessing",
+                "Embedding dimension mismatch detected; rebuilt vec tables"
+                " for %s dimensions and queued full reprocessing",
                 settings.embedding_dim,
             )
             cursor = await db.execute("SELECT count(*) FROM documents")
@@ -164,9 +171,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     total=total,
                     processed=0,
                 )
-                app.state.embedding_change_task = asyncio.create_task(
-                    _reprocess_all_documents(app, total)
-                )
+                app.state.embedding_change_task = asyncio.create_task(_reprocess_all_documents(app, total))
     else:
         # Setup mode: no embeddings, no LLM, no scheduler
         app.state.embeddings = None
@@ -213,10 +218,10 @@ def create_app(settings: Settings | None = None, *, use_lifespan: bool = True) -
     from hypomnema.api.documents import router as documents_router
     from hypomnema.api.engrams import router as engrams_router
     from hypomnema.api.feeds import router as feeds_router
+    from hypomnema.api.health import router as health_router
     from hypomnema.api.search import router as search_router
     from hypomnema.api.settings import router as settings_router
     from hypomnema.api.viz import router as viz_router
-    from hypomnema.api.health import router as health_router
 
     app.include_router(auth_router)
     app.include_router(backup_router)

@@ -35,10 +35,7 @@ def parse_json_object(text: str) -> dict[str, Any]:
 
 def _decode_first_json_object(text: str) -> Any:
     decoder = json.JSONDecoder()
-    starts = [
-        index for index, char in enumerate(text)
-        if char in "{["
-    ]
+    starts = [index for index, char in enumerate(text) if char in "{["]
     for index in starts:
         try:
             parsed, _ = decoder.raw_decode(text[index:])

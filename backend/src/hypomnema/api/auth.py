@@ -10,13 +10,12 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
-from starlette.types import ASGIApp, Receive, Scope, Send
 
 from hypomnema.crypto import hash_passphrase, verify_passphrase
 from hypomnema.db.settings_store import get_setting, set_setting
 
 if TYPE_CHECKING:
-    pass
+    from starlette.types import ASGIApp, Receive, Scope, Send
 
 COOKIE_NAME = "hypomnema_session"
 COOKIE_MAX_AGE = 30 * 24 * 60 * 60  # 30 days
@@ -25,10 +24,8 @@ EXEMPT_PREFIXES = ("/api/health", "/api/auth/")
 
 def _is_https(request: Request) -> bool:
     """Detect HTTPS via X-Forwarded-Proto (set by reverse proxies) or scheme."""
-    return (
-        request.headers.get("x-forwarded-proto") == "https"
-        or request.url.scheme == "https"
-    )
+    return request.headers.get("x-forwarded-proto") == "https" or request.url.scheme == "https"
+
 
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -82,9 +79,7 @@ class PassphraseAuthMiddleware:
         fernet_key: bytes | None = getattr(getattr(app_state, "state", None), "fernet_key", None)
         if fernet_key is None:
             # Key not yet available (before lifespan) — reject
-            response = JSONResponse(
-                {"detail": "Server starting up"}, status_code=503
-            )
+            response = JSONResponse({"detail": "Server starting up"}, status_code=503)
             await response(scope, receive, send)
             return
 
@@ -104,9 +99,7 @@ class PassphraseAuthMiddleware:
             return
 
         # Unauthorized
-        response = JSONResponse(
-            {"detail": "Authentication required"}, status_code=401
-        )
+        response = JSONResponse({"detail": "Authentication required"}, status_code=401)
         await response(scope, receive, send)
 
 
@@ -130,9 +123,7 @@ async def auth_status(request: Request) -> dict:
 
     # Check if current request has a valid session cookie
     cookie_value = request.cookies.get(COOKIE_NAME)
-    authenticated = bool(
-        cookie_value and _validate_session(fernet_key, cookie_value)
-    )
+    authenticated = bool(cookie_value and _validate_session(fernet_key, cookie_value))
 
     return {
         "auth_required": True,
@@ -149,21 +140,15 @@ async def auth_setup(request: Request) -> JSONResponse:
 
     existing = await get_setting(db, "auth_passphrase_hash", fernet_key=fernet_key)
     if existing:
-        return JSONResponse(
-            {"detail": "Passphrase already configured"}, status_code=409
-        )
+        return JSONResponse({"detail": "Passphrase already configured"}, status_code=409)
 
     body = await request.json()
     passphrase = body.get("passphrase", "")
     if len(passphrase) < 8:
-        return JSONResponse(
-            {"detail": "Passphrase must be at least 8 characters"}, status_code=400
-        )
+        return JSONResponse({"detail": "Passphrase must be at least 8 characters"}, status_code=400)
 
     hashed = await asyncio.to_thread(hash_passphrase, passphrase)
-    await set_setting(
-        db, "auth_passphrase_hash", hashed, fernet_key=fernet_key, encrypt_value=True
-    )
+    await set_setting(db, "auth_passphrase_hash", hashed, fernet_key=fernet_key, encrypt_value=True)
 
     session_value = _make_session_value(fernet_key)
     response = JSONResponse({"status": "ok"})
@@ -186,9 +171,7 @@ async def auth_login(request: Request) -> JSONResponse:
 
     stored_hash = await get_setting(db, "auth_passphrase_hash", fernet_key=fernet_key)
     if not stored_hash:
-        return JSONResponse(
-            {"detail": "No passphrase configured"}, status_code=400
-        )
+        return JSONResponse({"detail": "No passphrase configured"}, status_code=400)
 
     body = await request.json()
     passphrase = body.get("passphrase", "")

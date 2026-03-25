@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Literal
 
 from pydantic import field_validator, model_validator
@@ -7,11 +7,17 @@ from pydantic_settings import BaseSettings
 
 from hypomnema.tidy import DEFAULT_TIDY_LEVEL, TidyLevel
 
-
 _DB_OVERRIDABLE = {
-    "llm_provider", "llm_model", "anthropic_api_key", "google_api_key",
-    "openai_api_key", "ollama_base_url", "openai_base_url",
-    "embedding_provider", "embedding_model", "embedding_dim",
+    "llm_provider",
+    "llm_model",
+    "anthropic_api_key",
+    "google_api_key",
+    "openai_api_key",
+    "ollama_base_url",
+    "openai_base_url",
+    "embedding_provider",
+    "embedding_model",
+    "embedding_dim",
     "tidy_level",
 }
 
@@ -114,9 +120,7 @@ class Settings(BaseSettings):
     @classmethod
     def with_db_overrides(cls, base: "Settings", db_settings: dict[str, str]) -> "Settings":
         """Create a new Settings with DB-overridable fields merged from stored values."""
-        overrides: dict[str, str | int] = {
-            k: v for k, v in db_settings.items() if k in _DB_OVERRIDABLE and v
-        }
+        overrides: dict[str, str | int] = {k: v for k, v in db_settings.items() if k in _DB_OVERRIDABLE and v}
         if not overrides:
             return base
         # DB stores everything as strings — convert numeric fields

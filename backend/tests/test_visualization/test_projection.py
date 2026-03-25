@@ -75,17 +75,23 @@ class TestComputeClusters:
 
 class TestDetectGaps:
     def test_finds_gap_between_distant_clusters(self) -> None:
-        coords = np.array(
-            [[0, 0, 0], [1, 0, 0], [10, 0, 0], [11, 0, 0]], dtype=np.float32
-        )
+        coords = np.array([[0, 0, 0], [1, 0, 0], [10, 0, 0], [11, 0, 0]], dtype=np.float32)
         clusters = [
             Cluster(
-                cluster_id=0, label=None, engram_count=2,
-                centroid_x=0.5, centroid_y=0, centroid_z=0,
+                cluster_id=0,
+                label=None,
+                engram_count=2,
+                centroid_x=0.5,
+                centroid_y=0,
+                centroid_z=0,
             ),
             Cluster(
-                cluster_id=1, label=None, engram_count=2,
-                centroid_x=10.5, centroid_y=0, centroid_z=0,
+                cluster_id=1,
+                label=None,
+                engram_count=2,
+                centroid_x=10.5,
+                centroid_y=0,
+                centroid_z=0,
             ),
         ]
         gaps = _detect_gaps(coords, clusters)
@@ -97,25 +103,35 @@ class TestDetectGaps:
         coords = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.float32)
         clusters = [
             Cluster(
-                cluster_id=0, label=None, engram_count=2,
-                centroid_x=0.5, centroid_y=0, centroid_z=0,
+                cluster_id=0,
+                label=None,
+                engram_count=2,
+                centroid_x=0.5,
+                centroid_y=0,
+                centroid_z=0,
             )
         ]
         gaps = _detect_gaps(coords, clusters)
         assert gaps == []
 
     def test_gap_has_z_coordinate(self) -> None:
-        coords = np.array(
-            [[0, 0, 0], [1, 0, 0], [10, 0, 5], [11, 0, 5]], dtype=np.float32
-        )
+        coords = np.array([[0, 0, 0], [1, 0, 0], [10, 0, 5], [11, 0, 5]], dtype=np.float32)
         clusters = [
             Cluster(
-                cluster_id=0, label=None, engram_count=2,
-                centroid_x=0.5, centroid_y=0, centroid_z=0,
+                cluster_id=0,
+                label=None,
+                engram_count=2,
+                centroid_x=0.5,
+                centroid_y=0,
+                centroid_z=0,
             ),
             Cluster(
-                cluster_id=1, label=None, engram_count=2,
-                centroid_x=10.5, centroid_y=0, centroid_z=5,
+                cluster_id=1,
+                label=None,
+                engram_count=2,
+                centroid_x=10.5,
+                centroid_y=0,
+                centroid_z=5,
             ),
         ]
         gaps = _detect_gaps(coords, clusters)

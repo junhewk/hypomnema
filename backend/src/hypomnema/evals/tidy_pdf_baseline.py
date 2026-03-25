@@ -13,16 +13,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from time import perf_counter
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from hypomnema.config import Settings
 from hypomnema.db.engine import connect
 from hypomnema.db.schema import create_tables
 from hypomnema.evals.common import load_effective_settings
 from hypomnema.evals.tidy_text import (
-    ValidatorResult,
-    TidyTextEvalCase,
     TidyTextCaseReport,
+    TidyTextEvalCase,
+    ValidatorResult,
     aggregate_case_scores,
     build_eval_llm,
     build_review_reasons,
@@ -36,7 +36,9 @@ from hypomnema.evals.tidy_text import (
 from hypomnema.ingestion.url_fetch import fetch_url
 from hypomnema.ontology.extractor import ExtractionResult, ExtractionTrace, render_tidy_text
 from hypomnema.token_utils import estimate_text_tokens
-from hypomnema.tidy import TidyLevel
+
+if TYPE_CHECKING:
+    from hypomnema.tidy import TidyLevel
 
 PdfTierId = str
 TokenCounter = Callable[[str], Awaitable[int]]
@@ -194,17 +196,26 @@ _PDF_TIERS: tuple[PdfTier, ...] = (
     PdfTier(
         id="acceptable",
         tidy_level="light_cleanup",
-        summary="Tight chunk budgets with extractive selection and deterministic stitch; optimize for reliability and token preservation.",
+        summary=(
+            "Tight chunk budgets with extractive selection and deterministic stitch;"
+            " optimize for reliability and token preservation."
+        ),
     ),
     PdfTier(
         id="balanced",
         tidy_level="structured_notes",
-        summary="Medium chunk budgets with light local abstraction and deterministic stitch; preserve section order while improving readability.",
+        summary=(
+            "Medium chunk budgets with light local abstraction and deterministic stitch;"
+            " preserve section order while improving readability."
+        ),
     ),
     PdfTier(
         id="elaborate",
         tidy_level="editorial_polish",
-        summary="Largest stitch-first budget with stronger local cleanup; optimize for readability while staying source-faithful.",
+        summary=(
+            "Largest stitch-first budget with stronger local cleanup;"
+            " optimize for readability while staying source-faithful."
+        ),
     ),
 )
 
@@ -291,9 +302,7 @@ def _is_citation_dense_segment(segment: str) -> bool:
     year_mentions = len(re.findall(r"\((?:[^()]*\b(?:19|20)\d{2}\b[^()]*)\)", segment))
     if year_mentions >= 2:
         return True
-    if segment.count("&") >= 1 and segment.count(",") >= 4 and year_mentions >= 1:
-        return True
-    return False
+    return bool(segment.count("&") >= 1 and segment.count(",") >= 4 and year_mentions >= 1)
 
 
 def _select_salient_quotes(
@@ -330,9 +339,7 @@ def _interesting_numeric_token(token: str) -> bool:
         return False
     if _PDF_YEAR_TOKEN_RE.fullmatch(cleaned):
         return False
-    if cleaned.isdigit() and len(cleaned) <= 2:
-        return False
-    return True
+    return not (cleaned.isdigit() and len(cleaned) <= 2)
 
 
 def _numeric_token_salience(token: str) -> float:
@@ -413,9 +420,9 @@ def _coverage_validator(
         hard_fail=metric.ratio < threshold.hard_fail_floor,
         score=round(metric.ratio * 100.0, 2),
         detail=(
-            f"{detail_label} {metric.matched_count}/{metric.target_count}; "
-            f"missing {', '.join(missing[:4])}"
-            if missing else f"{detail_label} {metric.matched_count}/{metric.target_count}"
+            f"{detail_label} {metric.matched_count}/{metric.target_count}; missing {', '.join(missing[:4])}"
+            if missing
+            else f"{detail_label} {metric.matched_count}/{metric.target_count}"
         ),
     )
 
@@ -806,7 +813,8 @@ def render_tidy_pdf_baseline_markdown(report: PdfBaselineReport) -> str:
             f"- `{result.article_id}` / `{result.tier_id}`: overall {result.report.aggregate.overall:.2f}, "
             f"strategy `{result.report.strategy}`, chunks {result.report.chunk_count}, "
             f"output tokens {result.output_token_count}, topic {result.pdf_metrics.topic.ratio * 100.0:.2f}, "
-            f"quote {result.pdf_metrics.quote.ratio * 100.0:.2f}, numeric {result.pdf_metrics.numeric.ratio * 100.0:.2f}, "
+            f"quote {result.pdf_metrics.quote.ratio * 100.0:.2f}, "
+            f"numeric {result.pdf_metrics.numeric.ratio * 100.0:.2f}, "
             f"latency {result.report.generation_latency_ms} ms, "
             f"polished accepted {result.selection_debug.get('accepted_polished_blocks', 0)}, "
             f"polished rejected {result.selection_debug.get('rejected_polished_blocks', 0)}, "

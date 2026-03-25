@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import io
-from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import pytest
 from pypdf import PdfWriter
 
 from hypomnema.ingestion.url_fetch import DuplicateUrlError, fetch_url
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 
 class _FakeResponse:

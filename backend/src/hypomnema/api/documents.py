@@ -7,12 +7,20 @@ import logging
 import tempfile
 from pathlib import Path
 
+import httpx
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, UploadFile
 
-import httpx
-
 from hypomnema.api.deps import DB
-from hypomnema.api.schemas import DocumentDetail, DocumentOut, DocumentUpdate, DocumentWithEngrams, EngramSummary, RelatedDocument, ScribbleCreate, UrlFetch
+from hypomnema.api.schemas import (
+    DocumentDetail,
+    DocumentOut,
+    DocumentUpdate,
+    DocumentWithEngrams,
+    EngramSummary,
+    RelatedDocument,
+    ScribbleCreate,
+    UrlFetch,
+)
 from hypomnema.db.models import Document, Engram
 from hypomnema.ingestion.file_parser import UnsupportedFormatError, ingest_file
 from hypomnema.ingestion.scribble import create_scribble
@@ -309,9 +317,7 @@ async def list_documents(db: DB, days: int = 14) -> list[DocumentWithEngrams]:
 @router.get("/count")
 async def get_document_count(db: DB) -> dict[str, int]:
     """Return total document count excluding drafts."""
-    cursor = await db.execute(
-        f"SELECT COUNT(*) FROM documents WHERE NOT ({_DRAFT_FILTER})"
-    )
+    cursor = await db.execute(f"SELECT COUNT(*) FROM documents WHERE NOT ({_DRAFT_FILTER})")
     row = await cursor.fetchone()
     await cursor.close()
     return {"total": row[0] if row else 0}
@@ -319,9 +325,7 @@ async def get_document_count(db: DB) -> dict[str, int]:
 
 @router.get("/drafts", response_model=list[DocumentOut])
 async def list_drafts(db: DB) -> list[DocumentOut]:
-    cursor = await db.execute(
-        f"SELECT * FROM documents WHERE {_DRAFT_FILTER} ORDER BY updated_at DESC"
-    )
+    cursor = await db.execute(f"SELECT * FROM documents WHERE {_DRAFT_FILTER} ORDER BY updated_at DESC")
     rows = await cursor.fetchall()
     await cursor.close()
     return [DocumentOut(**dict(r)) for r in rows]
@@ -337,9 +341,7 @@ async def get_document(document_id: str, db: DB) -> DocumentDetail:
 
     # Fetch linked engrams
     cursor = await db.execute(
-        "SELECT e.* FROM engrams e "
-        "JOIN document_engrams de ON e.id = de.engram_id "
-        "WHERE de.document_id = ?",
+        "SELECT e.* FROM engrams e JOIN document_engrams de ON e.id = de.engram_id WHERE de.document_id = ?",
         (document_id,),
     )
     engram_rows = await cursor.fetchall()

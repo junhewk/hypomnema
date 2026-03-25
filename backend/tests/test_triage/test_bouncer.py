@@ -32,8 +32,7 @@ async def _insert_feed_doc(
 ) -> str:
     """Insert a feed-type document (triaged=0 by default)."""
     cursor = await db.execute(
-        "INSERT INTO documents (id, source_type, text) "
-        "VALUES (?, 'feed', ?) RETURNING id",
+        "INSERT INTO documents (id, source_type, text) VALUES (?, 'feed', ?) RETURNING id",
         (doc_id, text),
     )
     row = await cursor.fetchone()
@@ -63,9 +62,7 @@ class TestTriageDocument:
     async def test_irrelevant_document_rejected(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         await _seed_engrams(tmp_db, mock_embeddings)
         # Completely unrelated text → cosine ≈ 0 for random 384-dim vectors
-        doc_id = await _insert_feed_doc(
-            tmp_db, "recipes for banana bread with chocolate chips", doc_id="irrel1"
-        )
+        doc_id = await _insert_feed_doc(tmp_db, "recipes for banana bread with chocolate chips", doc_id="irrel1")
         result = await triage_document(tmp_db, doc_id, mock_embeddings, threshold=0.3)
         assert result is False
 
@@ -78,9 +75,7 @@ class TestTriageDocument:
     @pytest.mark.asyncio
     async def test_returns_false_on_reject(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         await _seed_engrams(tmp_db, mock_embeddings)
-        doc_id = await _insert_feed_doc(
-            tmp_db, "quantum computing breakthroughs in superconductors", doc_id="rej1"
-        )
+        doc_id = await _insert_feed_doc(tmp_db, "quantum computing breakthroughs in superconductors", doc_id="rej1")
         result = await triage_document(tmp_db, doc_id, mock_embeddings, threshold=0.3)
         assert result is False
 
@@ -88,49 +83,35 @@ class TestTriageDocument:
     async def test_sets_triaged_1_on_accept(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         doc_id = await _insert_feed_doc(tmp_db, "bootstrap doc", doc_id="flag1")
         await triage_document(tmp_db, doc_id, mock_embeddings)
-        cursor = await tmp_db.execute(
-            "SELECT triaged FROM documents WHERE id = ?", (doc_id,)
-        )
+        cursor = await tmp_db.execute("SELECT triaged FROM documents WHERE id = ?", (doc_id,))
         row = await cursor.fetchone()
         assert row["triaged"] == 1
 
     @pytest.mark.asyncio
     async def test_sets_triaged_neg1_on_reject(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         await _seed_engrams(tmp_db, mock_embeddings)
-        doc_id = await _insert_feed_doc(
-            tmp_db, "recipes for banana bread with chocolate chips", doc_id="flag2"
-        )
+        doc_id = await _insert_feed_doc(tmp_db, "recipes for banana bread with chocolate chips", doc_id="flag2")
         await triage_document(tmp_db, doc_id, mock_embeddings, threshold=0.3)
-        cursor = await tmp_db.execute(
-            "SELECT triaged FROM documents WHERE id = ?", (doc_id,)
-        )
+        cursor = await tmp_db.execute("SELECT triaged FROM documents WHERE id = ?", (doc_id,))
         row = await cursor.fetchone()
         assert row["triaged"] == -1
 
     @pytest.mark.asyncio
     async def test_threshold_configurable(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         await _seed_engrams(tmp_db, mock_embeddings)
-        doc_id = await _insert_feed_doc(
-            tmp_db, "recipes for banana bread with chocolate chips", doc_id="thresh1"
-        )
+        doc_id = await _insert_feed_doc(tmp_db, "recipes for banana bread with chocolate chips", doc_id="thresh1")
         # threshold=0.0 → accepts anything with similarity >= 0
         # Random vectors have cosine sim that can be slightly negative,
         # but threshold=-1.0 guarantees acceptance
-        result = await triage_document(
-            tmp_db, doc_id, mock_embeddings, threshold=-1.0
-        )
+        result = await triage_document(tmp_db, doc_id, mock_embeddings, threshold=-1.0)
         assert result is True
 
     @pytest.mark.asyncio
     async def test_high_threshold_rejects(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         await _seed_engrams(tmp_db, mock_embeddings)
         # Even somewhat related text won't hit cosine=1.0
-        doc_id = await _insert_feed_doc(
-            tmp_db, "sociological analysis of networks", doc_id="thresh2"
-        )
-        result = await triage_document(
-            tmp_db, doc_id, mock_embeddings, threshold=1.0
-        )
+        doc_id = await _insert_feed_doc(tmp_db, "sociological analysis of networks", doc_id="thresh2")
+        result = await triage_document(tmp_db, doc_id, mock_embeddings, threshold=1.0)
         assert result is False
 
     @pytest.mark.asyncio
@@ -144,9 +125,7 @@ class TestTriageDocument:
     @pytest.mark.asyncio
     async def test_already_rejected_returns_false(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         doc_id = await _insert_feed_doc(tmp_db, "some doc", doc_id="idem2")
-        await tmp_db.execute(
-            "UPDATE documents SET triaged = -1 WHERE id = ?", (doc_id,)
-        )
+        await tmp_db.execute("UPDATE documents SET triaged = -1 WHERE id = ?", (doc_id,))
         await tmp_db.commit()
         result = await triage_document(tmp_db, doc_id, mock_embeddings)
         assert result is False
@@ -171,9 +150,7 @@ class TestTriageDocument:
     @pytest.mark.asyncio
     async def test_stores_embedding_even_on_reject(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         await _seed_engrams(tmp_db, mock_embeddings)
-        doc_id = await _insert_feed_doc(
-            tmp_db, "recipes for banana bread with chocolate chips", doc_id="emb2"
-        )
+        doc_id = await _insert_feed_doc(tmp_db, "recipes for banana bread with chocolate chips", doc_id="emb2")
         await triage_document(tmp_db, doc_id, mock_embeddings, threshold=0.3)
         cursor = await tmp_db.execute(
             "SELECT document_id FROM document_embeddings WHERE document_id = ?",
@@ -189,26 +166,21 @@ class TestTriagePendingDocuments:
     async def test_triages_all_pending(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         for i in range(3):
             await _insert_feed_doc(tmp_db, f"Feed content {i}", doc_id=f"batch{i}")
-        results = await triage_pending_documents(
-            tmp_db, mock_embeddings, source_type=None
-        )
+        results = await triage_pending_documents(tmp_db, mock_embeddings, source_type=None)
         assert len(results) == 3
 
     @pytest.mark.asyncio
     async def test_respects_limit(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         for i in range(3):
             await _insert_feed_doc(tmp_db, f"Feed content {i}", doc_id=f"lim{i}")
-        results = await triage_pending_documents(
-            tmp_db, mock_embeddings, source_type=None, limit=1
-        )
+        results = await triage_pending_documents(tmp_db, mock_embeddings, source_type=None, limit=1)
         assert len(results) == 1
 
     @pytest.mark.asyncio
     async def test_filters_by_source_type(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         # Insert a scribble (not feed)
         await tmp_db.execute(
-            "INSERT INTO documents (id, source_type, text) "
-            "VALUES ('scrib1', 'scribble', 'some scribble text')"
+            "INSERT INTO documents (id, source_type, text) VALUES ('scrib1', 'scribble', 'some scribble text')"
         )
         await tmp_db.commit()
         # Insert a feed doc
@@ -222,26 +194,19 @@ class TestTriagePendingDocuments:
     @pytest.mark.asyncio
     async def test_source_type_none_triages_all(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         await tmp_db.execute(
-            "INSERT INTO documents (id, source_type, text) "
-            "VALUES ('scrib2', 'scribble', 'some scribble text')"
+            "INSERT INTO documents (id, source_type, text) VALUES ('scrib2', 'scribble', 'some scribble text')"
         )
         await tmp_db.commit()
         await _insert_feed_doc(tmp_db, "Feed content", doc_id="feed2")
-        results = await triage_pending_documents(
-            tmp_db, mock_embeddings, source_type=None
-        )
+        results = await triage_pending_documents(tmp_db, mock_embeddings, source_type=None)
         assert len(results) == 2
 
     @pytest.mark.asyncio
     async def test_skips_already_triaged(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         await _insert_feed_doc(tmp_db, "Already triaged", doc_id="skip1")
-        await tmp_db.execute(
-            "UPDATE documents SET triaged = 1 WHERE id = 'skip1'"
-        )
+        await tmp_db.execute("UPDATE documents SET triaged = 1 WHERE id = 'skip1'")
         await tmp_db.commit()
         await _insert_feed_doc(tmp_db, "Not triaged yet", doc_id="skip2")
-        results = await triage_pending_documents(
-            tmp_db, mock_embeddings, source_type=None
-        )
+        results = await triage_pending_documents(tmp_db, mock_embeddings, source_type=None)
         assert len(results) == 1
         assert "skip2" in results

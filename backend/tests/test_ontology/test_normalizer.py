@@ -37,14 +37,16 @@ class TestNormalize:
 class TestResolveSynonyms:
     @pytest.mark.asyncio
     async def test_merges_synonyms(self) -> None:
-        llm = MockLLMClient(responses={
-            "Normalize these entity names": {
-                "mapping": {
-                    "ai": "artificial intelligence",
-                    "artificial intelligence": "artificial intelligence",
+        llm = MockLLMClient(
+            responses={
+                "Normalize these entity names": {
+                    "mapping": {
+                        "ai": "artificial intelligence",
+                        "artificial intelligence": "artificial intelligence",
+                    }
                 }
             }
-        })
+        )
         result = await resolve_synonyms(llm, ["ai", "artificial intelligence"])
         assert result["ai"] == "artificial intelligence"
         assert result["artificial intelligence"] == "artificial intelligence"
@@ -57,11 +59,7 @@ class TestResolveSynonyms:
 
     @pytest.mark.asyncio
     async def test_unmapped_names_fall_back(self) -> None:
-        llm = MockLLMClient(responses={
-            "Normalize these entity names": {
-                "mapping": {"ai": "artificial intelligence"}
-            }
-        })
+        llm = MockLLMClient(responses={"Normalize these entity names": {"mapping": {"ai": "artificial intelligence"}}})
         result = await resolve_synonyms(llm, ["ai", "ontology"])
         assert result["ai"] == "artificial intelligence"
         assert result["ontology"] == "ontology"

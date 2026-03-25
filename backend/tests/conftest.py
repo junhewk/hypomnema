@@ -54,8 +54,7 @@ async def insert_engram_with_embedding(
     """Insert an engram with its embedding and return the engram ID."""
     concept_hash = hashlib.sha256(name.encode()).hexdigest()[:16]
     cursor = await db.execute(
-        "INSERT INTO engrams (canonical_name, concept_hash, description) "
-        "VALUES (?, ?, ?) RETURNING id",
+        "INSERT INTO engrams (canonical_name, concept_hash, description) VALUES (?, ?, ?) RETURNING id",
         (name, concept_hash, f"Description of {name}"),
     )
     row = await cursor.fetchone()

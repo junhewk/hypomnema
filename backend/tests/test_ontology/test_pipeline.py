@@ -15,39 +15,43 @@ from .conftest import insert_test_doc
 
 
 def _make_llm() -> MockLLMClient:
-    return MockLLMClient(responses={
-        "Actor-Network": {
-            "entities": [
-                {"name": "Actor-Network Theory", "description": "Sociological framework"},
-                {"name": "Translation", "description": "Process of network building"},
-            ]
-        },
-        "Normalize these entity names": {
-            "mapping": {
-                "actor-network theory": "actor-network theory",
-                "translation": "translation",
-            }
-        },
-    })
+    return MockLLMClient(
+        responses={
+            "Actor-Network": {
+                "entities": [
+                    {"name": "Actor-Network Theory", "description": "Sociological framework"},
+                    {"name": "Translation", "description": "Process of network building"},
+                ]
+            },
+            "Normalize these entity names": {
+                "mapping": {
+                    "actor-network theory": "actor-network theory",
+                    "translation": "translation",
+                }
+            },
+        }
+    )
 
 
 def _make_tidy_llm() -> MockLLMClient:
-    return MockLLMClient(responses={
-        "Tidy Actor-Network": {
-            "entities": [
-                {"name": "Actor-Network Theory", "description": "Sociological framework"},
-                {"name": "Translation", "description": "Process of network building"},
-            ],
-            "tidy_title": "Tidy Actor-Network Notes",
-            "tidy_text": "- Actor-Network Theory\n- Translation",
-        },
-        "Normalize these entity names": {
-            "mapping": {
-                "actor-network theory": "actor-network theory",
-                "translation": "translation",
-            }
-        },
-    })
+    return MockLLMClient(
+        responses={
+            "Tidy Actor-Network": {
+                "entities": [
+                    {"name": "Actor-Network Theory", "description": "Sociological framework"},
+                    {"name": "Translation", "description": "Process of network building"},
+                ],
+                "tidy_title": "Tidy Actor-Network Notes",
+                "tidy_text": "- Actor-Network Theory\n- Translation",
+            },
+            "Normalize these entity names": {
+                "mapping": {
+                    "actor-network theory": "actor-network theory",
+                    "translation": "translation",
+                }
+            },
+        }
+    )
 
 
 class TestProcessDocument:
@@ -64,9 +68,7 @@ class TestProcessDocument:
     async def test_document_marked_processed(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         await process_document(tmp_db, doc_id, _make_llm(), mock_embeddings)
-        cursor = await tmp_db.execute(
-            "SELECT processed FROM documents WHERE id = ?", (doc_id,)
-        )
+        cursor = await tmp_db.execute("SELECT processed FROM documents WHERE id = ?", (doc_id,))
         row = await cursor.fetchone()
         assert row["processed"] == 1
 
@@ -97,26 +99,18 @@ class TestProcessDocument:
 
     @pytest.mark.asyncio
     async def test_empty_extraction_marks_processed(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
-        doc_id = await insert_test_doc(
-            tmp_db, "trivial text with no entities", doc_id="emptydoc"
-        )
+        doc_id = await insert_test_doc(tmp_db, "trivial text with no entities", doc_id="emptydoc")
         # Default MockLLMClient returns {"mock": True} which has no "entities" key
         engrams = await process_document(tmp_db, doc_id, MockLLMClient(), mock_embeddings)
         assert engrams == []
-        cursor = await tmp_db.execute(
-            "SELECT processed FROM documents WHERE id = ?", (doc_id,)
-        )
+        cursor = await tmp_db.execute("SELECT processed FROM documents WHERE id = ?", (doc_id,))
         row = await cursor.fetchone()
         assert row["processed"] == 1
 
     @pytest.mark.asyncio
     async def test_dedup_across_documents(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
-        doc1 = await insert_test_doc(
-            tmp_db, "Actor-Network Theory was proposed.", doc_id="doc1"
-        )
-        doc2 = await insert_test_doc(
-            tmp_db, "Actor-Network Theory is widely used.", doc_id="doc2"
-        )
+        doc1 = await insert_test_doc(tmp_db, "Actor-Network Theory was proposed.", doc_id="doc1")
+        doc2 = await insert_test_doc(tmp_db, "Actor-Network Theory is widely used.", doc_id="doc2")
         llm = _make_llm()
         engrams1 = await process_document(tmp_db, doc1, llm, mock_embeddings)
         engrams2 = await process_document(tmp_db, doc2, llm, mock_embeddings)
@@ -181,85 +175,63 @@ class TestProcessPendingDocuments:
     @pytest.mark.asyncio
     async def test_processes_all_pending(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         for i in range(3):
-            await insert_test_doc(
-                tmp_db, "Actor-Network Theory discussion.", doc_id=f"pending{i}"
-            )
-        results = await process_pending_documents(
-            tmp_db, _make_llm(), mock_embeddings
-        )
+            await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id=f"pending{i}")
+        results = await process_pending_documents(tmp_db, _make_llm(), mock_embeddings)
         assert len(results) == 3
 
     @pytest.mark.asyncio
     async def test_respects_limit(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         for i in range(5):
-            await insert_test_doc(
-                tmp_db, "Actor-Network Theory discussion.", doc_id=f"limit{i}"
-            )
-        results = await process_pending_documents(
-            tmp_db, _make_llm(), mock_embeddings, limit=2
-        )
+            await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id=f"limit{i}")
+        results = await process_pending_documents(tmp_db, _make_llm(), mock_embeddings, limit=2)
         assert len(results) == 2
 
     @pytest.mark.asyncio
     async def test_skips_already_processed(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
-        doc1 = await insert_test_doc(
-            tmp_db, "Actor-Network Theory discussion.", doc_id="skip1"
-        )
-        await insert_test_doc(
-            tmp_db, "Actor-Network Theory discussion.", doc_id="skip2"
-        )
+        doc1 = await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id="skip1")
+        await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id="skip2")
         # Mark first as processed
-        await tmp_db.execute(
-            "UPDATE documents SET processed = 1 WHERE id = ?", (doc1,)
-        )
+        await tmp_db.execute("UPDATE documents SET processed = 1 WHERE id = ?", (doc1,))
         await tmp_db.commit()
-        results = await process_pending_documents(
-            tmp_db, _make_llm(), mock_embeddings
-        )
+        results = await process_pending_documents(tmp_db, _make_llm(), mock_embeddings)
         assert len(results) == 1
         assert "skip2" in results
 
     @pytest.mark.asyncio
     async def test_skips_rejected_documents(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
-        doc1 = await insert_test_doc(
-            tmp_db, "Actor-Network Theory discussion.", doc_id="rejected1"
-        )
-        await insert_test_doc(
-            tmp_db, "Actor-Network Theory discussion.", doc_id="accepted1"
-        )
+        doc1 = await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id="rejected1")
+        await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id="accepted1")
         # Reject doc1 via triage
-        await tmp_db.execute(
-            "UPDATE documents SET triaged = -1 WHERE id = ?", (doc1,)
-        )
+        await tmp_db.execute("UPDATE documents SET triaged = -1 WHERE id = ?", (doc1,))
         await tmp_db.commit()
-        results = await process_pending_documents(
-            tmp_db, _make_llm(), mock_embeddings
-        )
+        results = await process_pending_documents(tmp_db, _make_llm(), mock_embeddings)
         assert len(results) == 1
         assert "accepted1" in results
         assert "rejected1" not in results
 
 
 def _make_linker_llm() -> MockLLMClient:
-    return MockLLMClient(responses={
-        "Actor-Network": {
-            "entities": [
-                {"name": "Actor-Network Theory", "description": "Sociological framework"},
-                {"name": "Translation", "description": "Process of network building"},
-            ]
-        },
-        "Normalize these entity names": {
-            "mapping": {
-                "actor-network theory": "actor-network theory",
-                "translation": "translation",
-            }
-        },
-        "Source concept:": {
-            "edges": [
-                {"target": "translation", "predicate": "related_to", "confidence": 0.9},
-            ]
-        },
-    })
+    return MockLLMClient(
+        responses={
+            "Actor-Network": {
+                "entities": [
+                    {"name": "Actor-Network Theory", "description": "Sociological framework"},
+                    {"name": "Translation", "description": "Process of network building"},
+                ]
+            },
+            "Normalize these entity names": {
+                "mapping": {
+                    "actor-network theory": "actor-network theory",
+                    "translation": "translation",
+                }
+            },
+            "Source concept:": {
+                "edges": [
+                    {"target": "translation", "predicate": "related_to", "confidence": 0.9},
+                ]
+            },
+        }
+    )
 
 
 class TestLinkDocument:
@@ -279,9 +251,7 @@ class TestLinkDocument:
         llm = _make_linker_llm()
         await process_document(tmp_db, doc_id, llm, mock_embeddings)
         await link_document(tmp_db, doc_id, llm)
-        cursor = await tmp_db.execute(
-            "SELECT processed FROM documents WHERE id = ?", (doc_id,)
-        )
+        cursor = await tmp_db.execute("SELECT processed FROM documents WHERE id = ?", (doc_id,))
         row = await cursor.fetchone()
         assert row["processed"] == 2
 
@@ -309,19 +279,13 @@ class TestLinkDocument:
 
     @pytest.mark.asyncio
     async def test_no_engrams_marks_processed(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
-        doc_id = await insert_test_doc(
-            tmp_db, "trivial text", doc_id="emptylinkdoc"
-        )
+        doc_id = await insert_test_doc(tmp_db, "trivial text", doc_id="emptylinkdoc")
         # Mark processed=1 manually (no engrams)
-        await tmp_db.execute(
-            "UPDATE documents SET processed = 1 WHERE id = ?", (doc_id,)
-        )
+        await tmp_db.execute("UPDATE documents SET processed = 1 WHERE id = ?", (doc_id,))
         await tmp_db.commit()
         edges = await link_document(tmp_db, doc_id, _make_linker_llm())
         assert edges == []
-        cursor = await tmp_db.execute(
-            "SELECT processed FROM documents WHERE id = ?", (doc_id,)
-        )
+        cursor = await tmp_db.execute("SELECT processed FROM documents WHERE id = ?", (doc_id,))
         row = await cursor.fetchone()
         assert row["processed"] == 2
 
@@ -340,9 +304,7 @@ class TestLinkPendingDocuments:
     async def test_links_all_pending(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         llm = _make_linker_llm()
         for i in range(3):
-            doc_id = await insert_test_doc(
-                tmp_db, "Actor-Network Theory discussion.", doc_id=f"linkpend{i}"
-            )
+            doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id=f"linkpend{i}")
             await process_document(tmp_db, doc_id, llm, mock_embeddings)
         results = await link_pending_documents(tmp_db, llm)
         assert len(results) == 3
@@ -351,9 +313,7 @@ class TestLinkPendingDocuments:
     async def test_respects_limit(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
         llm = _make_linker_llm()
         for i in range(3):
-            doc_id = await insert_test_doc(
-                tmp_db, "Actor-Network Theory discussion.", doc_id=f"linklim{i}"
-            )
+            doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id=f"linklim{i}")
             await process_document(tmp_db, doc_id, llm, mock_embeddings)
         results = await link_pending_documents(tmp_db, llm, limit=1)
         assert len(results) == 1
@@ -427,12 +387,14 @@ class TestRetidyDocument:
         changed = await retidy_document(
             tmp_db,
             doc_id,
-            MockLLMClient(responses={
-                "Actor-Network Theory is important.": {
-                    "tidy_title": "Retidied Notes",
-                    "tidy_text": "- Actor-Network Theory is important.",
+            MockLLMClient(
+                responses={
+                    "Actor-Network Theory is important.": {
+                        "tidy_title": "Retidied Notes",
+                        "tidy_text": "- Actor-Network Theory is important.",
+                    }
                 }
-            }),
+            ),
             tidy_level="full_revision",
         )
 
@@ -461,12 +423,14 @@ class TestRetidyDocument:
         changed = await retidy_document(
             tmp_db,
             doc_id,
-            MockLLMClient(responses={
-                "Actor-Network Theory is important.": {
-                    "tidy_title": "Should Not Apply",
-                    "tidy_text": "Should Not Apply",
+            MockLLMClient(
+                responses={
+                    "Actor-Network Theory is important.": {
+                        "tidy_title": "Should Not Apply",
+                        "tidy_text": "Should Not Apply",
+                    }
                 }
-            }),
+            ),
             expected_revision=2,
             tidy_level="light_cleanup",
         )

@@ -10,7 +10,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from importlib.resources import files
 from time import perf_counter
-from typing import TYPE_CHECKING, Any, Literal, Sequence, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from hypomnema.evals.common import load_effective_settings
 from hypomnema.llm.factory import api_key_for_provider, base_url_for_provider, build_llm
@@ -24,6 +24,7 @@ from hypomnema.ontology.extractor import (
 from hypomnema.tidy import DEFAULT_TIDY_LEVEL, TidyLevel, get_tidy_level_spec
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
     from pathlib import Path
 
     from hypomnema.config import Settings
@@ -45,9 +46,43 @@ _HEADING_RE = re.compile(r"(?m)^#{1,6}\s+\S")
 _LIST_RE = re.compile(r"(?m)^\s*(?:[-*+]|\d+\.)\s+\S")
 _BOLD_RE = re.compile(r"\*\*[^*\n]+\*\*")
 _STOPWORDS = {
-    "a", "an", "and", "are", "as", "at", "be", "by", "for", "from", "in", "is", "it",
-    "of", "on", "or", "the", "to", "with", "것", "것인가", "그리고", "대한", "및", "이", "이후",
-    "있는", "있다", "정리", "제안", "검토", "관련", "중", "수", "등", "더", "또는",
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "with",
+    "것",
+    "것인가",
+    "그리고",
+    "대한",
+    "및",
+    "이",
+    "이후",
+    "있는",
+    "있다",
+    "정리",
+    "제안",
+    "검토",
+    "관련",
+    "중",
+    "수",
+    "등",
+    "더",
+    "또는",
 }
 _CATEGORY_WEIGHTS: dict[CategoryName, float] = {
     "accuracy": 0.3,
@@ -298,7 +333,9 @@ async def run_tidy_text_eval(
                 resolved_judge_model,
                 judge_llm,
             ) = build_eval_llm(settings, provider=judge_provider, model=judge_model)
-        if secondary_judge_policy != "none" and (secondary_judge_provider is not None or secondary_judge_model is not None):
+        if secondary_judge_policy != "none" and (
+            secondary_judge_provider is not None or secondary_judge_model is not None
+        ):
             (
                 resolved_secondary_judge_provider,
                 resolved_secondary_judge_model,
@@ -424,12 +461,7 @@ def _should_run_secondary_judge(
     primary = preliminary_report.judge_scores
     if primary is None:
         return False
-    return (
-        primary.accuracy <= 3
-        or primary.hallucination <= 3
-        or primary.structure <= 3
-        or primary.locale <= 3
-    )
+    return primary.accuracy <= 3 or primary.hallucination <= 3 or primary.structure <= 3 or primary.locale <= 3
 
 
 async def judge_tidy_text_case(
@@ -631,7 +663,9 @@ def detect_judge_disagreements(
             reasons.append(f"judge_gap_{category}")
 
     primary_average = average([judge_score_to_percent(getattr(primary, category)) for category in _CATEGORY_WEIGHTS])
-    secondary_average = average([judge_score_to_percent(getattr(secondary, category)) for category in _CATEGORY_WEIGHTS])
+    secondary_average = average(
+        [judge_score_to_percent(getattr(secondary, category)) for category in _CATEGORY_WEIGHTS]
+    )
     if abs(primary_average - secondary_average) >= 15.0:
         reasons.append("judge_gap_overall")
     return tuple(reasons)
@@ -678,10 +712,7 @@ def build_markdown_summary(report: TidyTextEvalReport) -> str:
     else:
         lines.append("- Judge model: `disabled`")
     if report.secondary_judge_provider and report.secondary_judge_model:
-        lines.append(
-            f"- Secondary judge model: `{report.secondary_judge_provider}` / "
-            f"`{report.secondary_judge_model}`"
-        )
+        lines.append(f"- Secondary judge model: `{report.secondary_judge_provider}` / `{report.secondary_judge_model}`")
     lines.extend(
         [
             f"- Cases: `{report.aggregate.case_count}`",
@@ -720,8 +751,7 @@ def build_markdown_summary(report: TidyTextEvalReport) -> str:
     else:
         for case in hard_fail_reports:
             lines.append(
-                f"- `{case.case_id}`: {', '.join(case.hard_failures)} "
-                f"(overall `{case.aggregate.overall:.2f}`)"
+                f"- `{case.case_id}`: {', '.join(case.hard_failures)} (overall `{case.aggregate.overall:.2f}`)"
             )
     return "\n".join(lines)
 
@@ -810,9 +840,7 @@ def validate_entity_guardrails(
         hard_fail=not passed,
         score=100.0 if passed else 0.0,
         detail=(
-            ""
-            if passed
-            else f"Expected at least {case.expected_entities_min} entities, got {len(result.entities)}."
+            "" if passed else f"Expected at least {case.expected_entities_min} entities, got {len(result.entities)}."
         ),
     )
 
@@ -879,7 +907,8 @@ def validate_mixed_language_preservation(
     """Prefer preserving mixed-language spans when they exist."""
     has_hangul_source = any("가" <= char <= "힣" for char in input_text)
     input_mixed_tokens = [
-        token for token in extract_word_tokens(input_text)
+        token
+        for token in extract_word_tokens(input_text)
         if any(char.isascii() and char.isalpha() for char in token) and has_hangul_source
     ]
     if not input_mixed_tokens and case.dominant_locale != "mixed-ko-en":
@@ -1180,7 +1209,11 @@ def validate_markdown_appropriateness(
     if output_lists > input_lists + list_growth_cap:
         score -= 20.0
         detail_parts.append("list expansion too heavy")
-    if tidy_level == "format_only" and output_text != input_text and output_lists + output_headings > input_lists + input_headings + 1:
+    if (
+        tidy_level == "format_only"
+        and output_text != input_text
+        and output_lists + output_headings > input_lists + input_headings + 1
+    ):
         score -= 25.0
         detail_parts.append("too much structural change for format-only")
 

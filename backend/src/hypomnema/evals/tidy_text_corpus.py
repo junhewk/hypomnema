@@ -7,8 +7,7 @@ import re
 import sqlite3
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 import httpx
 import trafilatura
@@ -16,6 +15,9 @@ import trafilatura
 from hypomnema.evals.tidy_text import TidyTextEvalCase
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
     from hypomnema.config import Settings
 
 _WORD_RE = re.compile(r"[A-Za-z]+(?:[-'][A-Za-z]+)*|[가-힣]+|[0-9]+(?:[.,:/-][0-9]+)*")
@@ -74,13 +76,13 @@ DEFAULT_WEB_CORPUS_TARGETS: tuple[WebCorpusTarget, ...] = (
 DEFAULT_REPRESENTATIVE_CASE_LIMIT = 18
 
 
-def build_real_corpus_dir(settings: "Settings") -> Path:
+def build_real_corpus_dir(settings: Settings) -> Path:
     """Return the default cache directory for real-text eval snapshots."""
     return settings.db_path.parent / "evals" / "tidy-text" / "corpus"
 
 
 def build_real_text_cases(
-    settings: "Settings",
+    settings: Settings,
     *,
     db_limit: int = 12,
     web_targets: tuple[WebCorpusTarget, ...] = DEFAULT_WEB_CORPUS_TARGETS,

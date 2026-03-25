@@ -49,15 +49,11 @@ class TestFeedScheduler:
         assert sched.running is False
 
     @pytest.mark.asyncio
-    async def test_load_jobs_registers_active(
-        self, tmp_db: aiosqlite.Connection, db_path: Path
-    ) -> None:
+    async def test_load_jobs_registers_active(self, tmp_db: aiosqlite.Connection, db_path: Path) -> None:
         await create_feed_source(tmp_db, "Active1", "rss", "https://example.com/1")
         await create_feed_source(tmp_db, "Active2", "rss", "https://example.com/2")
         fs3 = await create_feed_source(tmp_db, "Inactive", "rss", "https://example.com/3")
-        await tmp_db.execute(
-            "UPDATE feed_sources SET active = 0 WHERE id = ?", (fs3.id,)
-        )
+        await tmp_db.execute("UPDATE feed_sources SET active = 0 WHERE id = ?", (fs3.id,))
         await tmp_db.commit()
 
         sched = FeedScheduler(db_path)
@@ -72,28 +68,23 @@ class TestRunFeedJob:
     ) -> None:
         fs = await create_feed_source(tmp_db, "Test", "rss", "https://example.com/feed")
         monkeypatch.setitem(
-            feeds_mod._FETCHERS, "rss",
+            feeds_mod._FETCHERS,
+            "rss",
             lambda url, timeout: [FetchedItem(title="T", text="Content", source_uri="https://example.com/item1")],
         )
 
         sched = FeedScheduler(db_path)
         await sched._run_feed_job(fs.id)
 
-        cursor = await tmp_db.execute(
-            "SELECT * FROM documents WHERE source_type = 'feed'"
-        )
+        cursor = await tmp_db.execute("SELECT * FROM documents WHERE source_type = 'feed'")
         rows = await cursor.fetchall()
         await cursor.close()
         assert len(rows) == 1
 
     @pytest.mark.asyncio
-    async def test_inactive_feed_skipped(
-        self, tmp_db: aiosqlite.Connection, db_path: Path
-    ) -> None:
+    async def test_inactive_feed_skipped(self, tmp_db: aiosqlite.Connection, db_path: Path) -> None:
         fs = await create_feed_source(tmp_db, "Test", "rss", "https://example.com/feed")
-        await tmp_db.execute(
-            "UPDATE feed_sources SET active = 0 WHERE id = ?", (fs.id,)
-        )
+        await tmp_db.execute("UPDATE feed_sources SET active = 0 WHERE id = ?", (fs.id,))
         await tmp_db.commit()
 
         sched = FeedScheduler(db_path)
@@ -115,9 +106,7 @@ class TestRunFeedJob:
         sched = FeedScheduler(db_path)
         await sched._run_feed_job(fs.id)
 
-        cursor = await tmp_db.execute(
-            "SELECT last_fetched FROM feed_sources WHERE id = ?", (fs.id,)
-        )
+        cursor = await tmp_db.execute("SELECT last_fetched FROM feed_sources WHERE id = ?", (fs.id,))
         row = await cursor.fetchone()
         await cursor.close()
         assert row["last_fetched"] is not None
@@ -139,19 +128,21 @@ class TestRunFeedJob:
 
     @pytest.mark.asyncio
     async def test_triggers_triage(
-        self, tmp_db: aiosqlite.Connection, db_path: Path,
-        mock_embeddings: Any, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_db: aiosqlite.Connection,
+        db_path: Path,
+        mock_embeddings: Any,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         fs = await create_feed_source(tmp_db, "Test", "rss", "https://example.com/feed")
         monkeypatch.setitem(
-            feeds_mod._FETCHERS, "rss",
+            feeds_mod._FETCHERS,
+            "rss",
             lambda url, timeout: [FetchedItem(title="T", text="Content", source_uri="https://example.com/item1")],
         )
 
         triage_mock = AsyncMock()
-        monkeypatch.setattr(
-            "hypomnema.scheduler.cron.triage_pending_documents", triage_mock
-        )
+        monkeypatch.setattr("hypomnema.scheduler.cron.triage_pending_documents", triage_mock)
 
         sched = FeedScheduler(db_path, embeddings=mock_embeddings)
         await sched._run_feed_job(fs.id)
@@ -164,14 +155,13 @@ class TestRunFeedJob:
     ) -> None:
         fs = await create_feed_source(tmp_db, "Test", "rss", "https://example.com/feed")
         monkeypatch.setitem(
-            feeds_mod._FETCHERS, "rss",
+            feeds_mod._FETCHERS,
+            "rss",
             lambda url, timeout: [FetchedItem(title="T", text="Content", source_uri="https://example.com/item1")],
         )
 
         triage_mock = AsyncMock()
-        monkeypatch.setattr(
-            "hypomnema.scheduler.cron.triage_pending_documents", triage_mock
-        )
+        monkeypatch.setattr("hypomnema.scheduler.cron.triage_pending_documents", triage_mock)
 
         sched = FeedScheduler(db_path, embeddings=None)
         await sched._run_feed_job(fs.id)

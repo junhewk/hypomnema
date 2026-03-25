@@ -67,9 +67,7 @@ def main() -> None:
     args = parser.parse_args()
 
     data_dir, static_dir, sqlite_vec_path = _resolve_paths()
-    resolved_sqlite_vec_path = (
-        str(_resolve_sqlite_vec_library(sqlite_vec_path)) if sqlite_vec_path else ""
-    )
+    resolved_sqlite_vec_path = str(_resolve_sqlite_vec_library(sqlite_vec_path)) if sqlite_vec_path else ""
 
     if args.self_check:
         _run_self_check(data_dir, static_dir, sqlite_vec_path)

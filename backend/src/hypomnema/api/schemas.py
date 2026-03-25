@@ -7,7 +7,6 @@ from typing import Any, Literal
 from pydantic import BaseModel, field_serializer
 
 from hypomnema.db.models import Document, Edge, Engram
-from hypomnema.tidy import TidyLevel
 
 
 class PaginatedList[T](BaseModel):
@@ -129,7 +128,6 @@ class SettingsResponse(BaseModel):
     openai_api_key: str
     ollama_base_url: str
     openai_base_url: str
-    tidy_level: TidyLevel
     # Read-only embedding info
     embedding_provider: str
     embedding_model: str
@@ -144,7 +142,6 @@ class SettingsUpdate(BaseModel):
     openai_api_key: str | None = None
     ollama_base_url: str | None = None
     openai_base_url: str | None = None
-    tidy_level: TidyLevel | None = None
 
 
 class SetupPayload(BaseModel):

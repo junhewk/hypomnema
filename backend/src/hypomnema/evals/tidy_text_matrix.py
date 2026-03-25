@@ -6,11 +6,9 @@ import dataclasses
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
 from time import perf_counter
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from hypomnema.config import Settings
 from hypomnema.evals.common import load_effective_settings
 from hypomnema.evals.tidy_text import (
     SecondaryJudgePolicy,
@@ -41,6 +39,11 @@ from hypomnema.ontology.extractor import (
     render_tidy_text,
 )
 from hypomnema.tidy import ALL_TIDY_LEVELS, TidyLevel
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+    from hypomnema.config import Settings
 
 _DEFAULT_GENERATION_PROVIDER = "google"
 _DEFAULT_GENERATION_MODEL = "gemini-2.5-flash"

@@ -35,8 +35,7 @@ async def _insert_edge(
 ) -> None:
     """Insert an edge directly."""
     await db.execute(
-        "INSERT INTO edges (id, source_engram_id, target_engram_id, predicate, confidence) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO edges (id, source_engram_id, target_engram_id, predicate, confidence) VALUES (?, ?, ?, ?, ?)",
         (edge_id, source, target, predicate, confidence),
     )
 

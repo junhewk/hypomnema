@@ -12,9 +12,7 @@ class OpenAILLMClient:
     DEFAULT_MODEL = "gpt-5-mini"
     DEFAULT_MAX_TOKENS = 4096
 
-    def __init__(
-        self, api_key: str, *, model: str = "", max_tokens: int = 0, base_url: str | None = None
-    ) -> None:
+    def __init__(self, api_key: str, *, model: str = "", max_tokens: int = 0, base_url: str | None = None) -> None:
         self._client = AsyncOpenAI(api_key=api_key, base_url=base_url)
         self._model = model or self.DEFAULT_MODEL
         self._max_tokens = max_tokens or self.DEFAULT_MAX_TOKENS
@@ -67,9 +65,7 @@ class OpenAILLMClient:
         content = response.output_text
         if not content:
             if response.incomplete_details is not None and response.incomplete_details.reason is not None:
-                raise ValueError(
-                    f"Empty response from OpenAI API (incomplete: {response.incomplete_details.reason})"
-                )
+                raise ValueError(f"Empty response from OpenAI API (incomplete: {response.incomplete_details.reason})")
             if response.status is not None:
                 raise ValueError(f"Empty response from OpenAI API (status: {response.status})")
             raise ValueError("Empty response from OpenAI API")

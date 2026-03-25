@@ -127,12 +127,14 @@ def fetch_youtube(url: str, *, timeout: float = 30.0) -> list[FetchedItem]:
             except Exception:
                 logger.warning("Failed to fetch transcript for %s", video_id)
                 continue
-            items.append(FetchedItem(
-                title=rss_item.title,
-                text=text,
-                source_uri=rss_item.source_uri,
-                metadata={"video_id": video_id},
-            ))
+            items.append(
+                FetchedItem(
+                    title=rss_item.title,
+                    text=text,
+                    source_uri=rss_item.source_uri,
+                    metadata={"video_id": video_id},
+                )
+            )
         return items
 
     # Single video URL
@@ -140,12 +142,14 @@ def fetch_youtube(url: str, *, timeout: float = 30.0) -> list[FetchedItem]:
     if video_id is None:
         raise ValueError(f"Could not extract video ID from {url}")
     text = _fetch_transcript(video_id)
-    return [FetchedItem(
-        title=None,
-        text=text,
-        source_uri=url,
-        metadata={"video_id": video_id},
-    )]
+    return [
+        FetchedItem(
+            title=None,
+            text=text,
+            source_uri=url,
+            metadata={"video_id": video_id},
+        )
+    ]
 
 
 _FETCHERS: dict[str, Any] = {
@@ -219,8 +223,7 @@ async def poll_feed(
     docs = await ingest_feed_items(db, items)
 
     await db.execute(
-        "UPDATE feed_sources SET last_fetched = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') "
-        "WHERE id = ?",
+        "UPDATE feed_sources SET last_fetched = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
         (feed_source.id,),
     )
     await db.commit()
@@ -246,8 +249,7 @@ async def create_feed_source(
         raise ValueError(f"Invalid feed_type: {feed_type}")
 
     cursor = await db.execute(
-        "INSERT INTO feed_sources (name, feed_type, url, schedule) "
-        "VALUES (?, ?, ?, ?) RETURNING *",
+        "INSERT INTO feed_sources (name, feed_type, url, schedule) VALUES (?, ?, ?, ?) RETURNING *",
         (name, feed_type, url, schedule),
     )
     row = await cursor.fetchone()
@@ -322,9 +324,7 @@ async def delete_feed_source(
     feed_id: str,
 ) -> bool:
     """Delete a feed source. Returns True if deleted, False if not found."""
-    cursor = await db.execute(
-        "DELETE FROM feed_sources WHERE id = ? RETURNING id", (feed_id,)
-    )
+    cursor = await db.execute("DELETE FROM feed_sources WHERE id = ? RETURNING id", (feed_id,))
     row = await cursor.fetchone()
     await cursor.close()
     await db.commit()

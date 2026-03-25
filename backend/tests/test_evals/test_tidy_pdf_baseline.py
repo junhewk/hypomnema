@@ -1,15 +1,8 @@
 """Tests for the PDF baseline preservation helpers."""
 
-from dataclasses import replace
-
 from hypomnema.evals.tidy_pdf_baseline import (
     _PDF_ARTICLES,
     _PDF_TIERS,
-    _build_case,
-    _measure_coverage,
-    _select_salient_numeric_tokens,
-    _select_salient_quotes,
-    _to_json,
     PdfBaselineCaseResult,
     PdfBaselineReport,
     PdfCoverageMetric,
@@ -17,6 +10,11 @@ from hypomnema.evals.tidy_pdf_baseline import (
     PdfFetchedDocument,
     PdfPreservationMetrics,
     PdfTierSummary,
+    _build_case,
+    _measure_coverage,
+    _select_salient_numeric_tokens,
+    _select_salient_quotes,
+    _to_json,
 )
 from hypomnema.evals.tidy_text import (
     CaseAggregate,

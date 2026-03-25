@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import json
-import math
 import random
 import re
 from collections.abc import Callable, Iterable
@@ -16,8 +15,8 @@ if TYPE_CHECKING:
     from hypomnema.llm.base import LLMClient
 
 from hypomnema.ontology.normalizer import normalize
-from hypomnema.token_utils import estimate_text_tokens
 from hypomnema.tidy import DEFAULT_TIDY_LEVEL, TidyLevel, get_tidy_level_spec
+from hypomnema.token_utils import estimate_text_tokens
 
 
 class ExtractionError(ValueError):
@@ -84,13 +83,45 @@ _RETRY_BASE_DELAY_SECONDS = 1.0
 _PDF_CHUNK_SIZE = 12000
 _PDF_CHUNK_OVERLAP = 300
 _ENTITY_FINGERPRINT_NOISE = {
-    "a", "an", "and", "for", "of", "or", "the", "vs",
-    "구분", "문제", "필요",
+    "a",
+    "an",
+    "and",
+    "for",
+    "of",
+    "or",
+    "the",
+    "vs",
+    "구분",
+    "문제",
+    "필요",
 }
 _PDF_TOPIC_STOPWORDS = {
-    "also", "among", "and", "are", "but", "can", "for", "from", "have", "into", "its",
-    "more", "not", "our", "that", "the", "their", "there", "these", "this", "those",
-    "through", "under", "with", "within", "would",
+    "also",
+    "among",
+    "and",
+    "are",
+    "but",
+    "can",
+    "for",
+    "from",
+    "have",
+    "into",
+    "its",
+    "more",
+    "not",
+    "our",
+    "that",
+    "the",
+    "their",
+    "there",
+    "these",
+    "this",
+    "those",
+    "through",
+    "under",
+    "with",
+    "within",
+    "would",
 }
 
 _BASE_EXTRACTION_PREFIX = (
@@ -100,9 +131,7 @@ _BASE_EXTRACTION_PREFIX = (
 )
 
 _LEGACY_EXTRACTION_SYSTEM = (
-    _BASE_EXTRACTION_PREFIX
-    +
-    "Additionally, produce a tidy version of the input text:\n"
+    _BASE_EXTRACTION_PREFIX + "Additionally, produce a tidy version of the input text:\n"
     "- tidy_title: a concise, descriptive title derived from the text content\n"
     "- tidy_text: the same content rendered according to the tidy level instructions.\n\n"
     "Common tidy requirements:\n"
@@ -119,9 +148,7 @@ _LEGACY_EXTRACTION_SYSTEM = (
 )
 
 _GROUNDED_EXTRACTION_SYSTEM = (
-    _BASE_EXTRACTION_PREFIX
-    +
-    "Additionally, produce a tidy version of the input text:\n"
+    _BASE_EXTRACTION_PREFIX + "Additionally, produce a tidy version of the input text:\n"
     "- tidy_title: a concise, descriptive title using only wording already present in the text. "
     "The title must stay in the dominant source language and script. Never translate, romanize, "
     "or anglicize names. If the text already has a clear title or subject line, preserve it with "
@@ -164,9 +191,7 @@ _BASE_MAP_PREFIX = (
 )
 
 _LEGACY_MAP_SYSTEM = (
-    _BASE_MAP_PREFIX
-    +
-    "Also provide concise evidence lines copied from this chunk for later reconstruction. "
+    _BASE_MAP_PREFIX + "Also provide concise evidence lines copied from this chunk for later reconstruction. "
     "Preserve the original language — do not translate or fabricate content.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"entities": [{"name": "...", "description": "..."}], '
@@ -174,9 +199,7 @@ _LEGACY_MAP_SYSTEM = (
 )
 
 _GROUNDED_MAP_SYSTEM = (
-    _BASE_MAP_PREFIX
-    +
-    "Also provide source-grounded evidence lines for later reconstruction. Each evidence line must "
+    _BASE_MAP_PREFIX + "Also provide source-grounded evidence lines for later reconstruction. Each evidence line must "
     "stay in the original language, preserve mixed-language spans, keep key terms verbatim, and "
     "avoid generic conclusions or memo framing. Prefer bullet-ready note fragments over abstract "
     "prose. Copy exact wording whenever possible instead of paraphrasing. Never guess at spelling "
@@ -196,8 +219,7 @@ _BASE_REDUCE_PREFIX = (
 _LEGACY_REDUCE_SYSTEM = (
     "You are given a grounded JSON artifact for a single document. The artifact contains "
     "evidence_lines copied from the source document.\n\n"
-    +
-    "Generate tidy_title and tidy_text from the evidence_lines.\n"
+    + "Generate tidy_title and tidy_text from the evidence_lines.\n"
     "Do NOT add content not present in the evidence_lines. "
     "Do NOT fabricate. Preserve original language. Follow the requested tidy level.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
@@ -207,8 +229,7 @@ _LEGACY_REDUCE_SYSTEM = (
 _GROUNDED_REDUCE_SYSTEM = (
     "You are given a grounded JSON artifact for a single document. The artifact contains "
     "evidence_lines copied from the source document.\n\n"
-    +
-    "Generate tidy_title using only source wording already present in the evidence_lines.\n"
+    + "Generate tidy_title using only source wording already present in the evidence_lines.\n"
     "Generate tidy_text by stitching the evidence_lines into a markdown rendering of the original "
     "document that follows the requested tidy level.\n\n"
     "Common rules for tidy_text:\n"
@@ -218,7 +239,8 @@ _GROUNDED_REDUCE_SYSTEM = (
     "and fragments when present\n"
     "- Preserve URLs, quoted spans, inline code, numbers, ordered-list numbering, acronyms, and "
     "specialized terms exactly\n"
-    "- Preserve compact shorthand, mixed-language note tokens, and parenthetical prompts exactly, including tokens such as V, N, and from F\n"
+    "- Preserve compact shorthand, mixed-language note tokens, and parenthetical prompts exactly, "
+    "including tokens such as V, N, and from F\n"
     "- If the evidence_lines already reflect markdown, HTML, README, or docs-like structure, edit "
     "in place rather than converting them into summary bullets\n"
     "- Preserve markdown heading levels and list-marker style exactly when they already appear in the evidence_lines\n"
@@ -227,19 +249,19 @@ _GROUNDED_REDUCE_SYSTEM = (
     "- Use markdown appropriate to the requested tidy level\n"
     "- Keep the wording close to the evidence_lines unless the tidy level explicitly allows heavier revision\n"
     "- Do not start with a summary sentence or thesis statement unless the source already has one\n"
-    "- Preserve source casing for note fragments and technical terms; do not sentence-case lower-case evidence lines unless the source itself supports it\n"
+    "- Preserve source casing for note fragments and technical terms; do not sentence-case "
+    "lower-case evidence lines unless the source itself supports it\n"
     "- Preserve quoted spans and specialized terms exactly\n"
     "- Never guess at spelling corrections; when uncertain, copy tokens exactly from the evidence_lines\n"
-    "- For short fragmentary notes, avoid umbrella introductions and keep one grounded bullet per source idea unless the source clearly supports stronger restructuring\n"
+    "- For short fragmentary notes, avoid umbrella introductions and keep one grounded bullet "
+    "per source idea unless the source clearly supports stronger restructuring\n"
     "- Do not collapse documentation or README material into generic summary bullets\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"tidy_title": "...", "tidy_text": "..."}'
 )
 
 _GROUNDED_V2_MAP_SYSTEM = (
-    _BASE_MAP_PREFIX
-    +
-    "Also provide source-grounded evidence lines for later reconstruction.\n"
+    _BASE_MAP_PREFIX + "Also provide source-grounded evidence lines for later reconstruction.\n"
     "Requirements:\n"
     "1. Stay in the exact source language mix of the chunk. Never translate.\n"
     "2. Output 4-12 short evidence lines, not prose summary paragraphs. If the source is already "
@@ -268,18 +290,14 @@ _BASE_MERGE_PREFIX = (
 )
 
 _LEGACY_MERGE_SYSTEM = (
-    _BASE_MERGE_PREFIX
-    +
-    "Deduplicate overlap and keep the best source lines in order. Do not invent new lines, "
+    _BASE_MERGE_PREFIX + "Deduplicate overlap and keep the best source lines in order. Do not invent new lines, "
     "headings, or conclusions.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"evidence_lines": ["..."]}'
 )
 
 _GROUNDED_MERGE_SYSTEM = (
-    _BASE_MERGE_PREFIX
-    +
-    "Tasks:\n"
+    _BASE_MERGE_PREFIX + "Tasks:\n"
     "1. Remove duplicate overlap between artifacts\n"
     "2. Keep only wording that is explicitly present in the input evidence_lines\n"
     "3. Preserve source order and language mix as much as possible\n"
@@ -292,9 +310,7 @@ _GROUNDED_MERGE_SYSTEM = (
 )
 
 _GROUNDED_V2_MERGE_SYSTEM = (
-    _BASE_MERGE_PREFIX
-    +
-    "Requirements:\n"
+    _BASE_MERGE_PREFIX + "Requirements:\n"
     "1. Output only evidence_lines that are directly supported by the input evidence_lines.\n"
     "2. Preserve the dominant source language and script. Never translate.\n"
     "3. Remove chunk-overlap duplicates while preserving source order.\n"
@@ -303,7 +319,8 @@ _GROUNDED_V2_MERGE_SYSTEM = (
     "5. Keep compact shorthand, mixed-language note tokens, and parenthetical prompts exactly.\n"
     "6. If two lines say the same thing, keep one original line rather than paraphrasing.\n"
     "7. Do not create any new sentence, title, section header, or memo framing.\n"
-    "8. Preserve structural documentation lines and existing markdown heading levels instead of collapsing them into simplified notes.\n\n"
+    "8. Preserve structural documentation lines and existing markdown heading levels "
+    "instead of collapsing them into simplified notes.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"evidence_lines": ["..."]}'
 )
@@ -326,16 +343,24 @@ _GROUNDED_V2_REDUCE_SYSTEM = (
     "5. Use markdown intensity appropriate to the requested tidy level.\n"
     "6. Never guess at spelling corrections or token normalization. If uncertain, copy exact source "
     "tokens from the evidence_lines.\n"
-    "7. Preserve source casing for note fragments and technical terms. Do not sentence-case lower-case source lines just to make them look polished.\n"
-    "8. Preserve compact shorthand, mixed-language note tokens, and parenthetical prompts exactly, including tokens such as V, N, and from F.\n"
-    "9. Preserve markdown heading levels and existing speaker-section boundaries when they already appear in the evidence_lines.\n"
+    "7. Preserve source casing for note fragments and technical terms. Do not sentence-case "
+    "lower-case source lines just to make them look polished.\n"
+    "8. Preserve compact shorthand, mixed-language note tokens, and parenthetical prompts "
+    "exactly, including tokens such as V, N, and from F.\n"
+    "9. Preserve markdown heading levels and existing speaker-section boundaries "
+    "when they already appear in the evidence_lines.\n"
     "10. Do not add new section headers, conclusions, or framing language unless they already exist "
     "in the evidence_lines.\n"
-    "11. For short fragmentary notes, avoid umbrella introductions or thesis sentences and keep the rewrite close to one grounded bullet per source idea.\n"
-    "12. For transcripts, discussion notes, and bullet-heavy source text, keep bullets and speaker sections instead of converting them into explanatory paragraphs.\n"
+    "11. For short fragmentary notes, avoid umbrella introductions or thesis sentences "
+    "and keep the rewrite close to one grounded bullet per source idea.\n"
+    "12. For transcripts, discussion notes, and bullet-heavy source text, keep bullets "
+    "and speaker sections instead of converting them into explanatory paragraphs.\n"
     "13. Do not collapse documentation or README material into generic summary bullets or memo framing.\n"
-    "14. For PDF-derived evidence, preserve source section order, numbered headings, figure/table captions, citation markers, DOI/reference lines, and equation or symbol-heavy tokens when present.\n"
-    "15. Do not synthesize umbrella section headers that combine evidence from separate chunks unless the header wording already exists in the evidence_lines.\n\n"
+    "14. For PDF-derived evidence, preserve source section order, numbered headings, "
+    "figure/table captions, citation markers, DOI/reference lines, and equation or "
+    "symbol-heavy tokens when present.\n"
+    "15. Do not synthesize umbrella section headers that combine evidence from separate "
+    "chunks unless the header wording already exists in the evidence_lines.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"tidy_title": "...", "tidy_text": "..."}'
 )
@@ -349,16 +374,22 @@ _TIDY_ONLY_SINGLE_SYSTEM = (
     "1. Never translate.\n"
     "2. Preserve quotes, URLs, markdown links, inline code, HTML tags and attributes, numbers, dates, "
     "acronyms, ordered-list numbers, names, and specialized terms.\n"
-    "2a. Preserve compact shorthand, mixed-language note tokens, and parenthetical prompts exactly, including tokens such as V, N, and from F.\n"
+    "2a. Preserve compact shorthand, mixed-language note tokens, and parenthetical prompts "
+    "exactly, including tokens such as V, N, and from F.\n"
     "3. If the source is already markdown, HTML, README, or docs-like, edit it in place instead of "
     "converting it into summary bullets or memo prose.\n"
-    "3a. If the source already uses markdown headings or bullet markers, preserve heading levels and list-marker style exactly unless whitespace cleanup is the only change.\n"
+    "3a. If the source already uses markdown headings or bullet markers, preserve heading "
+    "levels and list-marker style exactly unless whitespace cleanup is the only change.\n"
     "4. Preserve source casing for note fragments and technical terms unless the source clearly contains a typo. "
-    "Do not sentence-case lower-case note lines, capitalize fragment starts, or add finishing punctuation just to make them look polished.\n"
+    "Do not sentence-case lower-case note lines, capitalize fragment starts, or add "
+    "finishing punctuation just to make them look polished.\n"
     "5. For short fragmentary notes, avoid umbrella introductions, thesis sentences, and explanatory padding. "
-    "Keep the rewrite close to one grounded bullet per source idea unless the source clearly supports a fuller paragraph.\n"
-    "6. For transcripts, discussion notes, and bullet-heavy source text, preserve bullets and speaker sections instead of converting them into multi-paragraph exposition.\n"
-    "7. Always return a non-empty tidy_text. If a rewrite risks dropping an exact token, copy the original line verbatim.\n"
+    "Keep the rewrite close to one grounded bullet per source idea unless the source "
+    "clearly supports a fuller paragraph.\n"
+    "6. For transcripts, discussion notes, and bullet-heavy source text, preserve bullets "
+    "and speaker sections instead of converting them into multi-paragraph exposition.\n"
+    "7. Always return a non-empty tidy_text. If a rewrite risks dropping an exact token, "
+    "copy the original line verbatim.\n"
     "8. Do not invent metadata, conclusions, addressees, or unsupported context.\n"
     "9. Return ONLY valid JSON in this exact format:\n"
     '{"tidy_title": "...", "tidy_text": "..."}'
@@ -375,6 +406,33 @@ _TIDY_ONLY_MAP_SYSTEM = (
     "Do not add conclusions, memo framing, or inferred structure.\n\n"
     "Return ONLY valid JSON in this exact format:\n"
     '{"evidence_lines": ["..."], "chunk_summary": "..."}'
+)
+
+_SUMMARY_EXTRACTION_SYSTEM = (
+    _BASE_EXTRACTION_PREFIX
+    + "Additionally, produce:\n"
+    "- tidy_title: a concise, descriptive title using wording from the text, "
+    "in the dominant source language. Never translate or romanize.\n"
+    "- summary: a 2-4 sentence TL;DR of the document's main points, "
+    "in the dominant source language. Do not add claims not in the text.\n\n"
+    "Return ONLY valid JSON in this exact format:\n"
+    '{"entities": [{"name": "...", "description": "..."}], '
+    '"tidy_title": "...", "summary": "..."}\n'
+    "If no meaningful entities can be extracted, return an empty entities list. "
+    "Always provide tidy_title and summary."
+)
+
+_SUMMARY_FROM_CHUNKS_SYSTEM = (
+    "You are given chunk summaries from a single document. "
+    "Generate a concise title and a TL;DR summary.\n\n"
+    "Requirements:\n"
+    "- tidy_title: a concise, descriptive title using wording from the summaries, "
+    "in the dominant source language\n"
+    "- summary: a 2-4 sentence TL;DR capturing the document's main points, "
+    "in the dominant source language\n"
+    "- Do not translate. Preserve the source language mix.\n"
+    "- Do not add claims not present in the summaries.\n\n"
+    'Return ONLY valid JSON: {"tidy_title": "...", "summary": "..."}'
 )
 
 _PROMPT_VARIANTS = {
@@ -501,6 +559,7 @@ class _ChunkResult:
     entities: list[ExtractedEntity]
     evidence_lines: tuple[str, ...]
     pdf_artifact: _PdfChunkArtifact | None = None
+    chunk_summary: str = ""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -696,8 +755,7 @@ def _resolve_pdf_tidy_strategy(tidy_level: TidyLevel) -> _PdfTidyStrategy:
 def _with_pdf_chunk_budget(system: str, strategy: _PdfTidyStrategy, *, include_entities: bool) -> str:
     abstraction_instruction = {
         "extractive": (
-            "Prefer exact copied source lines. Do not paraphrase if copying the line preserves the "
-            "same content."
+            "Prefer exact copied source lines. Do not paraphrase if copying the line preserves the same content."
         ),
         "light": (
             "Allow only light local cleanup when needed, but keep wording very close to the source. "
@@ -712,9 +770,9 @@ def _with_pdf_chunk_budget(system: str, strategy: _PdfTidyStrategy, *, include_e
     json_prefix = '{"entities": [{"name": "...", "description": "..."}], ' if include_entities else "{"
     polished_instruction = (
         f'- Also return "polished_block": a short grounded markdown block no longer than '
-        f'{strategy.polished_block_token_cap} tokens. It must not add new headings or new numeric tokens.\n'
-        if strategy.allow_polished_block else
-        '- Return "polished_block" as an empty string.\n'
+        f"{strategy.polished_block_token_cap} tokens. It must not add new headings or new numeric tokens.\n"
+        if strategy.allow_polished_block
+        else '- Return "polished_block" as an empty string.\n'
     )
     return (
         f"{system.rstrip()}\n\n"
@@ -726,12 +784,17 @@ def _with_pdf_chunk_budget(system: str, strategy: _PdfTidyStrategy, *, include_e
         '"support_lines": ["..."], "polished_block": "..."}\n'
         "- title_candidates: at most 1 semantic title line from this chunk, never an affiliation or address line.\n"
         f"- section_headings: at most {strategy.heading_cap} numbered or explicit headings.\n"
-        f"- topic_lines: at most {strategy.topic_cap} source-grounded substantive lines that carry the main claims or definitions.\n"
+        f"- topic_lines: at most {strategy.topic_cap} source-grounded substantive "
+        f"lines that carry the main claims or definitions.\n"
         f"- quote_lines: at most {strategy.quote_cap} quoted spans or lines with quoted wording.\n"
-        f"- numeric_lines: at most {strategy.numeric_cap} lines with metrics, numbered findings, figure/table anchors, citation markers, DOI lines, or acronym-heavy factual claims.\n"
-        f"- support_lines: at most {strategy.support_cap} additional source-grounded lines only if they materially improve coherence.\n"
+        f"- numeric_lines: at most {strategy.numeric_cap} lines with metrics, "
+        f"numbered findings, figure/table anchors, citation markers, DOI lines, "
+        f"or acronym-heavy factual claims.\n"
+        f"- support_lines: at most {strategy.support_cap} additional source-grounded "
+        f"lines only if they materially improve coherence.\n"
         f"{polished_instruction}"
-        "- Copy source wording whenever possible. Preserve quotes, numbers, acronyms, citations, figure/table anchors, and specialized terms exactly.\n"
+        "- Copy source wording whenever possible. Preserve quotes, numbers, "
+        "acronyms, citations, figure/table anchors, and specialized terms exactly.\n"
         "- Do not invent section headers, transitions, or summary claims.\n"
         f"- {abstraction_instruction}"
     )
@@ -845,13 +908,11 @@ async def _run_chunk_stage(
             )
 
     tasks = [asyncio.create_task(run_one(index, chunk)) for index, chunk in enumerate(chunks)]
-    completed = 0
     failed = 0
     retries = 0
     outcomes: list[_ChunkOutcome] = []
-    for task in asyncio.as_completed(tasks):
+    for completed, task in enumerate(asyncio.as_completed(tasks), 1):
         outcome = await task
-        completed += 1
         failed += int(outcome.result is None)
         retries += outcome.retries
         outcomes.append(outcome)
@@ -869,7 +930,9 @@ async def _run_chunk_stage(
             },
         )
 
-    ordered = [outcome.result for outcome in sorted(outcomes, key=lambda item: item.index) if outcome.result is not None]
+    ordered = [
+        outcome.result for outcome in sorted(outcomes, key=lambda item: item.index) if outcome.result is not None
+    ]
     return ordered, failed, retries
 
 
@@ -955,10 +1018,15 @@ async def _extract_chunk(
             chunk=chunk,
             strategy=pdf_strategy,
         )
-        return _ChunkResult(entities=entities, evidence_lines=_flatten_pdf_artifact_lines(artifact), pdf_artifact=artifact)
+        return _ChunkResult(
+            entities=entities,
+            evidence_lines=_flatten_pdf_artifact_lines(artifact),
+            pdf_artifact=artifact,
+            chunk_summary=result.get("chunk_summary", ""),
+        )
 
     evidence_lines = _extract_evidence_lines(result, limit=None)
-    return _ChunkResult(entities=entities, evidence_lines=evidence_lines)
+    return _ChunkResult(entities=entities, evidence_lines=evidence_lines, chunk_summary=result.get("chunk_summary", ""))
 
 
 async def _extract_tidy_chunk(
@@ -1041,9 +1109,7 @@ def _is_pdf_topic_line(line: str) -> bool:
     alnum_count = sum(char.isalnum() for char in stripped)
     if alnum_count == 0:
         return False
-    if (letter_count / alnum_count) < 0.6:
-        return False
-    return True
+    return not letter_count / alnum_count < 0.6
 
 
 def _fallback_pdf_artifact(
@@ -1108,15 +1174,17 @@ def _extract_pdf_chunk_artifact(
         support_lines=_extract_pdf_line_list(data, "support_lines", limit=strategy.support_cap),
         polished_block=_clean_optional_str(data.get("polished_block")) if strategy.allow_polished_block else None,
     )
-    if any((
-        artifact.title_candidates,
-        artifact.section_headings,
-        artifact.topic_lines,
-        artifact.quote_lines,
-        artifact.numeric_lines,
-        artifact.support_lines,
-        artifact.polished_block,
-    )):
+    if any(
+        (
+            artifact.title_candidates,
+            artifact.section_headings,
+            artifact.topic_lines,
+            artifact.quote_lines,
+            artifact.numeric_lines,
+            artifact.support_lines,
+            artifact.polished_block,
+        )
+    ):
         return artifact
     return _fallback_pdf_artifact(_extract_evidence_lines(data, limit=None), strategy=strategy)
 
@@ -1215,12 +1283,8 @@ def _entity_fingerprint(name: str) -> tuple[str, ...]:
     lowered = re.sub(r"\b(?:and|or|the|a|an|of|for)\b", " ", lowered)
     lowered = re.sub(r"\b및\b", " ", lowered)
     lowered = re.sub(r"([가-힣a-z0-9])(?:와|과)\s+", r"\1 ", lowered)
-    lowered = re.sub("[/:()\"’\u201c\u201d\u2018\u2019-]+", " ", lowered)
-    tokens = [
-        token
-        for token in _ENTITY_TOKEN_RE.findall(lowered)
-        if token not in _ENTITY_FINGERPRINT_NOISE
-    ]
+    lowered = re.sub('[/:()"’\u201c\u201d\u2018\u2019-]+', " ", lowered)
+    tokens = [token for token in _ENTITY_TOKEN_RE.findall(lowered) if token not in _ENTITY_FINGERPRINT_NOISE]
     if not tokens:
         return ()
     return tuple(dict.fromkeys(tokens))
@@ -1240,11 +1304,7 @@ def _merge_entities(chunk_results: list[_ChunkResult]) -> list[ExtractedEntity]:
 
 def _merge_evidence_from_chunks(chunk_results: list[_ChunkResult]) -> tuple[str, ...]:
     """Deterministically merge evidence lines from all chunks, removing overlap duplicates."""
-    return _dedupe_evidence_lines(
-        line
-        for chunk_result in chunk_results
-        for line in chunk_result.evidence_lines
-    )
+    return _dedupe_evidence_lines(line for chunk_result in chunk_results for line in chunk_result.evidence_lines)
 
 
 def _serialized_evidence_size(evidence_lines: tuple[str, ...]) -> int:
@@ -1280,9 +1340,7 @@ def _is_pdf_reference_or_caption_line(line: str) -> bool:
         return True
     if re.match(r"^\[\d+\]", stripped):
         return True
-    if stripped.lower().startswith("doi:"):
-        return True
-    return False
+    return bool(stripped.lower().startswith("doi:"))
 
 
 def _is_pdf_affiliation_line(line: str) -> bool:
@@ -1290,8 +1348,20 @@ def _is_pdf_affiliation_line(line: str) -> bool:
     if not lowered:
         return False
     affiliation_markers = (
-        "university", "institute", "department", "school of", "hospital", "centre",
-        "center", "faculty", "college", "st ", "road", "avenue", "street", "email",
+        "university",
+        "institute",
+        "department",
+        "school of",
+        "hospital",
+        "centre",
+        "center",
+        "faculty",
+        "college",
+        "st ",
+        "road",
+        "avenue",
+        "street",
+        "email",
     )
     if "@" in lowered:
         return True
@@ -1368,11 +1438,7 @@ def _trim_pdf_evidence_lines(lines: tuple[str, ...], *, limit: int) -> tuple[str
     selected_indexes: list[int] = []
 
     def add_best(predicate: Callable[[str], bool]) -> None:
-        candidates = [
-            index
-            for index, line in enumerate(lines)
-            if index not in selected_indexes and predicate(line)
-        ]
+        candidates = [index for index, line in enumerate(lines) if index not in selected_indexes and predicate(line)]
         if not candidates:
             return
         best = min(
@@ -1409,9 +1475,7 @@ def _is_pdf_frontmatter_noise(line: str) -> bool:
         return True
     if lowered.startswith(("copyright", "correspondence", "supplementary", "received ", "accepted ")):
         return True
-    if lowered.startswith("doi:") and len(stripped.split()) <= 6:
-        return True
-    return False
+    return bool(lowered.startswith("doi:") and len(stripped.split()) <= 6)
 
 
 def _pdf_anchor_tokens(line: str, *, limit: int = 2) -> tuple[str, ...]:
@@ -1438,10 +1502,7 @@ def _choose_pdf_title(
     entities: Iterable[ExtractedEntity],
 ) -> str | None:
     candidates = _dedupe_evidence_lines(
-        line
-        for artifact in artifacts
-        for line in artifact.title_candidates
-        if not _is_pdf_frontmatter_noise(line)
+        line for artifact in artifacts for line in artifact.title_candidates if not _is_pdf_frontmatter_noise(line)
     )
     if candidates:
         return _deterministic_pdf_title(candidates, entities)
@@ -1462,10 +1523,7 @@ def _build_pdf_candidates(
     current_section_title: str | None = None
     order = 0
     for chunk_index, artifact in enumerate(artifacts):
-        heading_lines = tuple(
-            line for line in artifact.section_headings
-            if not _is_pdf_frontmatter_noise(line)
-        )
+        heading_lines = tuple(line for line in artifact.section_headings if not _is_pdf_frontmatter_noise(line))
         if heading_lines:
             current_section_title = heading_lines[0]
             section_index += 1
@@ -1682,8 +1740,7 @@ def _select_pdf_render_plan(
         )
 
     dropped_counts = {
-        category: max(total_counts[category] - selected_counts[category], 0)
-        for category in selected_counts
+        category: max(total_counts[category] - selected_counts[category], 0) for category in selected_counts
     }
     return _PdfRenderPlan(
         title=title,
@@ -1857,11 +1914,7 @@ def _compress_pdf_artifacts(
 
     if best:
         return best
-    return _dedupe_evidence_lines(
-        line
-        for artifact in artifacts
-        for line in artifact[:1]
-    )
+    return _dedupe_evidence_lines(line for artifact in artifacts for line in artifact[:1])
 
 
 def _format_pdf_heading(line: str, *, level: str = "##") -> str:
@@ -1930,11 +1983,7 @@ def _render_pdf_stitched_text(
         selected_blocks.append(block)
 
     preservation_heading = "## Preserved Source Spans"
-    preservation_blocks = [
-        block
-        for block in blocks[len(selected_blocks):]
-        if _is_pdf_preservation_block(block)
-    ]
+    preservation_blocks = [block for block in blocks[len(selected_blocks) :] if _is_pdf_preservation_block(block)]
     if preservation_blocks:
         candidate_blocks = selected_blocks.copy()
         for preservation_block in preservation_blocks:
@@ -1974,12 +2023,7 @@ async def _merge_evidence_group(
     profile: _LongDocumentProfile,
 ) -> tuple[str, ...]:
     """Merge a small group of evidence artifacts with a grounded-model pass."""
-    merged_input = {
-        "artifacts": [
-            {"evidence_lines": list(lines)}
-            for lines in group
-        ]
-    }
+    merged_input = {"artifacts": [{"evidence_lines": list(lines)} for lines in group]}
     source_lines = tuple(line for lines in group for line in lines)
     try:
         result, _retries = await _call_with_retry(
@@ -2031,7 +2075,7 @@ async def _compress_evidence_lines(
     while len(artifacts) > 1:
         next_level: list[tuple[str, ...]] = []
         for index in range(0, len(artifacts), _MERGE_GROUP_SIZE):
-            group = artifacts[index:index + _MERGE_GROUP_SIZE]
+            group = artifacts[index : index + _MERGE_GROUP_SIZE]
             next_level.append(await _merge_evidence_group(llm, group, variant, profile))
         artifacts = next_level
         if len(artifacts) == 1 and _serialized_evidence_size(artifacts[0]) <= budget_chars:
@@ -2050,11 +2094,7 @@ async def _compress_tidy_evidence_lines(
     budget_tokens: int | None = None,
 ) -> tuple[str, ...]:
     """Compress evidence lines for tidy-only rendering."""
-    merged = _dedupe_evidence_lines(
-        line
-        for chunk_result in chunk_results
-        for line in chunk_result.evidence_lines
-    )
+    merged = _dedupe_evidence_lines(line for chunk_result in chunk_results for line in chunk_result.evidence_lines)
     if profile.name == "pdf":
         effective_budget_tokens = budget_tokens or budget_chars
         if _serialized_evidence_token_count(merged) <= effective_budget_tokens:
@@ -2071,7 +2111,7 @@ async def _compress_tidy_evidence_lines(
     while len(artifacts) > 1:
         next_level: list[tuple[str, ...]] = []
         for index in range(0, len(artifacts), _MERGE_GROUP_SIZE):
-            group = artifacts[index:index + _MERGE_GROUP_SIZE]
+            group = artifacts[index : index + _MERGE_GROUP_SIZE]
             next_level.append(await _merge_evidence_group(llm, group, variant, profile))
         artifacts = next_level
         if len(artifacts) == 1 and _serialized_evidence_size(artifacts[0]) <= budget_chars:
@@ -2141,7 +2181,9 @@ async def _render_long_document(
     entities = _merge_entities(chunk_results)
     pdf_strategy = _resolve_pdf_tidy_strategy(tidy_level) if profile.name == "pdf" else None
     if pdf_strategy is not None:
-        pdf_artifacts = tuple(chunk_result.pdf_artifact for chunk_result in chunk_results if chunk_result.pdf_artifact is not None)
+        pdf_artifacts = tuple(
+            chunk_result.pdf_artifact for chunk_result in chunk_results if chunk_result.pdf_artifact is not None
+        )
         if pdf_artifacts:
             plan = _select_pdf_render_plan(pdf_artifacts, strategy=pdf_strategy, entities=entities)
             tidy_text, debug = _render_pdf_plan(
@@ -2155,11 +2197,10 @@ async def _render_long_document(
                 ExtractionResult(
                     entities=entities,
                     tidy_title=plan.title,
-                    tidy_text=tidy_text or _fallback_tidy_text(
+                    tidy_text=tidy_text
+                    or _fallback_tidy_text(
                         _dedupe_evidence_lines(
-                            line
-                            for artifact in pdf_artifacts
-                            for line in _flatten_pdf_artifact_lines(artifact)
+                            line for artifact in pdf_artifacts for line in _flatten_pdf_artifact_lines(artifact)
                         )
                     ),
                 ),
@@ -2208,7 +2249,9 @@ async def _render_long_document(
         )
         tidy_title = _clean_optional_str(result.get("tidy_title")) or _fallback_title(evidence_lines)
         tidy_text = _clean_optional_str(result.get("tidy_text")) or _fallback_tidy_text(evidence_lines)
-        fallback_used = tidy_title == _fallback_title(evidence_lines) or tidy_text == _fallback_tidy_text(evidence_lines)
+        fallback_used = tidy_title == _fallback_title(evidence_lines) or tidy_text == _fallback_tidy_text(
+            evidence_lines
+        )
     except Exception:
         tidy_title = _fallback_title(evidence_lines)
         tidy_text = _fallback_tidy_text(evidence_lines)
@@ -2222,6 +2265,36 @@ async def _render_long_document(
         ),
         fallback_used,
     )
+
+
+async def _generate_summary_from_chunks(
+    llm: LLMClient,
+    chunk_results: list[_ChunkResult],
+    profile: _LongDocumentProfile,
+) -> tuple[str | None, str | None]:
+    """Generate title + TL;DR summary from chunk summaries. Single cheap LLM call."""
+    summaries = [cr.chunk_summary for cr in chunk_results if cr.chunk_summary]
+    if not summaries:
+        all_evidence = [line for cr in chunk_results for line in cr.evidence_lines[:2]]
+        summaries = all_evidence[:6]
+
+    if not summaries:
+        return None, None
+
+    prompt = json.dumps({"chunk_summaries": summaries}, ensure_ascii=False)
+    try:
+        result = await _complete_json_with_timeout(
+            llm,
+            prompt,
+            system=_SUMMARY_FROM_CHUNKS_SYSTEM,
+            timeout_seconds=profile.reduce_timeout_seconds,
+        )
+        title = _clean_optional_str(result.get("tidy_title"))
+        summary = _clean_optional_str(result.get("summary"))
+        return title, summary
+    except Exception:
+        evidence = tuple(line for cr in chunk_results for line in cr.evidence_lines)
+        return _fallback_title(evidence), None
 
 
 async def _render_tidy_from_evidence(
@@ -2238,7 +2311,9 @@ async def _render_tidy_from_evidence(
         return ExtractionResult(entities=[]), True
     pdf_strategy = _resolve_pdf_tidy_strategy(tidy_level) if profile.name == "pdf" else None
     if pdf_strategy is not None and chunk_results:
-        pdf_artifacts = tuple(chunk_result.pdf_artifact for chunk_result in chunk_results if chunk_result.pdf_artifact is not None)
+        pdf_artifacts = tuple(
+            chunk_result.pdf_artifact for chunk_result in chunk_results if chunk_result.pdf_artifact is not None
+        )
         if pdf_artifacts:
             plan = _select_pdf_render_plan(pdf_artifacts, strategy=pdf_strategy, entities=())
             tidy_text, debug = _render_pdf_plan(
@@ -2265,7 +2340,8 @@ async def _render_tidy_from_evidence(
                     evidence_lines,
                     tidy_level=tidy_level,
                     output_budget_tokens=pdf_strategy.output_budget_tokens,
-                ) or _fallback_tidy_text(evidence_lines),
+                )
+                or _fallback_tidy_text(evidence_lines),
             ),
             False,
         )
@@ -2286,7 +2362,9 @@ async def _render_tidy_from_evidence(
         )
         tidy_title = _clean_optional_str(result.get("tidy_title")) or _fallback_title(evidence_lines)
         tidy_text = _clean_optional_str(result.get("tidy_text")) or _fallback_tidy_text(evidence_lines)
-        fallback_used = tidy_title == _fallback_title(evidence_lines) or tidy_text == _fallback_tidy_text(evidence_lines)
+        fallback_used = tidy_title == _fallback_title(evidence_lines) or tidy_text == _fallback_tidy_text(
+            evidence_lines
+        )
     except Exception:
         tidy_title = _fallback_title(evidence_lines)
         tidy_text = _fallback_tidy_text(evidence_lines)
@@ -2311,6 +2389,7 @@ async def extract_entities(
     trace: ExtractionTrace | None = None,
     source_mime_type: str | None = None,
     progress_callback: ProgressCallback | None = None,
+    summary_only: bool = False,
 ) -> ExtractionResult:
     """Extract conceptual entities and tidy memo from text using an LLM.
 
@@ -2329,7 +2408,8 @@ async def extract_entities(
     pdf_strategy = _resolve_pdf_tidy_strategy(tidy_level) if profile.name == "pdf" else None
     map_system = (
         _with_pdf_chunk_budget(variant.map_system, pdf_strategy, include_entities=True)
-        if pdf_strategy else variant.map_system
+        if pdf_strategy
+        else variant.map_system
     )
     if trace is not None:
         trace.prompt_variant = variant.name
@@ -2340,7 +2420,7 @@ async def extract_entities(
         if trace is not None:
             trace.strategy = "single"
             trace.chunk_count = 1
-        return await _extract_single(llm, stripped, variant, tidy_level)
+        return await _extract_single(llm, stripped, variant, tidy_level, summary_only=summary_only)
 
     # Long documents: map to grounded chunk artifacts, then render from the merged artifact.
     chunks = _split_chunks(stripped, chunk_size=profile.chunk_size, overlap=profile.overlap)
@@ -2383,6 +2463,28 @@ async def extract_entities(
         )
         return fallback_result
 
+    if summary_only:
+        # Summary-only mode: merge entities deterministically, generate title+summary
+        entities = _merge_entities(chunk_results)
+        title, summary = await _generate_summary_from_chunks(llm, chunk_results, profile)
+        if trace is not None:
+            trace.fallback_used = failed_chunks > 0 or summary is None
+        await _emit_progress(
+            progress_callback,
+            {
+                "status": "partial" if failed_chunks > 0 or summary is None else "completed",
+                "stage": "done",
+                "chunk_total": len(chunks),
+                "chunk_completed": len(chunks),
+                "chunk_failed": failed_chunks,
+                "retry_count": retry_count,
+                "fallback_used": failed_chunks > 0 or summary is None,
+                "source_profile": profile.name,
+            },
+        )
+        return ExtractionResult(entities=entities, tidy_title=title, tidy_text=summary)
+
+    # Full tidy mode (scribbles/feeds): merge + reduce as before
     await _emit_progress(
         progress_callback,
         {
@@ -2441,7 +2543,8 @@ async def render_tidy_text(
     pdf_strategy = _resolve_pdf_tidy_strategy(tidy_level) if profile.name == "pdf" else None
     map_system = (
         _with_pdf_chunk_budget(_TIDY_ONLY_MAP_SYSTEM, pdf_strategy, include_entities=False)
-        if pdf_strategy else _TIDY_ONLY_MAP_SYSTEM
+        if pdf_strategy
+        else _TIDY_ONLY_MAP_SYSTEM
     )
     if trace is not None:
         trace.prompt_variant = variant.name
@@ -2544,17 +2647,23 @@ async def _extract_single(
     text: str,
     variant: ExtractorPromptVariant,
     tidy_level: TidyLevel,
+    *,
+    summary_only: bool = False,
 ) -> ExtractionResult:
     """Extract from a short document with a single LLM call."""
     try:
-        result = await llm.complete_json(
-            text,
-            system=_with_tidy_level(variant.extraction_system, tidy_level),
-        )
+        system = _SUMMARY_EXTRACTION_SYSTEM if summary_only else _with_tidy_level(variant.extraction_system, tidy_level)
+        result = await llm.complete_json(text, system=system)
     except ValueError as exc:
         raise ExtractionError(f"LLM returned malformed output: {exc}") from exc
 
-    return _parse_extraction_result(result)
+    parsed = _parse_extraction_result(result)
+    if summary_only and not parsed.tidy_text:
+        # Summary-mode LLM returns "summary" key instead of "tidy_text"
+        summary = _clean_optional_str(result.get("summary"))
+        if summary:
+            return dataclasses.replace(parsed, tidy_text=summary)
+    return parsed
 
 
 async def _render_single_tidy(
@@ -2574,7 +2683,9 @@ async def _render_single_tidy(
     if parsed.tidy_text:
         return parsed
 
-    source_lines = _summary_to_evidence_lines(text, limit=None) or tuple(line for line in text.splitlines() if line.strip())
+    source_lines = _summary_to_evidence_lines(text, limit=None) or tuple(
+        line for line in text.splitlines() if line.strip()
+    )
     return ExtractionResult(
         entities=[],
         tidy_title=parsed.tidy_title or _fallback_title(source_lines),

@@ -26,6 +26,7 @@ dependencies = [
     "cryptography>=44,<45",
     "openai>=1.60,<2",
     "platformdirs>=4,<5",
+    "opendataloader-pdf>=2.0,<3",
 ]
 
 [project.optional-dependencies]

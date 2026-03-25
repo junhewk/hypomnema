@@ -125,7 +125,6 @@ export interface AppSettings {
   openai_api_key: string;
   ollama_base_url: string;
   openai_base_url: string;
-  tidy_level: TidyLevel;
   embedding_provider: string;
   embedding_model: string;
   embedding_dim: number;
@@ -139,7 +138,6 @@ export interface SettingsUpdatePayload {
   openai_api_key?: string;
   ollama_base_url?: string;
   openai_base_url?: string;
-  tidy_level?: TidyLevel;
 }
 
 export interface ModelOption {

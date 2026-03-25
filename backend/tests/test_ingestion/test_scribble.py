@@ -37,17 +37,13 @@ class TestCreateScribble:
 
     async def test_persisted_in_database(self, tmp_db):
         doc = await create_scribble(tmp_db, "persistent")
-        cursor = await tmp_db.execute(
-            "SELECT * FROM documents WHERE id = ?", (doc.id,)
-        )
+        cursor = await tmp_db.execute("SELECT * FROM documents WHERE id = ?", (doc.id,))
         row = await cursor.fetchone()
         assert row is not None
         assert row["text"] == "persistent"
 
     async def test_fts_indexed(self, tmp_db):
         await create_scribble(tmp_db, "xylophone unique search term")
-        cursor = await tmp_db.execute(
-            "SELECT * FROM documents_fts WHERE documents_fts MATCH 'xylophone'"
-        )
+        cursor = await tmp_db.execute("SELECT * FROM documents_fts WHERE documents_fts MATCH 'xylophone'")
         rows = await cursor.fetchall()
         assert len(rows) == 1

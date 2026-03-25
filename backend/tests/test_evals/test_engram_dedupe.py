@@ -171,8 +171,7 @@ class TestRunEngramDedupeEval:
         assert report.hardened.missed_merge_count == 0
         assert report.hardened.false_merge_count == 0
         assert any(
-            case.case_id == "choi_honorific_gloss" and case.adjusted.reason == "alias_key"
-            for case in report.cases
+            case.case_id == "choi_honorific_gloss" and case.adjusted.reason == "alias_key" for case in report.cases
         )
         assert any(
             case.case_id == "bioethics_law_short_full"
@@ -216,11 +215,7 @@ class TestRunEngramDedupeEval:
             and case.hardened.reason == "alias_index"
             for case in report.cases
         )
-        assert any(
-            case.case_id == "bioethics_law_vs_guideline"
-            and not case.hardened.merged
-            for case in report.cases
-        )
+        assert any(case.case_id == "bioethics_law_vs_guideline" and not case.hardened.merged for case in report.cases)
 
     @pytest.mark.asyncio
     async def test_writes_json_and_markdown_reports(self, tmp_path: Path) -> None:

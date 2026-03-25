@@ -31,9 +31,7 @@ async def fetch_engram_embeddings(
 
     Returns (engram_ids, embedding_matrix) with shape (n, dim).
     """
-    cursor = await db.execute(
-        "SELECT engram_id, embedding FROM engram_embeddings"
-    )
+    cursor = await db.execute("SELECT engram_id, embedding FROM engram_embeddings")
     rows = await cursor.fetchall()
     await cursor.close()
 
@@ -123,11 +121,13 @@ def _detect_gaps(
     gaps: list[GapRegion] = []
 
     for c1, c2 in combinations(clusters, 2):
-        midpoint = np.array([
-            (c1.centroid_x + c2.centroid_x) / 2,
-            (c1.centroid_y + c2.centroid_y) / 2,
-            (c1.centroid_z + c2.centroid_z) / 2,
-        ])
+        midpoint = np.array(
+            [
+                (c1.centroid_x + c2.centroid_x) / 2,
+                (c1.centroid_y + c2.centroid_y) / 2,
+                (c1.centroid_z + c2.centroid_z) / 2,
+            ]
+        )
         distance, _ = tree.query(midpoint)
         if distance >= _GAP_MIN_DISTANCE:
             gaps.append(
@@ -189,13 +189,10 @@ async def compute_projections(
     return points, clusters, gaps
 
 
-async def _store_projections(
-    db: aiosqlite.Connection, points: list[ProjectionPoint]
-) -> None:
+async def _store_projections(db: aiosqlite.Connection, points: list[ProjectionPoint]) -> None:
     """INSERT OR REPLACE projections into the DB."""
     await db.executemany(
-        "INSERT OR REPLACE INTO projections (engram_id, x, y, z, cluster_id) "
-        "VALUES (?, ?, ?, ?, ?)",
+        "INSERT OR REPLACE INTO projections (engram_id, x, y, z, cluster_id) VALUES (?, ?, ?, ?, ?)",
         [(p.engram_id, p.x, p.y, p.z, p.cluster_id) for p in points],
     )
     await db.commit()
@@ -250,9 +247,7 @@ async def load_clusters(db: aiosqlite.Connection) -> list[Cluster]:
 
 async def load_gaps(db: aiosqlite.Connection) -> list[GapRegion]:
     """Recompute gaps from stored projections and clusters."""
-    cursor = await db.execute(
-        "SELECT x, y, z, cluster_id FROM projections"
-    )
+    cursor = await db.execute("SELECT x, y, z, cluster_id FROM projections")
     rows = await cursor.fetchall()
     await cursor.close()
 
@@ -266,9 +261,7 @@ async def load_gaps(db: aiosqlite.Connection) -> list[GapRegion]:
     for r in rows:
         cid = r[3]
         if cid is not None:
-            cluster_map.setdefault(cid, []).append(
-                np.array([r[0], r[1], r[2]], dtype=np.float32)
-            )
+            cluster_map.setdefault(cid, []).append(np.array([r[0], r[1], r[2]], dtype=np.float32))
 
     clusters = []
     for cid in sorted(cluster_map):
@@ -288,13 +281,10 @@ async def load_gaps(db: aiosqlite.Connection) -> list[GapRegion]:
     return _detect_gaps(coords, clusters)
 
 
-async def load_edges(
-    db: aiosqlite.Connection, *, limit: int = 5000
-) -> list[VizEdge]:
+async def load_edges(db: aiosqlite.Connection, *, limit: int = 5000) -> list[VizEdge]:
     """Load edges for visualization (lightweight projection)."""
     cursor = await db.execute(
-        "SELECT source_engram_id, target_engram_id, predicate, confidence "
-        "FROM edges ORDER BY confidence DESC LIMIT ?",
+        "SELECT source_engram_id, target_engram_id, predicate, confidence FROM edges ORDER BY confidence DESC LIMIT ?",
         (limit,),
     )
     rows = await cursor.fetchall()

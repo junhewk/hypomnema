@@ -18,11 +18,13 @@ from .conftest import SAMPLE_TEXT
 
 class TestParseFile:
     def test_preprocess_pdf_text_removes_repeated_margins_and_joins_wrapped_lines(self) -> None:
-        text = preprocess_pdf_text([
-            "Healthcare AI Ethics\n1\nAI can trans-\nform care.",
-            "Healthcare AI Ethics\n2\nThis para-\ngraph spans lines.",
-            "Healthcare AI Ethics\n3\nReferences\n[1] Example reference",
-        ])
+        text = preprocess_pdf_text(
+            [
+                "Healthcare AI Ethics\n1\nAI can trans-\nform care.",
+                "Healthcare AI Ethics\n2\nThis para-\ngraph spans lines.",
+                "Healthcare AI Ethics\n3\nReferences\n[1] Example reference",
+            ]
+        )
 
         assert "Healthcare AI Ethics" not in text
         assert "\n1\n" not in text
@@ -32,9 +34,25 @@ class TestParseFile:
 
     def test_preprocess_pdf_text_trims_backmatter_sections_in_long_documents(self) -> None:
         descriptors = [
-            "governance", "privacy", "fairness", "autonomy", "accountability", "traceability",
-            "safety", "bias", "oversight", "equity", "consent", "transparency", "robustness",
-            "accessibility", "procurement", "monitoring", "reliability", "stewardship", "auditing",
+            "governance",
+            "privacy",
+            "fairness",
+            "autonomy",
+            "accountability",
+            "traceability",
+            "safety",
+            "bias",
+            "oversight",
+            "equity",
+            "consent",
+            "transparency",
+            "robustness",
+            "accessibility",
+            "procurement",
+            "monitoring",
+            "reliability",
+            "stewardship",
+            "auditing",
         ]
         page_texts = [
             (
@@ -44,11 +62,13 @@ class TestParseFile:
             )
             for index, descriptor in enumerate(descriptors, start=1)
         ]
-        page_texts.extend([
-            "Page 20\nAppendix\nAppendix detail 1.",
-            "Page 21\nReferences\n[1] Example reference",
-            "Page 22\nAcknowledgements\nThanks.",
-        ])
+        page_texts.extend(
+            [
+                "Page 20\nAppendix\nAppendix detail 1.",
+                "Page 21\nReferences\n[1] Example reference",
+                "Page 22\nAcknowledgements\nThanks.",
+            ]
+        )
 
         text = preprocess_pdf_text(page_texts)
 
@@ -111,9 +131,7 @@ class TestIngestFile:
 
     async def test_correct_mime_type_docx(self, tmp_db, fixtures_dir: Path):
         doc = await ingest_file(tmp_db, fixtures_dir / "sample.docx")
-        assert doc.mime_type == (
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        )
+        assert doc.mime_type == ("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
 
     async def test_correct_mime_type_md(self, tmp_db, fixtures_dir: Path):
         doc = await ingest_file(tmp_db, fixtures_dir / "sample.md")
@@ -130,9 +148,7 @@ class TestIngestFile:
 
     async def test_persisted_in_database(self, tmp_db, fixtures_dir: Path):
         doc = await ingest_file(tmp_db, fixtures_dir / "sample.md")
-        cursor = await tmp_db.execute(
-            "SELECT * FROM documents WHERE id = ?", (doc.id,)
-        )
+        cursor = await tmp_db.execute("SELECT * FROM documents WHERE id = ?", (doc.id,))
         row = await cursor.fetchone()
         assert row is not None
         assert SAMPLE_TEXT in row["text"]

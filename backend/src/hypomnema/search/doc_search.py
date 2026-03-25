@@ -96,8 +96,7 @@ async def semantic_search(
     query_bytes = embedding_to_bytes(vectors[0])
 
     cursor = await db.execute(
-        "SELECT document_id, distance FROM document_embeddings "
-        "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+        "SELECT document_id, distance FROM document_embeddings WHERE embedding MATCH ? AND k = ? ORDER BY distance",
         (query_bytes, limit),
     )
     knn_rows = await cursor.fetchall()
@@ -123,11 +122,13 @@ async def semantic_search(
         if doc_row is None:
             continue
         cosine_sim = l2_to_cosine(knn_row["distance"])
-        results.append(ScoredDocument(
-            document=Document.from_row(doc_row),
-            score=cosine_sim,
-            match_type="semantic",
-        ))
+        results.append(
+            ScoredDocument(
+                document=Document.from_row(doc_row),
+                score=cosine_sim,
+                match_type="semantic",
+            )
+        )
     return results
 
 
@@ -162,8 +163,7 @@ def _reciprocal_rank_fusion(
         dataclasses.replace(
             best_doc[doc_id],
             score=scores[doc_id],
-            match_type="hybrid" if list_count[doc_id] > 1
-            else best_doc[doc_id].match_type,
+            match_type="hybrid" if list_count[doc_id] > 1 else best_doc[doc_id].match_type,
         )
         for doc_id in sorted_ids
     ]

@@ -145,9 +145,7 @@ class TestApplyEngramDedupe:
         connection = sqlite3.connect(db_path)
         connection.row_factory = sqlite3.Row
         try:
-            engrams = connection.execute(
-                "SELECT id, canonical_name FROM engrams ORDER BY canonical_name"
-            ).fetchall()
+            engrams = connection.execute("SELECT id, canonical_name FROM engrams ORDER BY canonical_name").fetchall()
             assert [row["canonical_name"] for row in engrams] == ["안전성", "임상 결과", "환자 안전"]
 
             doc_links = connection.execute(

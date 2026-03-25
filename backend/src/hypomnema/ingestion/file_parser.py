@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 import re
+import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     import aiosqlite
 
 from docx import Document as DocxDocument
 from pypdf import PdfReader
 
 from hypomnema.db.models import Document
+
+logger = logging.getLogger(__name__)
 
 _MIME_MAP: dict[str, str] = {
     ".pdf": "application/pdf",
@@ -130,9 +133,7 @@ def _is_structural_pdf_line(line: str) -> bool:
         return True
     if re.match(r"^\[\d+\]", stripped):
         return True
-    if stripped.lower().startswith("doi:"):
-        return True
-    return False
+    return bool(stripped.lower().startswith("doi:"))
 
 
 def _should_start_new_pdf_paragraph(current: str, next_line: str) -> bool:
@@ -174,10 +175,7 @@ def _coalesce_pdf_lines(lines: list[str]) -> list[str]:
 
 
 def preprocess_pdf_text(page_texts: list[str]) -> str:
-    page_lines = [
-        [line.strip() for line in text.replace("\r", "\n").splitlines()]
-        for text in page_texts
-    ]
+    page_lines = [[line.strip() for line in text.replace("\r", "\n").splitlines()] for text in page_texts]
     repeated_margin_lines = _detect_repeated_margin_lines(page_lines)
 
     cleaned_pages: list[str] = []
@@ -193,12 +191,7 @@ def preprocess_pdf_text(page_texts: list[str]) -> str:
         if paragraphs:
             cleaned_pages.append("\n\n".join(paragraphs))
 
-    blocks = [
-        block.strip()
-        for page in cleaned_pages
-        for block in page.split("\n\n")
-        if block.strip()
-    ]
+    blocks = [block.strip() for page in cleaned_pages for block in page.split("\n\n") if block.strip()]
     blocks = _trim_pdf_backmatter(blocks)
     text = "\n\n".join(blocks).strip()
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -207,13 +200,41 @@ def preprocess_pdf_text(page_texts: list[str]) -> str:
     return text
 
 
+def _extract_pdf_opendataloader(path: Path) -> str | None:
+    """Extract PDF text via opendataloader-pdf (markdown output)."""
+    try:
+        import opendataloader_pdf
+
+        with tempfile.TemporaryDirectory() as outdir:
+            opendataloader_pdf.convert(
+                input_path=[str(path)],
+                output_dir=outdir,
+                format="markdown",
+            )
+            md_files = list(Path(outdir).rglob("*.md"))
+            if not md_files:
+                return None
+            text = md_files[0].read_text(encoding="utf-8").strip()
+            return text or None
+    except Exception:
+        logger.warning("opendataloader-pdf failed for %s, falling back to pypdf", path.name, exc_info=True)
+        return None
+
+
 def inspect_pdf(path: Path) -> ParsedPdf:
     reader = PdfReader(path)
+    page_count = len(reader.pages)
+
+    text = _extract_pdf_opendataloader(path)
+    if text:
+        return ParsedPdf(text=text, page_count=page_count)
+
+    # Fall back to pypdf + regex post-processing
     page_texts = [(page.extract_text() or "") for page in reader.pages]
     text = preprocess_pdf_text(page_texts)
     if not text:
         raise ValueError(f"No extractable text in {path.name}")
-    return ParsedPdf(text=text, page_count=len(reader.pages))
+    return ParsedPdf(text=text, page_count=page_count)
 
 
 def parse_pdf(path: Path) -> str:

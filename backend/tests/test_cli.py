@@ -35,10 +35,7 @@ class TestServeCommand:
 
     def test_build_signature_tracks_frontend_api_env(self) -> None:
         settings = type("Settings", (), {"port": 8073})()
-        assert cli_mod._frontend_build_signature(settings) == (
-            "NEXT_PUBLIC_API_PORT=8073\n"
-            "NEXT_PUBLIC_API_URL=auto"
-        )
+        assert cli_mod._frontend_build_signature(settings) == ("NEXT_PUBLIC_API_PORT=8073\nNEXT_PUBLIC_API_URL=auto")
 
     def test_rebuilds_when_next_dir_only_contains_dev_artifacts(
         self,

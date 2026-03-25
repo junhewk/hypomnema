@@ -68,12 +68,11 @@ class FeedScheduler:
             feed_source = FeedSource.from_row(row)
 
             try:
-                docs = await poll_feed(
-                    db, feed_source, timeout=self._feed_timeout
-                )
+                docs = await poll_feed(db, feed_source, timeout=self._feed_timeout)
                 logger.info(
                     "Feed '%s': %d new documents",
-                    feed_source.name, len(docs),
+                    feed_source.name,
+                    len(docs),
                 )
             except Exception:
                 logger.exception("Error polling feed '%s'", feed_source.name)
@@ -87,9 +86,7 @@ class FeedScheduler:
                         threshold=self._triage_threshold,
                     )
                 except Exception:
-                    logger.exception(
-                        "Error triaging docs for feed '%s'", feed_source.name
-                    )
+                    logger.exception("Error triaging docs for feed '%s'", feed_source.name)
 
     def _job_id(self, feed_source_id: str) -> str:
         return f"feed_{feed_source_id}"

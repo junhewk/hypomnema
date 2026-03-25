@@ -13,20 +13,22 @@ if TYPE_CHECKING:
 from hypomnema.db.models import Edge, Engram
 from hypomnema.ontology.engram import l2_to_cosine
 
-VALID_PREDICATES: frozenset[str] = frozenset({
-    "is_a",
-    "part_of",
-    "related_to",
-    "contradicts",
-    "supports",
-    "provides_methodology_for",
-    "exemplifies",
-    "derives_from",
-    "influences",
-    "precedes",
-    "co_occurs_with",
-    "subsumes",
-})
+VALID_PREDICATES: frozenset[str] = frozenset(
+    {
+        "is_a",
+        "part_of",
+        "related_to",
+        "contradicts",
+        "supports",
+        "provides_methodology_for",
+        "exemplifies",
+        "derives_from",
+        "influences",
+        "precedes",
+        "co_occurs_with",
+        "subsumes",
+    }
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -65,8 +67,7 @@ async def find_neighbors(
 
     # KNN query — request k+1 to account for self-match
     cursor = await db.execute(
-        "SELECT engram_id, distance FROM engram_embeddings "
-        "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+        "SELECT engram_id, distance FROM engram_embeddings WHERE embedding MATCH ? AND k = ? ORDER BY distance",
         (emb_bytes, k + 1),
     )
     knn_rows = await cursor.fetchall()
@@ -133,10 +134,7 @@ async def assign_predicates(
     if not targets:
         return []
 
-    target_descriptions = "\n".join(
-        f"- {t.canonical_name}: {t.description or 'no description'}"
-        for t in targets
-    )
+    target_descriptions = "\n".join(f"- {t.canonical_name}: {t.description or 'no description'}" for t in targets)
     prompt = (
         f"Source concept: {source.canonical_name}\n"
         f"Description: {source.description or 'no description'}\n\n"
@@ -175,12 +173,14 @@ def _parse_proposed_edges(
         if not isinstance(confidence, (int, float)):
             confidence = 1.0
         confidence = max(0.0, min(1.0, float(confidence)))
-        proposed.append(ProposedEdge(
-            source_engram_id=source.id,
-            target_engram_id=target_map[target_name].id,
-            predicate=predicate,
-            confidence=confidence,
-        ))
+        proposed.append(
+            ProposedEdge(
+                source_engram_id=source.id,
+                target_engram_id=target_map[target_name].id,
+                predicate=predicate,
+                confidence=confidence,
+            )
+        )
     return proposed
 
 
