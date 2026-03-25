@@ -76,11 +76,12 @@ async def _fetch_edges() -> list[dict[str, Any]]:
 def _node_size(rank: float) -> float:
     """Map PageRank (0-1 normalized) to node point size.
 
-    Base size 4px, top nodes (rank > 0.85 of max) scale up to 18px.
+    NiceGUI point_size is in world units, not pixels. For UMAP coords
+    spanning ~3-10 units, base 0.05 with top nodes up to 0.15.
     """
     if rank > 0.85:
-        return 4.0 + 14.0 * ((rank - 0.85) / 0.15)
-    return 4.0
+        return 0.05 + 0.10 * ((rank - 0.85) / 0.15)
+    return 0.05
 
 
 async def render_graph(
@@ -193,7 +194,7 @@ async def render_graph(
                     eid = p["engram_id"]
                     x, y, z = pos_map[eid]
                     rank = page_ranks.get(eid, 0.0)
-                    size = _node_size(rank) * 0.05  # Scale sphere radius relative to scene
+                    size = max(_node_size(rank) * 2, 0.08)  # Clickable sphere slightly larger than dot
                     r, g, b = cluster_color_rgb(p["cluster_id"])
                     hex_color = f"#{int(r * 255):02x}{int(g * 255):02x}{int(b * 255):02x}"
 

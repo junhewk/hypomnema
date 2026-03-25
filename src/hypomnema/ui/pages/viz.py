@@ -25,7 +25,7 @@ def _viz_layout(title: str | None = None) -> ui.element:
 
     from hypomnema.ui.layout import sidebar
 
-    sidebar()
+    sidebar(collapsed=True, overlay=False)
 
     container = ui.element("main").classes("px-4 py-4 w-full")
     return container
