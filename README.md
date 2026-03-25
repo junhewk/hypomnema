@@ -8,6 +8,13 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/junhewk/hypomnema/actions/workflows/ci.yml"><img src="https://github.com/junhewk/hypomnema/actions/workflows/ci.yml/badge.svg?branch=v0.2.0-nicegui" alt="CI"></a>
+  <a href="https://github.com/junhewk/hypomnema/releases"><img src="https://img.shields.io/github/v/release/junhewk/hypomnema?include_prereleases&label=release" alt="Release"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License"></a>
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.12+-3776ab" alt="Python 3.12+"></a>
+</p>
+
+<p align="center">
   <a href="./LICENSE">AGPL-3.0</a> &middot;
   <a href="./CHANGELOG.md">Changelog</a> &middot;
   <a href="./DEVELOPMENT.md">Development</a>
