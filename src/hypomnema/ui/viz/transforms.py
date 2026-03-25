@@ -37,13 +37,13 @@ def hsl_to_rgb(h: float, s: float, lightness: float) -> tuple[float, float, floa
     return (r + m, g + m, b + m)
 
 
-def cluster_color(cluster_id: int) -> str:
+def cluster_color(cluster_id: int | None) -> str:
     """Golden-angle HSL hue generation for deterministic cluster colors.
 
     Returns hex color string like '#ff9900'.
-    cluster_id -1 (noise) returns neutral gray.
+    cluster_id None or -1 (noise) returns neutral gray.
     """
-    if cluster_id < 0:
+    if not isinstance(cluster_id, int) or cluster_id < 0:
         return "#787068"  # warm neutral gray matching TS [0.47, 0.44, 0.42]
 
     hue = (cluster_id * 137.508) % 360
