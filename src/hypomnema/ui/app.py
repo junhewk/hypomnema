@@ -54,6 +54,13 @@ def configure(settings: Settings | None = None) -> None:
         # NiceGUI's app is a Starlette app, middleware works the same way
         app.add_middleware(PassphraseAuthMiddleware)  # type: ignore[arg-type]
 
+    # Serve static assets (icon, favicon)
+    from pathlib import Path
+
+    static_dir = Path(__file__).resolve().parent.parent.parent.parent / "static"
+    if static_dir.is_dir():
+        app.add_static_files("/static", str(static_dir))
+
     # Register lifecycle hooks
     app.on_startup(_startup)
     app.on_shutdown(_shutdown)

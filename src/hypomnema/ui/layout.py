@@ -19,22 +19,26 @@ def sidebar(*, mini: bool = False) -> None:
     Args:
         mini: Start in mini (icon-only) mode. Drawer stays visible but narrow.
     """
-    with ui.left_drawer(value=True, bordered=True).classes("px-2 py-4") as drawer:
-        drawer.props(f"width=200 mini-width=56 mini-to-overlay {'mini' if mini else ''}")
+    is_mini = {"value": mini}
 
-        # Logo
-        ui.label("hypomnema").classes(
-            "text-sm font-bold tracking-wider uppercase text-center w-full mb-1"
-        ).style("color: #d4d4d4; letter-spacing: 0.15em")
+    with ui.left_drawer(value=True, bordered=True).classes("px-2 py-4") as drawer:
+        drawer.props(f"width=200 mini-width=56 {'mini' if mini else ''}")
+
+        # Icon + logo
+        with ui.element("div").classes("flex items-center gap-2 mb-1 px-1"):
+            ui.image("/static/icon.png").classes("w-8 h-8 rounded")
+            ui.label("hypomnema").classes(
+                "text-sm font-bold tracking-wider uppercase"
+            ).style("color: #d4d4d4; letter-spacing: 0.15em")
         ui.label("ontological synthesizer").classes(
             "text-[9px] text-center w-full mb-6"
         ).style("color: #4a4a4a; letter-spacing: 0.1em")
 
         ui.separator().classes("mb-4").style("background: #1e1e1e")
 
-        # Nav items — use div + on_click to avoid nested <a> tag issues
+        # Nav items
         for item in _NAV_ITEMS:
-            path = item["path"]  # capture for closure
+            path = item["path"]
             with ui.element("div").classes(
                 "relative flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
             ).style(
@@ -51,8 +55,7 @@ def sidebar(*, mini: bool = False) -> None:
         ui.space()
         ui.separator().classes("my-4").style("background: #1e1e1e")
 
-        # Minimap container — populated asynchronously after page load.
-        # TODO: cache minimap SVG across pages to avoid re-querying on every navigation.
+        # Minimap container
         minimap_container = ui.element("div").classes("px-1 mb-2")
 
         async def _load_minimap() -> None:
@@ -64,7 +67,7 @@ def sidebar(*, mini: bool = False) -> None:
                 with minimap_container:
                     await render_minimap(width=176, height=110)
             except Exception:
-                pass  # Silently skip minimap if data unavailable
+                pass
 
         asyncio.ensure_future(_load_minimap())
 
@@ -77,13 +80,17 @@ def sidebar(*, mini: bool = False) -> None:
 
         ui.separator().classes("my-2").style("background: #1e1e1e")
 
-        # Collapse button
-        def _toggle_drawer() -> None:
-            drawer.toggle()
+        # Collapse/expand toggle — switches drawer to mini mode (icon-only), not hidden
+        def _toggle_mini() -> None:
+            is_mini["value"] = not is_mini["value"]
+            if is_mini["value"]:
+                drawer.props(add="mini")
+            else:
+                drawer.props(remove="mini")
 
         with ui.element("div").classes(
             "flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
-        ).style("color: #4a4a4a").on("click", _toggle_drawer):
+        ).style("color: #4a4a4a").on("click", _toggle_mini):
             ui.icon("chevron_left").classes("text-lg")
             ui.label("Collapse").classes("text-xs tracking-wider uppercase")
 

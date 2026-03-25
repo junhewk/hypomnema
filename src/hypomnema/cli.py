@@ -35,6 +35,7 @@ def cmd_dev(args: argparse.Namespace) -> None:
         host="127.0.0.1",
         port=settings.port,
         title="Hypomnema",
+        favicon="/static/icon.png",
         dark=True,
         reload=True,
         show=not args.no_browser,
@@ -56,6 +57,7 @@ def cmd_serve(args: argparse.Namespace) -> None:
         host=settings.host,
         port=settings.port,
         title="Hypomnema",
+        favicon="/static/icon.png",
         dark=True,
         reload=False,
         show=False,
@@ -77,6 +79,7 @@ def cmd_desktop(args: argparse.Namespace) -> None:
         native=True,
         port=0,  # random ephemeral port
         title="Hypomnema",
+        favicon="/static/icon.png",
         dark=True,
         reload=False,
         window_size=(1200, 800),
