@@ -160,9 +160,8 @@ _GRAPH_INIT_JS = """
         const sprite = new SpriteText(node.name);
         sprite.color = 'rgba(210,210,210,0.8)';
         sprite.textHeight = 0.03;
-        sprite.backgroundColor = 'rgba(10,10,10,0.35)';
-        sprite.padding = 0.15;
-        sprite.borderRadius = 0.2;
+        sprite.backgroundColor = false;
+        sprite.padding = 0;
         sprite.position.y = size * 0.5 + 0.025;
         group.add(sprite);
       }
@@ -247,7 +246,7 @@ _GRAPH_INIT_JS = """
   hud.innerHTML = '<span style="color:#6b6b6b">orbit</span> drag'
     + ' &nbsp; <span style="color:#6b6b6b">zoom</span> scroll'
     + ' &nbsp; <span style="color:#6b6b6b">pan</span> right-drag'
-    + ' &nbsp; <span style="color:#6b6b6b">spread</span> +/&minus; keys'
+    + ' &nbsp; <span style="color:#6b6b6b">spread</span> alt+scroll'
     + '<br><span style="color:#6b6b6b">move</span> drag node'
     + ' &nbsp; <span style="color:#6b6b6b">push/pull</span> alt+drag node'
     + ' &nbsp; <span style="color:#6b6b6b">inspect</span> click node'
@@ -431,9 +430,8 @@ _GRAPH_INIT_JS = """
         hoverSprite = new SpriteText(nd3.name);
         hoverSprite.color = 'rgba(220,220,220,0.9)';
         hoverSprite.textHeight = 0.035;
-        hoverSprite.backgroundColor = 'rgba(10,10,10,0.6)';
-        hoverSprite.padding = 0.15;
-        hoverSprite.borderRadius = 0.2;
+        hoverSprite.backgroundColor = false;
+        hoverSprite.padding = 0;
         hoverSprite.position.copy(obj.position);
         hoverSprite.position.y += 0.08;
         scene.add(hoverSprite);
@@ -452,31 +450,40 @@ _GRAPH_INIT_JS = """
     renderer.setSize(w, h);
   });
 
-  // Spread: +/- keys scale all node positions from centroid
+  // Spread: Alt+scroll scales node positions from centroid
   var spreadFactor = 1.0;
-  data.nodes.forEach(function(n) { n._ox = n.fx; n._oy = n.fy; n._oz = n.fz; });
+  // Compute centroid
+  var _cx = 0, _cy = 0, _cz = 0;
+  data.nodes.forEach(function(n) { _cx += n.fx; _cy += n.fy; _cz += n.fz; });
+  _cx /= data.nodes.length; _cy /= data.nodes.length; _cz /= data.nodes.length;
+  // Store offsets from centroid
+  data.nodes.forEach(function(n) {
+    n._dx = n.fx - _cx; n._dy = n.fy - _cy; n._dz = n.fz - _cz;
+  });
 
   function applySpread() {
     data.nodes.forEach(function(n) {
-      n.fx = n._ox * spreadFactor;
-      n.fy = n._oy * spreadFactor;
-      n.fz = n._oz * spreadFactor;
+      n.fx = _cx + n._dx * spreadFactor;
+      n.fy = _cy + n._dy * spreadFactor;
+      n.fz = _cz + n._dz * spreadFactor;
       n.x = n.fx; n.y = n.fy; n.z = n.fz;
     });
     graph.graphData(graph.graphData());
     updateEdges();
   }
 
-  document.addEventListener('keydown', function(e) {
-    if (e.key === '=' || e.key === '+') {
-      spreadFactor = Math.min(3.0, spreadFactor + 0.1);
-      applySpread();
-    }
-    if (e.key === '-') {
-      spreadFactor = Math.max(0.3, spreadFactor - 0.1);
-      applySpread();
-    }
-  });
+  renderer.domElement.addEventListener('wheel', function(e) {
+    if (!e.altKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    spreadFactor += e.deltaY > 0 ? -0.08 : 0.08;
+    spreadFactor = Math.max(0.3, Math.min(5.0, spreadFactor));
+    applySpread();
+  }, {passive: false, capture: true});
+  // Disable orbit zoom when alt is held
+  renderer.domElement.addEventListener('wheel', function(e) {
+    controls.enableZoom = !e.altKey;
+  }, {capture: true});
 
   // Fit camera to data bounds
   var xs = data.nodes.map(function(n){return n.fx});
