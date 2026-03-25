@@ -304,14 +304,40 @@ async def settings_page() -> None:
                 ui.label("Dimension:").classes("text-xs").style("color: #6b6b6b")
                 ui.label(str(emb_dim)).classes("text-xs font-medium")
 
-            # Check embedding change status
+            # Embedding change status with auto-refresh
+            emb_status_container = ui.element("div").classes("mt-2")
+
+            def _update_emb_status() -> None:
+                emb_status_container.clear()
+                status = getattr(app.state, "embedding_change_status", None)
+                if status and status.status == "in_progress":
+                    with emb_status_container, ui.row().classes("items-center gap-2"):
+                        ui.spinner(size="sm").props('color="grey-5"')
+                        ui.label(
+                            f"Rebuilding... {status.processed}/{status.total}"
+                        ).classes("text-xs").style("color: #ff9800")
+                elif status and status.status == "failed":
+                    with emb_status_container:
+                        ui.label(
+                            f"Rebuild failed: {status.error or 'unknown'}"
+                        ).classes("text-xs").style("color: #ef5350")
+                    emb_poll_timer.deactivate()
+                elif status and status.status == "complete" and status.total > 0:
+                    with emb_status_container:
+                        ui.label(
+                            f"Rebuild complete ({status.processed} documents)"
+                        ).classes("text-xs").style("color: #4caf50")
+                    emb_poll_timer.deactivate()
+                else:
+                    emb_poll_timer.deactivate()
+
+            emb_poll_timer = ui.timer(3.0, _update_emb_status, active=False)
+
+            # Start polling if currently in progress
             emb_change_status = getattr(app.state, "embedding_change_status", None)
             if emb_change_status and emb_change_status.status == "in_progress":
-                with ui.row().classes("items-center gap-2 mt-2"):
-                    ui.spinner(size="sm").props('color="grey-5"')
-                    ui.label(
-                        f"Rebuilding knowledge graph... {emb_change_status.processed}/{emb_change_status.total}"
-                    ).classes("text-xs").style("color: #ff9800")
+                emb_poll_timer.activate()
+                _update_emb_status()
 
             async def _change_embedding() -> None:
                 """Show warning dialog for embedding provider change."""
