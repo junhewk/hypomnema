@@ -15,8 +15,8 @@ from hypomnema.visualization.projection import compute_projections
 
 _has_projection_deps = True
 try:
-    import umap  # noqa: F401
     import sklearn  # noqa: F401
+    import umap  # noqa: F401
 except ImportError:
     _has_projection_deps = False
 

@@ -9,11 +9,11 @@ from nicegui import app, ui
 
 from hypomnema.ui.layout import page_layout
 from hypomnema.ui.utils import (
-    get_db,
     API_KEY_FIELD,
     DEFAULT_LLM_MODELS,
     LLM_MODELS,
     LLM_PROVIDERS,
+    get_db,
 )
 
 logger = logging.getLogger(__name__)

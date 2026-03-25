@@ -7,8 +7,8 @@ from tests.conftest import insert_engram_with_embedding, make_embedding
 
 _has_projection_deps = True
 try:
-    import umap  # noqa: F401
     import sklearn  # noqa: F401
+    import umap  # noqa: F401
 except ImportError:
     _has_projection_deps = False
 
