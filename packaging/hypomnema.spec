@@ -109,7 +109,7 @@ if platform.system() == "Darwin":
     app = BUNDLE(
         coll,
         name="Hypomnema.app",
-        icon=str(repo_root / "static" / "icon.png") if (repo_root / "static" / "icon.png").exists() else None,
+        icon=str(repo_root / "static" / "icon.icns") if (repo_root / "static" / "icon.icns").exists() else None,
         bundle_identifier="com.hypomnema.app",
         info_plist={
             "CFBundleDisplayName": "Hypomnema",
