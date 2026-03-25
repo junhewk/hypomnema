@@ -105,8 +105,9 @@ def _build_graph_data(
     return {"nodes": nodes, "links": links}
 
 
-_GRAPH_JS = """
-<div id="force-graph-container" style="width:100%; height:100%; background:{{BG_COLOR}};"></div>
+_GRAPH_DIV = '<div id="force-graph-container" style="width:100%; height:100%; background:{{BG_COLOR}};"></div>'
+
+_GRAPH_SCRIPT = """
 <script type="module">
 import ForceGraph3D from 'https://esm.sh/3d-force-graph@1?deps=three@0.175';
 import SpriteText from 'https://esm.sh/three-spritetext@1';
@@ -208,12 +209,14 @@ async def render_graph(
 
     graph_data = _build_graph_data(projections, edges, spread)
 
-    # Build the HTML with injected data
-    html = _GRAPH_JS.replace("{{GRAPH_DATA}}", json.dumps(graph_data))
-    html = html.replace("{{BG_COLOR}}", _BG_COLOR)
+    # Build the HTML div + script separately (NiceGUI forbids <script> in ui.html)
+    div_html = _GRAPH_DIV.replace("{{BG_COLOR}}", _BG_COLOR)
+    script_html = _GRAPH_SCRIPT.replace("{{GRAPH_DATA}}", json.dumps(graph_data))
+    script_html = script_html.replace("{{BG_COLOR}}", _BG_COLOR)
 
     with container:
-        graph_div = ui.html(html).style(f"width: 100%; height: {height}")
+        graph_div = ui.html(div_html).style(f"width: 100%; height: {height}")
+    ui.add_body_html(script_html)
 
     # Wire up node click callback via JavaScript bridge
     if on_node_click:
