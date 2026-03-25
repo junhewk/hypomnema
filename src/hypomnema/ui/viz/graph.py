@@ -189,12 +189,12 @@ _GRAPH_INIT_JS = """
     var sid = (typeof link.source === 'object') ? link.source.id : link.source;
     var tid = (typeof link.target === 'object') ? link.target.id : link.target;
     if (!nodeById[sid] || !nodeById[tid]) return;
-    var c = 0.2 + (link.confidence || 0.3) * 0.4;
+    var c = 0.08 + (link.confidence || 0.3) * 0.15;
     var geo = new THREE.BufferGeometry();
     var positions = new Float32Array(6);
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     var mat = new THREE.LineBasicMaterial({
-      color: new THREE.Color(c, c, c), transparent: true, opacity: 0.5
+      color: new THREE.Color(c, c, c), transparent: true, opacity: 0.35
     });
     var line = new THREE.Line(geo, mat);
     edgeLines.push({line: line, sid: sid, tid: tid});
