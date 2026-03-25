@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from nicegui import app, ui
 
@@ -17,9 +17,6 @@ from hypomnema.ui.viz.transforms import (
     cluster_color,
     compute_page_rank,
 )
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -146,9 +143,24 @@ _GRAPH_INIT_JS = """
     .linkWidth(0.3)
     .linkOpacity(1.0)
     .onNodeClick(node => {
-      if (node && node.id && window.__hypomnema_node_click) {
-        window.__hypomnema_node_click(node.id, node.name);
+      if (!node || !node.id) return;
+      // Show/update floating tooltip
+      let tip = document.getElementById('hypo-viz-tooltip');
+      if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'hypo-viz-tooltip';
+        tip.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;'
+          + 'background:rgba(13,13,13,0.92);border:1px solid #1e1e1e;'
+          + 'backdrop-filter:blur(8px);padding:10px 14px;border-radius:4px;'
+          + 'font-family:JetBrains Mono,monospace;max-width:300px';
+        document.body.appendChild(tip);
       }
+      tip.innerHTML = `<div style="color:#d4d4d4;font-size:13px;margin-bottom:4px">${node.name}</div>`
+        + `<a href="/engrams/${node.id}" style="color:#7eb8da;font-size:10px;text-decoration:none">`
+        + `View engram →</a>`
+        + `<span onclick="this.parentElement.style.display='none'" `
+        + `style="position:absolute;top:4px;right:8px;color:#4a4a4a;cursor:pointer;font-size:14px">×</span>`;
+      tip.style.display = 'block';
     })
     .onNodeDragEnd(node => {
       node.fx = node.x;
@@ -182,7 +194,6 @@ _GRAPH_INIT_JS = """
 async def render_graph(
     container: ui.element,
     *,
-    on_node_click: Callable[[str, str], None] | None = None,
     height: str = "600px",
     spread: float = 1.0,
 ) -> dict[str, int]:
@@ -208,25 +219,10 @@ async def render_graph(
     init_js = init_js.replace("{{BG_COLOR}}", _BG_COLOR)
 
     with container:
-        graph_div = ui.html(div_html).style(f"width: 100%; height: {height}")
+        ui.html(div_html).style(f"width: 100%; height: {height}")
 
     # Run after DOM is ready (ui.run_javascript waits for client connection)
     ui.timer(0.5, lambda: ui.run_javascript(init_js), once=True)
-
-    # Wire up node click callback via JavaScript bridge
-    if on_node_click:
-        def _handle_click(eid: str, name: str) -> None:
-            on_node_click(eid, name)
-
-        ui.run_javascript("""
-            window.__hypomnema_node_click = (id, name) => {
-                emitEvent('node_click', {id: id, name: name});
-            };
-        """)
-        # NiceGUI event listener
-        graph_div.on("node_click", lambda e: _handle_click(
-            e.args.get("id", ""), e.args.get("name", ""),
-        ))
 
     return {
         "node_count": len(graph_data["nodes"]),

@@ -38,41 +38,13 @@ async def viz_page() -> None:
     with ui.element("main").classes("w-full relative").style(
         "height: 100vh; background: #0a0a0a; overflow: hidden"
     ):
-        # Tooltip card
-        tooltip_card = ui.card().classes("absolute").style(
-            "display: none; top: 16px; right: 16px; z-index: 30; "
-            "background: rgba(13,13,13,0.92); border: 1px solid #1e1e1e; "
-            "backdrop-filter: blur(8px); min-width: 220px; max-width: 320px"
-        )
-        with tooltip_card:
-            with ui.row().classes("items-center justify-between w-full mb-1"):
-                tooltip_name = ui.label("").classes("text-sm font-medium")
-                ui.button(
-                    icon="close",
-                    on_click=lambda: tooltip_card.style("display: none"),
-                ).props("flat dense round size=xs color=grey-7")
-            tooltip_link = ui.link("View engram", "/engrams/").classes(
-                "text-xs no-underline"
-            ).style("color: #7eb8da; font-size: 10px")
-
-        # Graph fills entire viewport
+        # Graph fills entire viewport (tooltip handled in JS)
         graph_container = ui.element("div").style(
             "width: 100%; height: 100vh; position: absolute; top: 0; left: 0"
         )
 
-        def _on_node_click(eid: str, name: str) -> None:
-            tooltip_name.set_text(name)
-            tooltip_link._props["href"] = f"/engrams/{eid}"  # noqa: SLF001
-            tooltip_link.update()
-            tooltip_card.style(
-                "display: block; top: 16px; right: 16px; z-index: 30; "
-                "background: rgba(13,13,13,0.92); border: 1px solid #1e1e1e; "
-                "backdrop-filter: blur(8px); min-width: 220px; max-width: 320px"
-            )
-
         result = await render_graph(
             graph_container,
-            on_node_click=_on_node_click,
             height="100vh",
         )
 
