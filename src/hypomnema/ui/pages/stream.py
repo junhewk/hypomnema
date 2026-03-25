@@ -33,16 +33,19 @@ async def stream_page() -> None:
                 placeholder="Drop a thought, paste a URL, or drag a file..."
             ).classes("w-full").props('autogrow outlined dense dark color="grey-7"')
 
-            with ui.row().classes("justify-end mt-2 gap-2"):
-                ui.upload(
-                    label="Upload",
+            with ui.row().classes("justify-end mt-2 gap-2 items-center"):
+                upload = ui.upload(
                     auto_upload=True,
                     on_upload=lambda e: _handle_file_upload(e),
-                ).props('flat dense accept=".pdf,.docx,.md" color="grey-7"').classes("text-xs")
+                ).props('flat dense accept=".pdf,.docx,.md" color="grey-7"').classes("hidden")
                 ui.button(
-                    "Submit",
+                    "Upload", icon="attach_file",
+                    on_click=lambda: upload.run_method("pickFiles"),
+                ).props('flat dense size="sm" color="grey-6" no-caps').classes("text-xs")
+                ui.button(
+                    "Submit", icon="send",
                     on_click=lambda: _submit_scribble(text_input),
-                ).props('flat dense color="grey-5"').classes("text-xs")
+                ).props('flat dense size="sm" color="grey-6" no-caps').classes("text-xs")
 
         # Document list with auto-refresh when items are processing
         doc_container = ui.column().classes("w-full gap-0")
