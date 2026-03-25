@@ -56,7 +56,7 @@ def cluster_color_rgb(cluster_id: int | None) -> tuple[float, float, float]:
 
     cluster_id None or -1 (noise) returns warm neutral gray.
     """
-    if cluster_id is None or cluster_id < 0:
+    if not isinstance(cluster_id, int) or cluster_id < 0:
         return (0.47, 0.44, 0.42)
 
     hue = (cluster_id * 137.508) % 360
