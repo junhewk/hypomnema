@@ -527,7 +527,7 @@ async def render_graph(
     div_html = '<div id="hypo-graph-container" style="width:100%;height:100%;background:%%BG_COLOR%%"></div>'
     div_html = div_html.replace("%%BG_COLOR%%", _BG_COLOR)
 
-    init_js = _GRAPH_INIT_JS.replace("%%GRAPH_DATA%%", json.dumps(graph_data))
+    init_js = _GRAPH_INIT_JS.replace("%%GRAPH_DATA%%", json.dumps(graph_data, ensure_ascii=False))
     init_js = init_js.replace("%%BG_COLOR%%", _BG_COLOR)
 
     with container:
