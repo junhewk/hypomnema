@@ -27,17 +27,26 @@ async def _load_documents() -> list[dict[str, object]]:
 async def stream_page() -> None:
     """Main document stream."""
     with page_layout("Stream"):
-        # Scribble input
-        with ui.card().classes("w-full mb-6").style("background: #111"):
+        # Scribble input — entire card is a drop zone
+        with ui.card().classes("w-full mb-6").style(
+            "background: #111; border: 1px dashed transparent; transition: border-color 0.2s"
+        ) as input_card:
+            # Drop zone overlay behavior via JS
+            input_card.on("dragover.prevent", lambda e: input_card.style("border-color: #7eb8da"))
+            input_card.on("dragleave", lambda e: input_card.style("border-color: transparent"))
+            input_card.on("drop.prevent", lambda e: input_card.style("border-color: transparent"))
+
             text_input = ui.textarea(
                 placeholder="Drop a thought, paste a URL, or drag a file..."
             ).classes("w-full").props('autogrow outlined dense dark color="grey-7"')
 
+            # Hidden upload element for file handling
+            upload = ui.upload(
+                auto_upload=True,
+                on_upload=lambda e: _handle_file_upload(e),
+            ).props('accept=".pdf,.docx,.md"').classes("hidden")
+
             with ui.row().classes("justify-end mt-2 gap-2 items-center"):
-                upload = ui.upload(
-                    auto_upload=True,
-                    on_upload=lambda e: _handle_file_upload(e),
-                ).props('flat dense accept=".pdf,.docx,.md" color="grey-7"').classes("hidden")
                 ui.button(
                     "Upload", icon="attach_file",
                     on_click=lambda: upload.run_method("pickFiles"),
@@ -46,6 +55,29 @@ async def stream_page() -> None:
                     "Submit", icon="send",
                     on_click=lambda: _submit_scribble(text_input),
                 ).props('flat dense size="sm" color="grey-6" no-caps').classes("text-xs")
+
+            # Wire native drop on the card to the hidden upload
+            ui.add_body_html("""
+            <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                const cards = document.querySelectorAll('.q-card');
+                const card = cards[0];
+                if (!card) return;
+                card.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    const files = e.dataTransfer?.files;
+                    if (!files || files.length === 0) return;
+                    const input = card.querySelector('input[type=file]');
+                    if (input) {
+                        const dt = new DataTransfer();
+                        for (const f of files) dt.items.add(f);
+                        input.files = dt.files;
+                        input.dispatchEvent(new Event('change', {bubbles: true}));
+                    }
+                });
+            });
+            </script>
+            """)
 
         # Document list with auto-refresh when items are processing
         doc_container = ui.column().classes("w-full gap-0")
