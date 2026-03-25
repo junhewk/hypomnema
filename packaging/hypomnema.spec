@@ -1,12 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for Hypomnema NiceGUI desktop app."""
 
-import importlib
 import platform
 from pathlib import Path
 
 block_cipher = None
 repo_root = Path(SPECPATH).parent
+
 
 # Find sqlite-vec binary
 def _find_sqlite_vec():
@@ -19,6 +19,7 @@ def _find_sqlite_vec():
     except ImportError:
         pass
     return None
+
 
 sqlite_vec_binary = _find_sqlite_vec()
 extra_binaries = [(sqlite_vec_binary, "sqlite_vec")] if sqlite_vec_binary else []
@@ -37,11 +38,19 @@ except ImportError:
 static_dir = repo_root / "static"
 static_data = [(str(static_dir), "static")] if static_dir.is_dir() else []
 
+# NiceGUI needs its static files bundled
+try:
+    import nicegui
+    nicegui_dir = Path(nicegui.__file__).parent
+    nicegui_data = [(str(nicegui_dir), "nicegui")]
+except ImportError:
+    nicegui_data = []
+
 a = Analysis(
     [str(repo_root / "src" / "hypomnema" / "cli.py")],
     pathex=[str(repo_root / "src")],
     binaries=extra_binaries,
-    datas=traf_data + static_data,
+    datas=traf_data + static_data + nicegui_data,
     hiddenimports=[
         "hypomnema",
         "hypomnema.cli",
@@ -60,6 +69,7 @@ a = Analysis(
         "nicegui",
         "uvicorn.logging",
         "uvicorn.lifespan.on",
+        "engineio.async_drivers.threading",
     ],
     hookspath=[str(repo_root / "packaging" / "hooks")],
     excludes=[
@@ -93,3 +103,17 @@ coll = COLLECT(
     upx=True,
     name="hypomnema",
 )
+
+# macOS .app bundle — double-clickable
+if platform.system() == "Darwin":
+    app = BUNDLE(
+        coll,
+        name="Hypomnema.app",
+        icon=str(repo_root / "static" / "icon.png") if (repo_root / "static" / "icon.png").exists() else None,
+        bundle_identifier="com.hypomnema.app",
+        info_plist={
+            "CFBundleDisplayName": "Hypomnema",
+            "CFBundleShortVersionString": "0.2.0",
+            "NSHighResolutionCapable": True,
+        },
+    )

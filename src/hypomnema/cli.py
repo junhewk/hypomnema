@@ -399,8 +399,12 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command is None:
-        args.command = "dev"
-        args.no_browser = False
+        # Frozen (PyInstaller) builds default to desktop mode
+        if getattr(sys, "frozen", False):
+            args.command = "desktop"
+        else:
+            args.command = "dev"
+            args.no_browser = False
     if args.command == "dev":
         cmd_dev(args)
     elif args.command == "serve":
