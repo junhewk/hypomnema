@@ -110,8 +110,64 @@ _GRAPH_INIT_JS = """
   const {default: ForceGraph3D} = await import('https://esm.sh/3d-force-graph@1?deps=three@0.175');
   const {default: SpriteText} = await import('https://esm.sh/three-spritetext@1');
 
-  const container = document.getElementById('force-graph-container');
-  if (!container) { console.error('force-graph-container not found'); return; }
+  const wrapper = document.getElementById('force-graph-container');
+  if (!wrapper) { console.error('force-graph-container not found'); return; }
+
+  // Create layout: graph (left) + detail panel (right)
+  wrapper.style.display = 'flex';
+  const container = document.createElement('div');
+  container.style.cssText = 'flex:1;height:100%;position:relative';
+  wrapper.appendChild(container);
+
+  const panel = document.createElement('div');
+  panel.id = 'hypo-detail-panel';
+  Object.assign(panel.style, {
+    width: '0', height: '100%', overflow: 'hidden auto',
+    background: '#0d0d0d', borderLeft: '1px solid #1e1e1e',
+    fontFamily: "'JetBrains Mono', monospace", color: '#d4d4d4',
+    transition: 'width 0.25s ease', padding: '0', boxSizing: 'border-box'
+  });
+  wrapper.appendChild(panel);
+
+  function showPanel(node) {
+    const edges = graphData.links.filter(l => {
+      const s = typeof l.source === 'object' ? l.source.id : l.source;
+      const t = typeof l.target === 'object' ? l.target.id : l.target;
+      return s === node.id || t === node.id;
+    });
+    let edgesHtml = '';
+    edges.slice(0, 20).forEach(l => {
+      const s = typeof l.source === 'object' ? l.source : graphData.nodes.find(n => n.id === l.source);
+      const t = typeof l.target === 'object' ? l.target : graphData.nodes.find(n => n.id === l.target);
+      const other = (s && s.id === node.id) ? t : s;
+      if (!other) return;
+      const conf = Math.round((l.confidence || 0) * 100);
+      edgesHtml += '<div style="padding:4px 0;border-bottom:1px solid #1a1a1a;font-size:11px">'
+        + '<a href="/engrams/' + other.id + '" style="color:#7eb8da;text-decoration:none">'
+        + (other.name || other.id) + '</a>'
+        + '<span style="color:#4a4a4a;margin-left:6px">' + conf + '%</span></div>';
+    });
+    if (edges.length > 20) edgesHtml += '<div style="color:#4a4a4a;font-size:10px;padding-top:4px">+'
+      + (edges.length - 20) + ' more</div>';
+
+    panel.innerHTML = '<div style="padding:16px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+      + '<div style="font-size:14px;font-weight:500">' + (node.name || node.id) + '</div>'
+      + '<div onclick="document.getElementById(\'hypo-detail-panel\').style.width=\'0\';'
+      + 'document.getElementById(\'hypo-detail-panel\').style.padding=\'0\'" '
+      + 'style="cursor:pointer;color:#4a4a4a;font-size:16px">&times;</div></div>'
+      + '<div style="font-size:10px;color:#6b6b6b;margin-bottom:12px">cluster '
+      + (node.cluster_id != null ? node.cluster_id : 'none')
+      + ' &middot; rank ' + Math.round((node.rank || 0) * 100) + '%</div>'
+      + '<a href="/engrams/' + node.id + '" style="display:inline-block;color:#7eb8da;'
+      + 'font-size:11px;text-decoration:none;margin-bottom:16px;padding:4px 8px;'
+      + 'border:1px solid #1e1e1e;border-radius:3px">View engram &rarr;</a>'
+      + '<div style="font-size:10px;color:#4a4a4a;text-transform:uppercase;letter-spacing:0.1em;'
+      + 'margin-bottom:8px">Connections (' + edges.length + ')</div>'
+      + edgesHtml + '</div>';
+    panel.style.width = '280px';
+    panel.style.padding = '0';
+  }
 
   const graphData = {{GRAPH_DATA}};
 
@@ -145,28 +201,7 @@ _GRAPH_INIT_JS = """
     .linkOpacity(1.0)
     .onNodeClick(node => {
       if (!node || !node.id) return;
-      console.log('Node clicked:', node.id, node.name);
-      let tip = document.getElementById('hypo-viz-tooltip');
-      if (!tip) {
-        tip = document.createElement('div');
-        tip.id = 'hypo-viz-tooltip';
-        Object.assign(tip.style, {
-          position: 'fixed', top: '16px', right: '16px', zIndex: '9999',
-          background: 'rgba(13,13,13,0.92)', border: '1px solid #1e1e1e',
-          backdropFilter: 'blur(8px)', padding: '10px 14px', borderRadius: '4px',
-          fontFamily: "'JetBrains Mono', monospace", maxWidth: '300px',
-          color: '#d4d4d4'
-        });
-        document.body.appendChild(tip);
-      }
-      const name = node.name || node.id;
-      const id = node.id;
-      tip.innerHTML = '<div style="font-size:13px;margin-bottom:6px">' + name + '</div>'
-        + '<a href="/engrams/' + id + '" style="color:#7eb8da;font-size:10px;text-decoration:none">'
-        + 'View engram &rarr;</a>'
-        + '<div onclick="document.getElementById(\'hypo-viz-tooltip\').style.display=\'none\'" '
-        + 'style="position:absolute;top:4px;right:8px;color:#4a4a4a;cursor:pointer;font-size:14px">&times;</div>';
-      tip.style.display = 'block';
+      showPanel(node);
     })
     .onNodeDragEnd(node => {
       node.fx = node.x;
