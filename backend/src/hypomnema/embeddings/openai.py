@@ -24,6 +24,7 @@ class OpenAIEmbeddingModel:
     def embed(self, texts: list[str]) -> NDArray[np.float32]:
         response = self._client.embeddings.create(model=self._model, input=texts)
         vectors = np.array([d.embedding for d in response.data], dtype=np.float32)
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+        norms: NDArray[np.float32] = np.linalg.norm(vectors, axis=1, keepdims=True)
         norms = np.where(norms == 0, 1, norms)
-        return vectors / norms
+        result: NDArray[np.float32] = vectors / norms
+        return result

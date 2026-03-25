@@ -9,8 +9,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import pytest
 
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
 from hypomnema.config import Settings
 from hypomnema.evals.engram_dedupe import (
+    DatasetName,
     audit_existing_engrams,
     build_markdown_summary,
     load_eval_cases,
@@ -23,7 +27,7 @@ if TYPE_CHECKING:
 
 
 class StaticEmbeddingModel:
-    def __init__(self, mapping: dict[str, np.ndarray[object, np.dtype[np.float32]]], dimension: int = 4) -> None:
+    def __init__(self, mapping: dict[str, NDArray[np.float32]], dimension: int = 4) -> None:
         self._mapping = mapping
         self._dimension = dimension
 
@@ -31,16 +35,16 @@ class StaticEmbeddingModel:
     def dimension(self) -> int:
         return self._dimension
 
-    def embed(self, texts: list[str]) -> np.ndarray[object, np.dtype[np.float32]]:
+    def embed(self, texts: list[str]) -> NDArray[np.float32]:
         return np.stack([self._mapping[text] for text in texts]).astype(np.float32)
 
 
-def _unit_vector(*values: float) -> np.ndarray[object, np.dtype[np.float32]]:
+def _unit_vector(*values: float) -> NDArray[np.float32]:
     vec = np.array(values, dtype=np.float32)
     return vec / np.linalg.norm(vec)
 
 
-def _eval_embeddings(dataset: str) -> StaticEmbeddingModel:
+def _eval_embeddings(dataset: DatasetName) -> StaticEmbeddingModel:
     merge_left = _unit_vector(1, 0, 0, 0)
     merge_right = _unit_vector(0, -1, 0, 0)
     separate_left = _unit_vector(0, 0, 1, 0)
@@ -65,7 +69,7 @@ def _eval_embeddings(dataset: str) -> StaticEmbeddingModel:
         "의료법": separate_right,
     }
 
-    mapping: dict[str, np.ndarray[object, np.dtype[np.float32]]] = {}
+    mapping: dict[str, NDArray[np.float32]] = {}
     for case in load_eval_cases(dataset):
         mapping.setdefault(
             case.left_name,

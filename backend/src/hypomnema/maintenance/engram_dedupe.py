@@ -275,7 +275,7 @@ def _load_embeddings(connection: sqlite3.Connection) -> dict[str, np.ndarray[Any
     return {str(row["engram_id"]): bytes_to_embedding(row["embedding"]) for row in rows if row["embedding"] is not None}
 
 
-def _survivor_rank(member: EngramMergeMember) -> tuple[int, ... | str]:
+def _survivor_rank(member: EngramMergeMember) -> tuple[int, int, int, int, int, str, int, str]:
     normalized = normalize(member.canonical_name)
     english_only = int(not _contains_hangul(normalized))
     has_honorific = int(_has_honorific(member.canonical_name))
@@ -323,7 +323,8 @@ def _min_component_alias_edge_similarity(
         for right_id in graph[left_id]:
             if right_id not in component_ids:
                 continue
-            edge_key = tuple(sorted((left_id, right_id)))
+            a, b = sorted((left_id, right_id))
+            edge_key = (a, b)
             if edge_key in seen_edges:
                 continue
             seen_edges.add(edge_key)

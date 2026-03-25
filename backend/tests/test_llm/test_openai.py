@@ -24,7 +24,7 @@ class TestOpenAILLMClient:
         mock_response = MagicMock()
         mock_response.error = None
         mock_response.output_text = "Hello world"
-        client._client.responses.create = AsyncMock(return_value=mock_response)
+        client._client.responses.create = AsyncMock(return_value=mock_response)  # type: ignore[method-assign]
 
         result = await client.complete("test prompt", system="be helpful")
         assert result == "Hello world"
@@ -40,7 +40,7 @@ class TestOpenAILLMClient:
         mock_response = MagicMock()
         mock_response.error = None
         mock_response.output_text = '{"key": "value"}'
-        client._client.responses.create = AsyncMock(return_value=mock_response)
+        client._client.responses.create = AsyncMock(return_value=mock_response)  # type: ignore[method-assign]
 
         result = await client.complete_json("test")
         assert result == {"key": "value"}
@@ -57,7 +57,7 @@ class TestOpenAILLMClient:
         mock_response = MagicMock()
         mock_response.error = None
         mock_response.output_text = '```json\n{"key": "value"}\n```'
-        client._client.responses.create = AsyncMock(return_value=mock_response)
+        client._client.responses.create = AsyncMock(return_value=mock_response)  # type: ignore[method-assign]
 
         result = await client.complete_json("test")
         assert result == {"key": "value"}
@@ -77,7 +77,7 @@ class TestOpenAILLMClient:
         successful_response.incomplete_details = None
         successful_response.status = "completed"
 
-        client._client.responses.create = AsyncMock(side_effect=[incomplete_response, successful_response])
+        client._client.responses.create = AsyncMock(side_effect=[incomplete_response, successful_response])  # type: ignore[method-assign]
 
         result = await client.complete_json("test")
 

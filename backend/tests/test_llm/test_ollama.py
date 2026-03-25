@@ -23,7 +23,7 @@ class TestOllamaLLMClient:
         mock_response = MagicMock()
         mock_response.json.return_value = {"response": "Hello from Ollama"}
         mock_response.raise_for_status = MagicMock()
-        client._http.post = AsyncMock(return_value=mock_response)
+        client._http.post = AsyncMock(return_value=mock_response)  # type: ignore[method-assign]
 
         result = await client.complete("test prompt", system="be helpful")
         assert result == "Hello from Ollama"
@@ -40,7 +40,7 @@ class TestOllamaLLMClient:
         mock_response = MagicMock()
         mock_response.json.return_value = {"response": '{"key": "value"}'}
         mock_response.raise_for_status = MagicMock()
-        client._http.post = AsyncMock(return_value=mock_response)
+        client._http.post = AsyncMock(return_value=mock_response)  # type: ignore[method-assign]
 
         result = await client.complete_json("test")
         assert result == {"key": "value"}
@@ -50,7 +50,7 @@ class TestOllamaLLMClient:
         mock_response = MagicMock()
         mock_response.json.return_value = {"response": 'Here is the JSON:\n{"key": "value"}'}
         mock_response.raise_for_status = MagicMock()
-        client._http.post = AsyncMock(return_value=mock_response)
+        client._http.post = AsyncMock(return_value=mock_response)  # type: ignore[method-assign]
 
         result = await client.complete_json("test")
         assert result == {"key": "value"}

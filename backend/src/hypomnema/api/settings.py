@@ -23,6 +23,7 @@ from hypomnema.api.schemas import (
 )
 from hypomnema.crypto import mask_key
 from hypomnema.db.settings_store import get_all_settings, set_setting
+from hypomnema.embeddings.base import EmbeddingModel
 from hypomnema.embeddings.factory import EMBEDDING_DEFAULTS, build_embeddings
 from hypomnema.llm.factory import api_key_for_provider, base_url_for_provider, build_llm
 
@@ -399,6 +400,7 @@ async def _check_embedding_connection(
     api_key = _resolve_api_key(provider, body, settings)
     base_url = _resolve_base_url(provider, body, settings)
     try:
+        embeddings: EmbeddingModel
         if provider == "local":
             from hypomnema.embeddings.local_gpu import LocalEmbeddingModel
 
@@ -595,7 +597,8 @@ async def _reprocess_all_documents(app: FastAPI, total: int) -> None:
 @router.get("/embedding-status", response_model=EmbeddingChangeStatus)
 async def get_embedding_status(request: Request) -> EmbeddingChangeStatus:
     """Return current embedding change status."""
-    return request.app.state.embedding_change_status
+    status: EmbeddingChangeStatus = request.app.state.embedding_change_status
+    return status
 
 
 @router.post("/check-connection", response_model=ConnectivityCheckResponse)

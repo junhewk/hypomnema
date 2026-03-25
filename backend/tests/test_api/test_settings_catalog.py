@@ -1,6 +1,6 @@
 """Pure catalog tests for settings provider defaults."""
 
-from hypomnema.api import settings as settings_api
+import hypomnema.api.settings as settings_api
 
 
 def test_google_gemini_is_the_base_llm_recommendation() -> None:

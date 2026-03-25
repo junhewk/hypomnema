@@ -320,7 +320,7 @@ class TestPollFeed:
             schedule="* * * * *",
             active=True,
             last_fetched=None,
-            created_at="2024-01-01T00:00:00+00:00",
+            created_at="2024-01-01T00:00:00+00:00",  # type: ignore[arg-type]
         )
         with pytest.raises(ValueError, match="Unknown feed type"):
             await poll_feed(tmp_db, source)

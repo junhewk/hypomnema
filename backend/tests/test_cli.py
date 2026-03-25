@@ -7,10 +7,13 @@ import sys
 import types
 from typing import TYPE_CHECKING, Any
 
-from hypomnema import cli as cli_mod
+import hypomnema.cli as cli_mod
 
 if TYPE_CHECKING:
     from pathlib import Path
+
+_cli_subprocess = cli_mod.subprocess  # type: ignore[attr-defined]
+_cli_os = cli_mod.os  # type: ignore[attr-defined]
 
 
 def _make_frontend_dir(tmp_path: Path) -> Path:
@@ -59,7 +62,7 @@ class TestServeCommand:
         def fake_run(**kwargs: Any) -> None:
             run_kwargs.update(kwargs)
 
-        monkeypatch.setattr(cli_mod.subprocess, "run", fake_build)
+        monkeypatch.setattr(_cli_subprocess, "run", fake_build)
         monkeypatch.setattr(cli_mod, "_run", fake_run)
 
         cli_mod.cmd_serve(argparse.Namespace(build=False))
@@ -106,7 +109,7 @@ class TestServeCommand:
         def fake_run(**kwargs: Any) -> None:
             run_kwargs.update(kwargs)
 
-        monkeypatch.setattr(cli_mod.subprocess, "run", fake_build)
+        monkeypatch.setattr(_cli_subprocess, "run", fake_build)
         monkeypatch.setattr(cli_mod, "_run", fake_run)
 
         cli_mod.cmd_serve(argparse.Namespace(build=False))
@@ -139,7 +142,7 @@ class TestServeCommand:
         def fake_build(cmd: list[str], **kwargs: Any) -> None:
             build_calls.append((cmd, kwargs))
 
-        monkeypatch.setattr(cli_mod.subprocess, "run", fake_build)
+        monkeypatch.setattr(_cli_subprocess, "run", fake_build)
 
         cli_mod.cmd_serve(argparse.Namespace(build=False))
 
@@ -161,13 +164,13 @@ class TestServeCommand:
                 return None
 
         def fake_uvicorn_run(*args: Any, **kwargs: Any) -> None:
-            captured["mode"] = cli_mod.os.environ.get("HYPOMNEMA_MODE", "")
+            captured["mode"] = _cli_os.environ.get("HYPOMNEMA_MODE", "")
             captured["host"] = kwargs["host"]
 
         monkeypatch.setattr(cli_mod, "_FRONTEND_DIR", frontend_dir)
         monkeypatch.setattr(cli_mod, "_ensure_frontend", lambda: None)
         monkeypatch.setattr(cli_mod, "_ensure_node_modules", lambda _npm: None)
-        monkeypatch.setattr(cli_mod.subprocess, "Popen", lambda *args, **kwargs: FakeProc())
+        monkeypatch.setattr(_cli_subprocess, "Popen", lambda *args, **kwargs: FakeProc())
         monkeypatch.setitem(sys.modules, "uvicorn", types.SimpleNamespace(run=fake_uvicorn_run))
         monkeypatch.delenv("HYPOMNEMA_MODE", raising=False)
 
@@ -182,7 +185,7 @@ class TestServeCommand:
 
         assert captured["mode"] == "server"
         assert captured["host"] == "0.0.0.0"
-        assert "HYPOMNEMA_MODE" not in cli_mod.os.environ
+        assert "HYPOMNEMA_MODE" not in _cli_os.environ
 
 
 class TestMain:

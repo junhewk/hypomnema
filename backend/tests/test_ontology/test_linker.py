@@ -40,7 +40,7 @@ async def _insert_engrams(db, embeddings: MockEmbeddingModel) -> tuple[Engram, E
 
 class TestFindNeighbors:
     @pytest.mark.asyncio
-    async def test_finds_similar_engrams(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_finds_similar_engrams(self, tmp_db, mock_embeddings) -> None:
         e1, e2, e3 = await _insert_engrams(tmp_db, mock_embeddings)
         neighbors = await find_neighbors(tmp_db, e1.id, min_similarity=-1.0)
         assert len(neighbors) >= 1
@@ -49,25 +49,25 @@ class TestFindNeighbors:
         assert neighbor_ids & {e2.id, e3.id}
 
     @pytest.mark.asyncio
-    async def test_excludes_self(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_excludes_self(self, tmp_db, mock_embeddings) -> None:
         e1, _, _ = await _insert_engrams(tmp_db, mock_embeddings)
         neighbors = await find_neighbors(tmp_db, e1.id, min_similarity=-1.0)
         neighbor_ids = {n.id for n, _sim in neighbors}
         assert e1.id not in neighbor_ids
 
     @pytest.mark.asyncio
-    async def test_empty_when_no_embeddings(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_empty_when_no_embeddings(self, tmp_db, mock_embeddings) -> None:
         neighbors = await find_neighbors(tmp_db, "nonexistent-id")
         assert neighbors == []
 
     @pytest.mark.asyncio
-    async def test_respects_k_limit(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_respects_k_limit(self, tmp_db, mock_embeddings) -> None:
         e1, _, _ = await _insert_engrams(tmp_db, mock_embeddings)
         neighbors = await find_neighbors(tmp_db, e1.id, k=1, min_similarity=-1.0)
         assert len(neighbors) <= 1
 
     @pytest.mark.asyncio
-    async def test_respects_min_similarity(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_respects_min_similarity(self, tmp_db, mock_embeddings) -> None:
         e1, _, _ = await _insert_engrams(tmp_db, mock_embeddings)
         # Very high threshold should filter most/all neighbors
         neighbors = await find_neighbors(tmp_db, e1.id, min_similarity=0.999)
@@ -76,7 +76,7 @@ class TestFindNeighbors:
             assert sim >= 0.999
 
     @pytest.mark.asyncio
-    async def test_returns_engram_and_similarity(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_returns_engram_and_similarity(self, tmp_db, mock_embeddings) -> None:
         e1, _, _ = await _insert_engrams(tmp_db, mock_embeddings)
         neighbors = await find_neighbors(tmp_db, e1.id, min_similarity=-1.0)
         for engram, sim in neighbors:
@@ -84,7 +84,7 @@ class TestFindNeighbors:
             assert isinstance(sim, float)
 
     @pytest.mark.asyncio
-    async def test_nonexistent_engram(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_nonexistent_engram(self, tmp_db, mock_embeddings) -> None:
         await _insert_engrams(tmp_db, mock_embeddings)
         neighbors = await find_neighbors(tmp_db, "no-such-id")
         assert neighbors == []
@@ -181,7 +181,7 @@ class TestAssignPredicates:
 
 class TestCreateEdge:
     @pytest.mark.asyncio
-    async def test_creates_edge(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_creates_edge(self, tmp_db, mock_embeddings) -> None:
         e1, e2, _ = await _insert_engrams(tmp_db, mock_embeddings)
         proposed = ProposedEdge(
             source_engram_id=e1.id,
@@ -195,7 +195,7 @@ class TestCreateEdge:
         assert isinstance(edge, Edge)
 
     @pytest.mark.asyncio
-    async def test_duplicate_returns_none(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_duplicate_returns_none(self, tmp_db, mock_embeddings) -> None:
         e1, e2, _ = await _insert_engrams(tmp_db, mock_embeddings)
         proposed = ProposedEdge(
             source_engram_id=e1.id,
@@ -208,7 +208,7 @@ class TestCreateEdge:
         assert edge2 is None
 
     @pytest.mark.asyncio
-    async def test_edge_fields_correct(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_edge_fields_correct(self, tmp_db, mock_embeddings) -> None:
         e1, e2, _ = await _insert_engrams(tmp_db, mock_embeddings)
         # Insert a real document so FK constraint is satisfied
         await tmp_db.execute(
@@ -232,7 +232,7 @@ class TestCreateEdge:
         assert edge.source_document_id == "doc123"
 
     @pytest.mark.asyncio
-    async def test_different_predicates_both_created(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_different_predicates_both_created(self, tmp_db, mock_embeddings) -> None:
         e1, e2, _ = await _insert_engrams(tmp_db, mock_embeddings)
         p1 = ProposedEdge(source_engram_id=e1.id, target_engram_id=e2.id, predicate="related_to")
         p2 = ProposedEdge(source_engram_id=e1.id, target_engram_id=e2.id, predicate="supports")

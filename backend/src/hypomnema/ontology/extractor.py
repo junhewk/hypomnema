@@ -9,7 +9,7 @@ import random
 import re
 from collections.abc import Callable, Iterable
 from inspect import isawaitable
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from hypomnema.llm.base import LLMClient
@@ -881,7 +881,7 @@ async def _run_chunk_stage(
     profile: _LongDocumentProfile,
     progress_callback: ProgressCallback | None,
     stage: Literal["map", "tidy_map"],
-) -> tuple[list[_ChunkResult] | list[_TidyChunkResult], int, int]:
+) -> tuple[list[_ChunkResult | _TidyChunkResult], int, int]:
     total = len(chunks)
     await _emit_progress(
         progress_callback,
@@ -1529,13 +1529,14 @@ def _build_pdf_candidates(
             section_index += 1
         chunk_section_index = section_index
         chunk_section_title = current_section_title
-        for category, lines in (
+        _cat_lines: list[tuple[Literal["heading", "topic", "quote", "numeric", "support"], tuple[str, ...]]] = [
             ("heading", heading_lines),
             ("topic", artifact.topic_lines),
             ("quote", artifact.quote_lines),
             ("numeric", artifact.numeric_lines),
             ("support", artifact.support_lines),
-        ):
+        ]
+        for category, lines in _cat_lines:
             for line in lines:
                 if _is_pdf_frontmatter_noise(line):
                     continue
@@ -1674,12 +1675,13 @@ def _select_pdf_render_plan(
     ):
         record(candidate)
 
-    for category, limit in (
+    _cat_limits: list[tuple[Literal["heading", "topic", "quote", "numeric", "support"], int | None]] = [
         ("topic", None),
         ("quote", None),
         ("numeric", None),
         ("support", strategy.max_support_count),
-    ):
+    ]
+    for category, limit in _cat_limits:
         for candidate in _group_candidates_by_category(candidates, category):
             if limit is not None and selected_counts[category] >= limit:
                 break
@@ -2465,8 +2467,8 @@ async def extract_entities(
 
     if summary_only:
         # Summary-only mode: merge entities deterministically, generate title+summary
-        entities = _merge_entities(chunk_results)
-        title, summary = await _generate_summary_from_chunks(llm, chunk_results, profile)
+        entities = _merge_entities(cast("list[_ChunkResult]", chunk_results))
+        title, summary = await _generate_summary_from_chunks(llm, cast("list[_ChunkResult]", chunk_results), profile)
         if trace is not None:
             trace.fallback_used = failed_chunks > 0 or summary is None
         await _emit_progress(
@@ -2499,7 +2501,7 @@ async def extract_entities(
     )
     rendered_result, reduce_fallback_used = await _render_long_document(
         llm,
-        chunk_results,
+        cast("list[_ChunkResult]", chunk_results),
         variant,
         tidy_level,
         profile,
@@ -2597,7 +2599,7 @@ async def render_tidy_text(
         return fallback_result
     evidence_lines = await _compress_tidy_evidence_lines(
         llm,
-        chunk_results,
+        cast("list[_TidyChunkResult]", chunk_results),
         variant,
         profile,
         budget_chars=_FINAL_RENDER_EVIDENCE_CHARS,
@@ -2621,7 +2623,7 @@ async def render_tidy_text(
         variant,
         tidy_level,
         profile,
-        chunk_results=chunk_results,
+        chunk_results=cast("list[_TidyChunkResult]", chunk_results),
         trace=trace,
     )
     if trace is not None:

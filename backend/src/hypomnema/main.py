@@ -237,7 +237,7 @@ def create_app(settings: Settings | None = None, *, use_lifespan: bool = True) -
     if settings.mode == "server":
         from hypomnema.api.auth import PassphraseAuthMiddleware
 
-        app.add_middleware(PassphraseAuthMiddleware)
+        app.add_middleware(PassphraseAuthMiddleware)  # type: ignore[arg-type]
 
     if settings.static_dir and settings.static_dir.exists():
         from starlette.staticfiles import StaticFiles

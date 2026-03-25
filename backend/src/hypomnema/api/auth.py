@@ -104,7 +104,7 @@ class PassphraseAuthMiddleware:
 
 
 @auth_router.get("/status")
-async def auth_status(request: Request) -> dict:
+async def auth_status(request: Request) -> dict[str, bool]:
     """Return auth status: whether auth is required, whether user is authenticated, whether passphrase is set."""
     settings = request.app.state.settings
     auth_required = settings.mode == "server"

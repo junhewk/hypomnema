@@ -323,7 +323,7 @@ def _select_salient_quotes(
         if word_count == 1 and len(quote) < 10:
             continue
         occurrences = lowered_text.count(quote.casefold())
-        score = min(occurrences, 3) * 20
+        score: float = min(occurrences, 3) * 20
         score += 30 if word_count >= 2 else 0
         score += min(len(quote), 80) / 2
         if any(token.casefold() in quote.casefold() for token in must_preserve):

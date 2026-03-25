@@ -7,7 +7,7 @@ from tests.conftest import insert_engram_with_embedding, make_embedding
 
 
 async def _seed_engrams(app: object, count: int = 20) -> list[str]:
-    db = app.state.db  # type: ignore[union-attr]
+    db = app.state.db  # type: ignore[attr-defined]
     ids = []
     for i in range(count):
         eid = await insert_engram_with_embedding(db, f"viz_entity_{i}", make_embedding(i))

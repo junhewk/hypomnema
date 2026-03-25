@@ -34,7 +34,7 @@ class OpenAILLMClient:
             request["instructions"] = system
         if text_format is not None:
             request["text"] = {"format": text_format}
-        return await self._client.responses.create(**request)
+        return await self._client.responses.create(**request)  # type: ignore[no-any-return]
 
     @staticmethod
     def _json_instructions(system: str) -> str:

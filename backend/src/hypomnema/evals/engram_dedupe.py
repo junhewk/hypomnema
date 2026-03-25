@@ -264,7 +264,7 @@ async def _run_policy_case(
     with tempfile.TemporaryDirectory(prefix="engram-dedupe-eval-") as tmp_dir:
         db = SyncConnection(Path(tmp_dir) / "eval.db")
         try:
-            await create_tables(db, embedding_dim)
+            await create_tables(db, embedding_dim)  # type: ignore[arg-type]
             for seed_name in case.seed_names:
                 await _insert_eval_engram(
                     db,
@@ -313,7 +313,7 @@ async def _get_or_create_for_policy(
         return match.engram, match.reason
 
     engram, _ = await get_or_create_engram(
-        db,
+        db,  # type: ignore[arg-type]
         canonical_name,
         f"Eval seed for {canonical_name}",
         embedding,
@@ -333,7 +333,7 @@ async def _match_for_policy(
     policy: DedupePolicyConfig,
 ) -> EngramMatch | None:
     return await match_existing_engram(
-        db,
+        db,  # type: ignore[arg-type]
         canonical_name,
         embedding,
         similarity_threshold=policy.similarity_threshold,
@@ -361,7 +361,7 @@ async def _insert_eval_engram(
         (row["id"], embedding.astype("<f4").tobytes()),
     )
     await cursor.close()
-    await store_engram_aliases(db, str(row["id"]), canonical_name)
+    await store_engram_aliases(db, str(row["id"]), canonical_name)  # type: ignore[arg-type]
 
 
 def summarize_policy(

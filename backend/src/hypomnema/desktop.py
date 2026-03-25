@@ -11,7 +11,7 @@ from pathlib import Path
 def _resolve_paths() -> tuple[Path, Path | None, str]:
     """Resolve data dir, static dir, and sqlite-vec path from frozen or dev layout."""
     if getattr(sys, "frozen", False):
-        bundle_dir = Path(sys._MEIPASS)  # noqa: SLF001
+        bundle_dir = Path(getattr(sys, "_MEIPASS"))  # noqa: SLF001
         import platformdirs
 
         data_dir = Path(platformdirs.user_data_dir("hypomnema"))

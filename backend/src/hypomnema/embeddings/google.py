@@ -23,10 +23,14 @@ class GoogleEmbeddingModel:
             model=self._model,
             contents=texts,
         )
+        embeddings = result.embeddings
+        if embeddings is None:
+            raise ValueError("Empty embedding response from Google API")
         if len(texts) == 1:
-            vectors = np.array(result.embeddings[0].values, dtype=np.float32).reshape(1, -1)
+            vectors = np.array(embeddings[0].values, dtype=np.float32).reshape(1, -1)
         else:
-            vectors = np.array([e.values for e in result.embeddings], dtype=np.float32)
-        norms = np.linalg.norm(vectors, axis=1, keepdims=True)
+            vectors = np.array([e.values for e in embeddings], dtype=np.float32)
+        norms: NDArray[np.float32] = np.linalg.norm(vectors, axis=1, keepdims=True)
         norms = np.where(norms == 0, 1, norms)
-        return vectors / norms
+        result_arr: NDArray[np.float32] = vectors / norms
+        return result_arr

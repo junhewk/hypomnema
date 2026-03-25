@@ -8,7 +8,6 @@ import hypomnema.ontology.extractor as extractor_mod
 from hypomnema.llm.mock import MockLLMClient
 from hypomnema.ontology.extractor import (
     DEFAULT_PROMPT_VARIANT,
-    DEFAULT_TIDY_LEVEL,
     ExtractionError,
     ExtractionResult,
     ExtractionTrace,
@@ -19,7 +18,7 @@ from hypomnema.ontology.extractor import (
     list_prompt_variants,
     render_tidy_text,
 )
-from hypomnema.tidy import get_tidy_level_spec
+from hypomnema.tidy import DEFAULT_TIDY_LEVEL, get_tidy_level_spec
 
 
 class RoutedLLM:

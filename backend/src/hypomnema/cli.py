@@ -16,6 +16,8 @@ from time import sleep
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from hypomnema.config import Settings
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
@@ -132,7 +134,7 @@ def _backend_env(settings: Settings) -> dict[str, str]:
 
 
 @contextmanager
-def _temporary_env(overrides: dict[str, str]) -> object:
+def _temporary_env(overrides: dict[str, str]) -> Iterator[None]:
     previous = {key: os.environ.get(key) for key in overrides}
     os.environ.update(overrides)
     try:

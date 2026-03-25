@@ -22,10 +22,10 @@ from hypomnema.ontology.engram import (
 )
 
 
-@pytest_asyncio.fixture
-async def tmp_db(tmp_path: Path) -> SyncConnection:
+@pytest_asyncio.fixture  # type: ignore[type-var]
+async def tmp_db(tmp_path: Path) -> SyncConnection:  # type: ignore[misc]
     db = SyncConnection(tmp_path / "test.db")
-    await create_tables(db)
+    await create_tables(db)  # type: ignore[arg-type]
     yield db
     await db.close()
 
@@ -104,20 +104,20 @@ class TestAliasKeys:
 
 class TestGetOrCreateEngram:
     @pytest.mark.asyncio
-    async def test_creates_new_engram(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_creates_new_engram(self, tmp_db, mock_embeddings) -> None:
         vec = mock_embeddings.embed(["actor-network theory"])[0]
         engram, created = await get_or_create_engram(tmp_db, "actor-network theory", "A framework", vec)
         assert created is True
         assert engram.canonical_name == "actor-network theory"
 
     @pytest.mark.asyncio
-    async def test_returns_engram_model(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_returns_engram_model(self, tmp_db, mock_embeddings) -> None:
         vec = mock_embeddings.embed(["test"])[0]
         engram, _ = await get_or_create_engram(tmp_db, "test", None, vec)
         assert isinstance(engram, Engram)
 
     @pytest.mark.asyncio
-    async def test_dedup_by_exact_name(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_dedup_by_exact_name(self, tmp_db, mock_embeddings) -> None:
         vec = mock_embeddings.embed(["epistemology"])[0]
         e1, c1 = await get_or_create_engram(tmp_db, "epistemology", "Study", vec)
         await tmp_db.commit()
@@ -127,7 +127,7 @@ class TestGetOrCreateEngram:
         assert e1.id == e2.id
 
     @pytest.mark.asyncio
-    async def test_dedup_by_cosine_similarity(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_dedup_by_cosine_similarity(self, tmp_db, mock_embeddings) -> None:
         # Create engram with one name/embedding
         vec1 = mock_embeddings.embed(["machine learning"])[0]
         e1, c1 = await get_or_create_engram(tmp_db, "machine learning", "ML field", vec1)
@@ -140,7 +140,7 @@ class TestGetOrCreateEngram:
         assert e1.id == e2.id
 
     @pytest.mark.asyncio
-    async def test_dedup_by_concept_hash(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_dedup_by_concept_hash(self, tmp_db, mock_embeddings) -> None:
         vec = mock_embeddings.embed(["ontology"])[0]
         # Insert directly to bypass KNN (simulating a scenario where KNN doesn't find it)
         concept_hash = compute_concept_hash(vec)
@@ -155,7 +155,7 @@ class TestGetOrCreateEngram:
         assert e.canonical_name == "ontology"
 
     @pytest.mark.asyncio
-    async def test_different_concepts_create_separate(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_different_concepts_create_separate(self, tmp_db, mock_embeddings) -> None:
         vecs = mock_embeddings.embed(["physics", "philosophy"])
         e1, c1 = await get_or_create_engram(tmp_db, "physics", "Science", vecs[0])
         await tmp_db.commit()
@@ -165,7 +165,7 @@ class TestGetOrCreateEngram:
         assert e1.id != e2.id
 
     @pytest.mark.asyncio
-    async def test_embedding_stored(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_embedding_stored(self, tmp_db, mock_embeddings) -> None:
         vec = mock_embeddings.embed(["test-emb"])[0]
         engram, _ = await get_or_create_engram(tmp_db, "test-emb", None, vec)
         await tmp_db.commit()
@@ -177,13 +177,13 @@ class TestGetOrCreateEngram:
         assert row is not None
 
     @pytest.mark.asyncio
-    async def test_description_stored(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_description_stored(self, tmp_db, mock_embeddings) -> None:
         vec = mock_embeddings.embed(["desc-test"])[0]
         engram, _ = await get_or_create_engram(tmp_db, "desc-test", "A description", vec)
         assert engram.description == "A description"
 
     @pytest.mark.asyncio
-    async def test_custom_similarity_threshold(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_custom_similarity_threshold(self, tmp_db, mock_embeddings) -> None:
         vec = mock_embeddings.embed(["threshold-test"])[0]
         e1, _ = await get_or_create_engram(tmp_db, "threshold-test", None, vec)
         await tmp_db.commit()
@@ -195,7 +195,7 @@ class TestGetOrCreateEngram:
         assert e1.id == e2.id
 
     @pytest.mark.asyncio
-    async def test_dedup_by_alias_key_for_honorific_variant(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_dedup_by_alias_key_for_honorific_variant(self, tmp_db, mock_embeddings) -> None:
         vecs = mock_embeddings.embed(
             [
                 "최지연 (prof. choi ji-yeon)",
@@ -215,7 +215,7 @@ class TestGetOrCreateEngram:
         assert e1.id == e2.id
 
     @pytest.mark.asyncio
-    async def test_alias_matching_can_be_disabled_for_baseline_eval(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_alias_matching_can_be_disabled_for_baseline_eval(self, tmp_db, mock_embeddings) -> None:
         vecs = mock_embeddings.embed(
             [
                 "최지연 (prof. choi ji-yeon)",
@@ -237,7 +237,7 @@ class TestGetOrCreateEngram:
         assert e1.id != e2.id
 
     @pytest.mark.asyncio
-    async def test_default_threshold_merges_pair_above_point_nine_one(self, tmp_db) -> None:  # type: ignore[no-untyped-def]
+    async def test_default_threshold_merges_pair_above_point_nine_one(self, tmp_db) -> None:
         vec1 = np.zeros(384, dtype=np.float32)
         vec1[0] = 1.0
         vec2 = np.zeros(384, dtype=np.float32)
@@ -251,7 +251,7 @@ class TestGetOrCreateEngram:
         assert e1.id == e2.id
 
     @pytest.mark.asyncio
-    async def test_baseline_threshold_keeps_pair_below_point_nine_two_separate(self, tmp_db) -> None:  # type: ignore[no-untyped-def]
+    async def test_baseline_threshold_keeps_pair_below_point_nine_two_separate(self, tmp_db) -> None:
         vec1 = np.zeros(384, dtype=np.float32)
         vec1[0] = 1.0
         vec2 = np.zeros(384, dtype=np.float32)
@@ -273,7 +273,7 @@ class TestGetOrCreateEngram:
         assert e1.id != e2.id
 
     @pytest.mark.asyncio
-    async def test_direct_alias_index_matches_korean_law_shortform(self, tmp_db) -> None:  # type: ignore[no-untyped-def]
+    async def test_direct_alias_index_matches_korean_law_shortform(self, tmp_db) -> None:
         vec_full = _signed_vector(1, -1, 1, -1)
         vec_short = _signed_vector(-1, 1, 1, -1)
 
@@ -297,7 +297,7 @@ class TestGetOrCreateEngram:
         assert match.engram.id == e1.id
 
     @pytest.mark.asyncio
-    async def test_alias_match_persists_english_bridge_for_future_direct_lookup(self, tmp_db) -> None:  # type: ignore[no-untyped-def]
+    async def test_alias_match_persists_english_bridge_for_future_direct_lookup(self, tmp_db) -> None:
         vec_full = _signed_vector(1, -1, 1, -1)
         vec_gloss = _signed_vector(-1, -1, 1, 1)
         vec_english = _signed_vector(1, 1, -1, -1)
@@ -338,7 +338,7 @@ class TestGetOrCreateEngram:
 
 class TestLinkDocumentEngram:
     @pytest.mark.asyncio
-    async def test_creates_junction(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_creates_junction(self, tmp_db, mock_embeddings) -> None:
         cursor = await tmp_db.execute(
             "INSERT INTO documents (id, source_type, text) VALUES ('doc1', 'scribble', 'test') RETURNING id",
         )
@@ -356,7 +356,7 @@ class TestLinkDocumentEngram:
         assert row is not None
 
     @pytest.mark.asyncio
-    async def test_idempotent(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_idempotent(self, tmp_db, mock_embeddings) -> None:
         cursor = await tmp_db.execute(
             "INSERT INTO documents (id, source_type, text) VALUES ('doc2', 'scribble', 'test') RETURNING id",
         )

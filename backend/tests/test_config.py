@@ -79,7 +79,7 @@ class TestSettingsEnvOverride:
 class TestSettingsValidation:
     def test_invalid_mode_rejected(self):
         with pytest.raises(ValidationError, match="mode"):
-            Settings(mode="distributed")
+            Settings(mode="distributed")  # type: ignore[arg-type]
 
     def test_embedding_dim_zero_rejected(self):
         with pytest.raises(ValidationError, match="positive"):
@@ -91,7 +91,7 @@ class TestSettingsValidation:
 
     def test_invalid_llm_provider_rejected(self):
         with pytest.raises(ValidationError, match="llm_provider"):
-            Settings(llm_provider="nonexistent")
+            Settings(llm_provider="nonexistent")  # type: ignore[arg-type]
 
     def test_triage_threshold_above_one_rejected(self):
         with pytest.raises(ValidationError, match="triage_threshold"):

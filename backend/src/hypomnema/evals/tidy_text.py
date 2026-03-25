@@ -645,7 +645,11 @@ def collect_review_cases(case_reports: list[TidyTextCaseReport]) -> tuple[str, .
         if report.review_reasons or report.hard_failures:
             review_ids.append(report.case_id)
     seen: set[str] = set()
-    ordered = [case_id for case_id in review_ids if not (case_id in seen or seen.add(case_id))]
+    ordered: list[str] = []
+    for case_id in review_ids:
+        if case_id not in seen:
+            seen.add(case_id)
+            ordered.append(case_id)
     return tuple(ordered)
 
 
@@ -692,7 +696,11 @@ def build_review_reasons(
         reasons.append("low_secondary_hallucination")
 
     seen: set[str] = set()
-    ordered = [reason for reason in reasons if not (reason in seen or seen.add(reason))]
+    ordered: list[str] = []
+    for reason in reasons:
+        if reason not in seen:
+            seen.add(reason)
+            ordered.append(reason)
     return tuple(ordered)
 
 

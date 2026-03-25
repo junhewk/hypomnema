@@ -20,4 +20,4 @@ async def insert_test_doc(
     row = await cursor.fetchone()
     assert row is not None
     await db.commit()
-    return row["id"]
+    return str(row["id"])

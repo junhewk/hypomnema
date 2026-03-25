@@ -77,7 +77,7 @@ class TestRunFeedJob:
         await sched._run_feed_job(fs.id)
 
         cursor = await tmp_db.execute("SELECT * FROM documents WHERE source_type = 'feed'")
-        rows = await cursor.fetchall()
+        rows = list(await cursor.fetchall())
         await cursor.close()
         assert len(rows) == 1
 
@@ -94,6 +94,7 @@ class TestRunFeedJob:
         cursor = await tmp_db.execute("SELECT COUNT(*) AS cnt FROM documents")
         row = await cursor.fetchone()
         await cursor.close()
+        assert row is not None
         assert row["cnt"] == 0
 
     @pytest.mark.asyncio
@@ -109,6 +110,7 @@ class TestRunFeedJob:
         cursor = await tmp_db.execute("SELECT last_fetched FROM feed_sources WHERE id = ?", (fs.id,))
         row = await cursor.fetchone()
         await cursor.close()
+        assert row is not None
         assert row["last_fetched"] is not None
 
     @pytest.mark.asyncio

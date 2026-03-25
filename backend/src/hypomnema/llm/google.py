@@ -37,7 +37,7 @@ class GoogleLLMClient:
             kwargs["system_instruction"] = system
         if json_mode:
             kwargs["response_mime_type"] = "application/json"
-        return types.GenerateContentConfig(**kwargs)
+        return types.GenerateContentConfig(**kwargs)  # type: ignore[arg-type]
 
     async def complete(self, prompt: str, *, system: str = "", timeout_ms: int | None = None) -> str:
         config = self._build_config(system=system, timeout_ms=timeout_ms)

@@ -1,10 +1,12 @@
 """Integration test fixtures — mock LLM with canned responses for full pipeline."""
 
+from typing import Any
+
 import pytest
 
 from hypomnema.llm.mock import MockLLMClient
 
-_CANNED_RESPONSES: dict[str, dict] = {
+_CANNED_RESPONSES: dict[str, str | dict[str, Any]] = {
     "Quantum": {
         "entities": [
             {"name": "Quantum Computing", "description": "Computing using quantum mechanical phenomena"},

@@ -8,7 +8,7 @@ router = APIRouter(tags=["health"])
 
 
 @router.get("/api/health")
-async def health(request: Request, db: DB) -> dict:
+async def health(request: Request, db: DB) -> dict[str, object]:
     cursor = await db.execute("SELECT value FROM settings WHERE key = 'setup_complete'")
     row = await cursor.fetchone()
     await cursor.close()

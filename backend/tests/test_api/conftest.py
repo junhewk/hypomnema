@@ -67,7 +67,7 @@ async def insert_engram(db: aiosqlite.Connection, name: str, *, description: str
     row = await cursor.fetchone()
     await db.commit()
     assert row is not None
-    return row[0]
+    return str(row[0])
 
 
 async def insert_edge(db: aiosqlite.Connection, source_id: str, target_id: str, predicate: str = "relates_to") -> str:
@@ -79,4 +79,4 @@ async def insert_edge(db: aiosqlite.Connection, source_id: str, target_id: str, 
     row = await cursor.fetchone()
     await db.commit()
     assert row is not None
-    return row[0]
+    return str(row[0])

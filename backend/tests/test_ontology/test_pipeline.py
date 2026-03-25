@@ -56,7 +56,7 @@ def _make_tidy_llm() -> MockLLMClient:
 
 class TestProcessDocument:
     @pytest.mark.asyncio
-    async def test_creates_engrams(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_creates_engrams(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         engrams = await process_document(tmp_db, doc_id, _make_llm(), mock_embeddings)
         assert len(engrams) == 2
@@ -65,7 +65,7 @@ class TestProcessDocument:
         assert "translation" in names
 
     @pytest.mark.asyncio
-    async def test_document_marked_processed(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_document_marked_processed(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         await process_document(tmp_db, doc_id, _make_llm(), mock_embeddings)
         cursor = await tmp_db.execute("SELECT processed FROM documents WHERE id = ?", (doc_id,))
@@ -73,7 +73,7 @@ class TestProcessDocument:
         assert row["processed"] == 1
 
     @pytest.mark.asyncio
-    async def test_engrams_linked_to_document(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_engrams_linked_to_document(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         await process_document(tmp_db, doc_id, _make_llm(), mock_embeddings)
         cursor = await tmp_db.execute(
@@ -84,7 +84,7 @@ class TestProcessDocument:
         assert row["cnt"] == 2
 
     @pytest.mark.asyncio
-    async def test_idempotent(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_idempotent(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         llm = _make_llm()
         engrams1 = await process_document(tmp_db, doc_id, llm, mock_embeddings)
@@ -93,12 +93,12 @@ class TestProcessDocument:
         assert engrams2 == []
 
     @pytest.mark.asyncio
-    async def test_nonexistent_document_raises(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_nonexistent_document_raises(self, tmp_db, mock_embeddings) -> None:
         with pytest.raises(ValueError, match="not found"):
             await process_document(tmp_db, "nonexistent", _make_llm(), mock_embeddings)
 
     @pytest.mark.asyncio
-    async def test_empty_extraction_marks_processed(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_empty_extraction_marks_processed(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "trivial text with no entities", doc_id="emptydoc")
         # Default MockLLMClient returns {"mock": True} which has no "entities" key
         engrams = await process_document(tmp_db, doc_id, MockLLMClient(), mock_embeddings)
@@ -108,7 +108,7 @@ class TestProcessDocument:
         assert row["processed"] == 1
 
     @pytest.mark.asyncio
-    async def test_dedup_across_documents(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_dedup_across_documents(self, tmp_db, mock_embeddings) -> None:
         doc1 = await insert_test_doc(tmp_db, "Actor-Network Theory was proposed.", doc_id="doc1")
         doc2 = await insert_test_doc(tmp_db, "Actor-Network Theory is widely used.", doc_id="doc2")
         llm = _make_llm()
@@ -124,7 +124,7 @@ class TestProcessDocument:
         assert row["cnt"] == 4  # 2 engrams * 2 documents
 
     @pytest.mark.asyncio
-    async def test_stores_tidy_output_and_level(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_stores_tidy_output_and_level(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Tidy Actor-Network Theory notes.")
 
         await process_document(
@@ -149,7 +149,7 @@ class TestProcessDocument:
         self,
         tmp_db,
         mock_embeddings,
-    ) -> None:  # type: ignore[no-untyped-def]
+    ) -> None:
         doc_id = await insert_test_doc(
             tmp_db,
             "Tidy Actor-Network Theory notes.",
@@ -173,21 +173,21 @@ class TestProcessDocument:
 
 class TestProcessPendingDocuments:
     @pytest.mark.asyncio
-    async def test_processes_all_pending(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_processes_all_pending(self, tmp_db, mock_embeddings) -> None:
         for i in range(3):
             await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id=f"pending{i}")
         results = await process_pending_documents(tmp_db, _make_llm(), mock_embeddings)
         assert len(results) == 3
 
     @pytest.mark.asyncio
-    async def test_respects_limit(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_respects_limit(self, tmp_db, mock_embeddings) -> None:
         for i in range(5):
             await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id=f"limit{i}")
         results = await process_pending_documents(tmp_db, _make_llm(), mock_embeddings, limit=2)
         assert len(results) == 2
 
     @pytest.mark.asyncio
-    async def test_skips_already_processed(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_skips_already_processed(self, tmp_db, mock_embeddings) -> None:
         doc1 = await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id="skip1")
         await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id="skip2")
         # Mark first as processed
@@ -198,7 +198,7 @@ class TestProcessPendingDocuments:
         assert "skip2" in results
 
     @pytest.mark.asyncio
-    async def test_skips_rejected_documents(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_skips_rejected_documents(self, tmp_db, mock_embeddings) -> None:
         doc1 = await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id="rejected1")
         await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id="accepted1")
         # Reject doc1 via triage
@@ -236,7 +236,7 @@ def _make_linker_llm() -> MockLLMClient:
 
 class TestLinkDocument:
     @pytest.mark.asyncio
-    async def test_creates_edges(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_creates_edges(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         llm = _make_linker_llm()
         await process_document(tmp_db, doc_id, llm, mock_embeddings)
@@ -246,7 +246,7 @@ class TestLinkDocument:
         assert isinstance(edges, list)
 
     @pytest.mark.asyncio
-    async def test_marks_processed_2(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_marks_processed_2(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         llm = _make_linker_llm()
         await process_document(tmp_db, doc_id, llm, mock_embeddings)
@@ -256,7 +256,7 @@ class TestLinkDocument:
         assert row["processed"] == 2
 
     @pytest.mark.asyncio
-    async def test_idempotent(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_idempotent(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         llm = _make_linker_llm()
         await process_document(tmp_db, doc_id, llm, mock_embeddings)
@@ -266,19 +266,19 @@ class TestLinkDocument:
         assert edges2 == []
 
     @pytest.mark.asyncio
-    async def test_skips_unprocessed(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_skips_unprocessed(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         # Don't process — document is still processed=0
         edges = await link_document(tmp_db, doc_id, _make_linker_llm())
         assert edges == []
 
     @pytest.mark.asyncio
-    async def test_nonexistent_document_raises(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_nonexistent_document_raises(self, tmp_db, mock_embeddings) -> None:
         with pytest.raises(ValueError, match="not found"):
             await link_document(tmp_db, "nonexistent", _make_linker_llm())
 
     @pytest.mark.asyncio
-    async def test_no_engrams_marks_processed(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_no_engrams_marks_processed(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "trivial text", doc_id="emptylinkdoc")
         # Mark processed=1 manually (no engrams)
         await tmp_db.execute("UPDATE documents SET processed = 1 WHERE id = ?", (doc_id,))
@@ -290,7 +290,7 @@ class TestLinkDocument:
         assert row["processed"] == 2
 
     @pytest.mark.asyncio
-    async def test_edges_have_source_document_id(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_edges_have_source_document_id(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         llm = _make_linker_llm()
         await process_document(tmp_db, doc_id, llm, mock_embeddings)
@@ -301,7 +301,7 @@ class TestLinkDocument:
 
 class TestLinkPendingDocuments:
     @pytest.mark.asyncio
-    async def test_links_all_pending(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_links_all_pending(self, tmp_db, mock_embeddings) -> None:
         llm = _make_linker_llm()
         for i in range(3):
             doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id=f"linkpend{i}")
@@ -310,7 +310,7 @@ class TestLinkPendingDocuments:
         assert len(results) == 3
 
     @pytest.mark.asyncio
-    async def test_respects_limit(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_respects_limit(self, tmp_db, mock_embeddings) -> None:
         llm = _make_linker_llm()
         for i in range(3):
             doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory discussion.", doc_id=f"linklim{i}")
@@ -321,7 +321,7 @@ class TestLinkPendingDocuments:
 
 class TestRevisionGuard:
     @pytest.mark.asyncio
-    async def test_process_document_skips_stale_revision(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_process_document_skips_stale_revision(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         # Bump revision to 2 in DB
         await tmp_db.execute("UPDATE documents SET revision = 2 WHERE id = ?", (doc_id,))
@@ -335,13 +335,13 @@ class TestRevisionGuard:
         assert row["processed"] == 0
 
     @pytest.mark.asyncio
-    async def test_process_document_runs_with_current_revision(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_process_document_runs_with_current_revision(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         engrams = await process_document(tmp_db, doc_id, _make_llm(), mock_embeddings, expected_revision=1)
         assert len(engrams) == 2
 
     @pytest.mark.asyncio
-    async def test_process_document_runs_without_revision(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_process_document_runs_without_revision(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         # Set revision high — but no expected_revision means batch mode, should succeed
         await tmp_db.execute("UPDATE documents SET revision = 99 WHERE id = ?", (doc_id,))
@@ -350,7 +350,7 @@ class TestRevisionGuard:
         assert len(engrams) == 2
 
     @pytest.mark.asyncio
-    async def test_link_document_skips_stale_revision(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_link_document_skips_stale_revision(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.")
         llm = _make_linker_llm()
         await process_document(tmp_db, doc_id, llm, mock_embeddings)
@@ -368,7 +368,7 @@ class TestRevisionGuard:
 
 class TestRetidyDocument:
     @pytest.mark.asyncio
-    async def test_retidy_updates_only_tidy_fields(self, tmp_db, mock_embeddings) -> None:  # type: ignore[no-untyped-def]
+    async def test_retidy_updates_only_tidy_fields(self, tmp_db, mock_embeddings) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.", doc_id="retidy-doc")
         llm = _make_linker_llm()
         await process_document(tmp_db, doc_id, llm, mock_embeddings)
@@ -418,7 +418,7 @@ class TestRetidyDocument:
         assert after_links["cnt"] == before_links["cnt"]
 
     @pytest.mark.asyncio
-    async def test_retidy_skips_stale_revision(self, tmp_db) -> None:  # type: ignore[no-untyped-def]
+    async def test_retidy_skips_stale_revision(self, tmp_db) -> None:
         doc_id = await insert_test_doc(tmp_db, "Actor-Network Theory is important.", doc_id="stale-retidy")
         changed = await retidy_document(
             tmp_db,

@@ -1,6 +1,7 @@
 """Shared test fixtures."""
 
 import hashlib
+from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import aiosqlite
@@ -16,7 +17,7 @@ from hypomnema.ontology.engram import embedding_to_bytes
 
 
 @pytest_asyncio.fixture
-async def tmp_db(tmp_path: Path) -> aiosqlite.Connection:
+async def tmp_db(tmp_path: Path) -> AsyncGenerator[aiosqlite.Connection]:
     """Fresh SQLite database with full schema, per test.
 
     Uses tmp_path (not :memory:) because:
@@ -41,7 +42,7 @@ def mock_embeddings() -> MockEmbeddingModel:
     return MockEmbeddingModel(dimension=384)
 
 
-def make_embedding(seed: int, dim: int = 384) -> np.ndarray[object, np.dtype[np.float32]]:
+def make_embedding(seed: int, dim: int = 384) -> np.ndarray[tuple[int, ...], np.dtype[np.float32]]:
     """Generate a deterministic unit-normalized embedding for testing."""
     rng = np.random.default_rng(seed)
     vec = rng.standard_normal(dim).astype(np.float32)
@@ -49,7 +50,7 @@ def make_embedding(seed: int, dim: int = 384) -> np.ndarray[object, np.dtype[np.
 
 
 async def insert_engram_with_embedding(
-    db: aiosqlite.Connection, name: str, embedding: np.ndarray[object, np.dtype[np.float32]]
+    db: aiosqlite.Connection, name: str, embedding: np.ndarray[tuple[int, ...], np.dtype[np.float32]]
 ) -> str:
     """Insert an engram with its embedding and return the engram ID."""
     concept_hash = hashlib.sha256(name.encode()).hexdigest()[:16]
@@ -60,7 +61,7 @@ async def insert_engram_with_embedding(
     row = await cursor.fetchone()
     await cursor.close()
     assert row is not None
-    engram_id: str = row[0]
+    engram_id = str(row[0])
 
     emb_bytes = embedding_to_bytes(np.asarray(embedding, dtype=np.float32))
     await db.execute(

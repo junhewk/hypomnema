@@ -50,6 +50,7 @@ class OntologyQueue:
             if job is _SENTINEL:
                 self._queue.task_done()
                 return
+            assert isinstance(job, PipelineJob)
             try:
                 from hypomnema.api.documents import _run_ontology_pipeline
 

@@ -68,7 +68,8 @@ async def _load_document_metadata(db: DB, document_id: str) -> dict[str, object]
         return {}
     raw = row["metadata"]
     if isinstance(raw, str):
-        return json.loads(raw)
+        result: dict[str, object] = json.loads(raw)
+        return result
     return dict(raw)
 
 
@@ -126,8 +127,10 @@ async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int |
         from hypomnema.visualization.projection import compute_projections
 
         await compute_projections(db)
-        processing = metadata.get("processing", {})
-        final_status = "partial" if processing.get("fallback_used") or processing.get("chunk_failed") else "completed"
+        processing = metadata.get("processing")
+        processing_dict = processing if isinstance(processing, dict) else {}
+        has_issues = processing_dict.get("fallback_used") or processing_dict.get("chunk_failed")
+        final_status = "partial" if has_issues else "completed"
         await update_processing_metadata(
             db,
             document_id,
@@ -244,6 +247,8 @@ async def update_document(
     await _remove_document_associations(db, document_id)
     await db.commit()
 
+    if updated_row is None:
+        raise HTTPException(status_code=404, detail="Document not found after update")
     doc = await _queue_processing_metadata(db, Document.from_row(updated_row))
 
     revision = updated_row["revision"]

@@ -179,11 +179,11 @@ def select_representative_cases(
         seen.add(chosen.id)
 
     for source_kind in ("db", "web", "synthetic"):
-        add_best(lambda case, source_kind=source_kind: case.source_kind == source_kind)
+        add_best(lambda case, _sk=source_kind: case.source_kind == _sk)  # type: ignore[misc]
     for locale in ("mixed-ko-en", "ko", "en"):
-        add_best(lambda case, locale=locale: case.dominant_locale == locale)
+        add_best(lambda case, _lo=locale: case.dominant_locale == _lo)  # type: ignore[misc]
     for style_target in ("preserve-markdown", "memo-light", "notes-light"):
-        add_best(lambda case, style_target=style_target: case.style_target == style_target)
+        add_best(lambda case, _st=style_target: case.style_target == _st)  # type: ignore[misc]
     add_best(lambda case: case.expects_map_reduce)
 
     remaining = [case for case in cases if case.id not in seen]

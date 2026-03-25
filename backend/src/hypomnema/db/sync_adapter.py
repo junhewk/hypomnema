@@ -21,7 +21,8 @@ class SyncCursor:
         self._cursor = cursor
 
     async def fetchone(self) -> sqlite3.Row | None:
-        return self._cursor.fetchone()
+        row: sqlite3.Row | None = self._cursor.fetchone()
+        return row
 
     async def fetchall(self) -> list[sqlite3.Row]:
         return self._cursor.fetchall()

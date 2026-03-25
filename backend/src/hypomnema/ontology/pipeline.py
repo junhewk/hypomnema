@@ -50,7 +50,7 @@ async def _check_revision(db: aiosqlite.Connection, document_id: str, expected_r
     await cursor.close()
     if row is None:
         return False
-    return row["revision"] == expected_revision
+    return bool(row["revision"] == expected_revision)
 
 
 def _now_iso() -> str:
