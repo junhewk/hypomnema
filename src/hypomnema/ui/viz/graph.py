@@ -168,27 +168,7 @@ _GRAPH_INIT_JS = """
       }
       return group;
     })
-    .linkThreeObject(link => {
-      var c = (0.25 + (link.confidence || 0.3) * 0.45);
-      var mat = new THREE.MeshBasicMaterial({
-        color: new THREE.Color(c, c, c),
-        transparent: true, opacity: 0.6
-      });
-      var geo = new THREE.CylinderGeometry(0.003, 0.003, 1, 4, 1);
-      geo.translate(0, 0.5, 0);
-      geo.rotateX(Math.PI / 2);
-      return new THREE.Mesh(geo, mat);
-    })
-    .linkPositionUpdate(function(obj, coords) {
-      var start = coords.start;
-      var end = coords.end;
-      if (!start || !end) return;
-      var dx = end.x - start.x, dy = end.y - start.y, dz = end.z - start.z;
-      var len = Math.sqrt(dx*dx + dy*dy + dz*dz);
-      obj.position.set(start.x, start.y, start.z);
-      obj.scale.z = len;
-      obj.lookAt(end.x, end.y, end.z);
-    });
+    .linkVisibility(false); // disable built-in links — positions not set when forces are off
 
   // Disable forces — use UMAP fixed positions
   graph.d3Force('charge', null);
@@ -197,6 +177,27 @@ _GRAPH_INIT_JS = """
   graph.tickFrame();
   graph.tickFrame();
   scene.add(graph);
+
+  // Render edges manually using fixed UMAP positions (forces are off, so built-in links have no coords)
+  var posMap = {};
+  data.nodes.forEach(function(n) { posMap[n.id] = new THREE.Vector3(n.fx, n.fy, n.fz); });
+  var edgeGroup = new THREE.Group();
+  edgeGroup.name = 'edges';
+  data.links.forEach(function(link) {
+    var sid = (typeof link.source === 'object') ? link.source.id : link.source;
+    var tid = (typeof link.target === 'object') ? link.target.id : link.target;
+    var p1 = posMap[sid], p2 = posMap[tid];
+    if (!p1 || !p2) return;
+    var c = 0.2 + (link.confidence || 0.3) * 0.4;
+    var points = [p1, p2];
+    var geo = new THREE.BufferGeometry().setFromPoints(points);
+    var mat = new THREE.LineBasicMaterial({
+      color: new THREE.Color(c, c, c),
+      transparent: true, opacity: 0.5
+    });
+    edgeGroup.add(new THREE.Line(geo, mat));
+  });
+  scene.add(edgeGroup);
 
   // Floating detail card
   var panel = document.getElementById('hypo-detail-panel');
@@ -229,7 +230,7 @@ _GRAPH_INIT_JS = """
   hud.innerHTML = '<span style="color:#6b6b6b">orbit</span> drag'
     + ' &nbsp; <span style="color:#6b6b6b">zoom</span> scroll'
     + ' &nbsp; <span style="color:#6b6b6b">pan</span> right-drag'
-    + ' &nbsp; <span style="color:#6b6b6b">spread</span> ctrl+scroll'
+    + ' &nbsp; <span style="color:#6b6b6b">spread</span> ctrl+scroll or +/-'
     + '<br><span style="color:#6b6b6b">move</span> drag node'
     + ' &nbsp; <span style="color:#6b6b6b">push/pull</span> alt+drag node'
     + ' &nbsp; <span style="color:#6b6b6b">inspect</span> click node'
@@ -433,17 +434,11 @@ _GRAPH_INIT_JS = """
     renderer.setSize(w, h);
   });
 
-  // Spread: Ctrl+scroll scales node positions from centroid
+  // Spread: Ctrl+scroll or +/- keys
   var spreadFactor = 1.0;
   data.nodes.forEach(function(n) { n._ox = n.fx; n._oy = n.fy; n._oz = n.fz; });
 
-  // Intercept wheel BEFORE OrbitControls (capture phase)
-  renderer.domElement.addEventListener('wheel', function(e) {
-    if (!e.ctrlKey) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-    spreadFactor += e.deltaY > 0 ? -0.08 : 0.08;
-    spreadFactor = Math.max(0.3, Math.min(3.0, spreadFactor));
+  function applySpread() {
     graph.graphData().nodes.forEach(function(n) {
       n.fx = n._ox * spreadFactor;
       n.fy = n._oy * spreadFactor;
@@ -451,7 +446,44 @@ _GRAPH_INIT_JS = """
       n.x = n.fx; n.y = n.fy; n.z = n.fz;
     });
     graph.graphData(graph.graphData());
-  }, {passive: false, capture: true});
+    // Also update manual edges
+    if (edgeGroup) {
+      scene.remove(edgeGroup);
+      edgeGroup = new THREE.Group();
+      edgeGroup.name = 'edges';
+      data.links.forEach(function(link) {
+        var sid = (typeof link.source === 'object') ? link.source.id : link.source;
+        var tid = (typeof link.target === 'object') ? link.target.id : link.target;
+        var n1 = data.nodes.find(function(n){return n.id===sid});
+        var n2 = data.nodes.find(function(n){return n.id===tid});
+        if (!n1 || !n2) return;
+        var p1 = new THREE.Vector3(n1.fx, n1.fy, n1.fz);
+        var p2 = new THREE.Vector3(n2.fx, n2.fy, n2.fz);
+        var c = 0.2 + (link.confidence || 0.3) * 0.4;
+        var geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+        var mat = new THREE.LineBasicMaterial({
+          color: new THREE.Color(c, c, c), transparent: true, opacity: 0.5
+        });
+        edgeGroup.add(new THREE.Line(geo, mat));
+      });
+      scene.add(edgeGroup);
+    }
+  }
+
+  // Ctrl+scroll for spread
+  document.addEventListener('wheel', function(e) {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    spreadFactor += e.deltaY > 0 ? -0.08 : 0.08;
+    spreadFactor = Math.max(0.3, Math.min(3.0, spreadFactor));
+    applySpread();
+  }, {passive: false});
+
+  // Also +/- keys as fallback
+  document.addEventListener('keydown', function(e) {
+    if (e.key === '=' || e.key === '+') { spreadFactor = Math.min(3.0, spreadFactor + 0.1); applySpread(); }
+    if (e.key === '-') { spreadFactor = Math.max(0.3, spreadFactor - 0.1); applySpread(); }
+  });
 
   // Fit camera to data bounds
   var xs = data.nodes.map(function(n){return n.fx});
