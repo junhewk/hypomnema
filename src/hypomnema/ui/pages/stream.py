@@ -46,11 +46,13 @@ async def stream_page() -> None:
 
         # Document list with auto-refresh when items are processing
         doc_container = ui.column().classes("w-full gap-0")
+        last_snapshot: dict[str, int] = {}  # {doc_id: processed} for change detection
 
-        async def _refresh_docs() -> None:
-            """Reload the document list into the container."""
+        def _build_snapshot(docs: list[dict[str, object]]) -> dict[str, int]:
+            return {str(d["id"]): int(d.get("processed") or 0) for d in docs}
+
+        def _render_doc_list(docs: list[dict[str, object]]) -> None:
             doc_container.clear()
-            docs = await _load_documents()
             with doc_container:
                 if not docs:
                     ui.label("No documents yet. Write something above to get started.").classes(
@@ -61,17 +63,28 @@ async def stream_page() -> None:
                         render_document_card(doc)
                     ui.label(f"{len(docs)} documents").classes("text-muted text-xs text-center mt-4")
 
-            # Check if any docs are still processing — keep polling
+        async def _poll_docs() -> None:
+            """Re-render only if document state changed."""
+            nonlocal last_snapshot
+            docs = await _load_documents()
+            snapshot = _build_snapshot(docs)
+            if snapshot != last_snapshot:
+                last_snapshot = snapshot
+                _render_doc_list(docs)
+
             has_unprocessed = any(not d.get("processed") for d in docs)
-            if has_unprocessed:
-                poll_timer.activate()
-            else:
+            if not has_unprocessed:
                 poll_timer.deactivate()
 
-        poll_timer = ui.timer(5.0, _refresh_docs, active=False)
+        poll_timer = ui.timer(5.0, _poll_docs, active=False)
 
         # Initial load
-        await _refresh_docs()
+        docs = await _load_documents()
+        last_snapshot = _build_snapshot(docs)
+        _render_doc_list(docs)
+
+        if any(not d.get("processed") for d in docs):
+            poll_timer.activate()
 
 
 async def _submit_scribble(text_input: ui.textarea) -> None:
