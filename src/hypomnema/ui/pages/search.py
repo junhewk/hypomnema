@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import UTC
 from typing import TYPE_CHECKING
 
 from nicegui import app, ui
 
+from hypomnema.ui.components.document_card import render_document_card
 from hypomnema.ui.layout import page_layout
-from hypomnema.ui.theme import SOURCE_STYLES
 
 if TYPE_CHECKING:
     from hypomnema.search.doc_search import ScoredDocument
@@ -18,63 +17,25 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _time_ago(iso: str) -> str:
-    """Format ISO timestamp as relative time."""
-    from datetime import datetime
-
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        diff = datetime.now(tz=UTC) - dt
-        seconds = int(diff.total_seconds())
-        if seconds < 60:
-            return f"{seconds}s ago"
-        minutes = seconds // 60
-        if minutes < 60:
-            return f"{minutes}m ago"
-        hours = minutes // 60
-        if hours < 24:
-            return f"{hours}h ago"
-        days = hours // 24
-        return f"{days}d ago"
-    except Exception:
-        return iso
-
-
 def _render_doc_result(scored: ScoredDocument) -> None:
-    """Render a single document search result card."""
+    """Render a single document search result card using the shared component."""
     doc = scored.document
-    source_type = doc.source_type or "scribble"
-    style = SOURCE_STYLES.get(source_type, SOURCE_STYLES["scribble"])
-    title = doc.tidy_title or doc.title or "Untitled"
-    preview = (doc.tidy_text or doc.text or "")[:280]
     created = doc.created_at.isoformat() if doc.created_at else ""
-
-    with ui.card().classes("w-full mb-3 animate-fade-up cursor-pointer").style(
-        f"border-left: 2px solid {style['color']}"
-    ).on("click", lambda _d=doc.id: ui.navigate.to(f"/documents/{_d}")):
-        with ui.row().classes("items-center gap-2 mb-1"):
-            ui.label(style["label"]).classes("source-badge").style(
-                f"color: {style['color']}; background: {style['bg']}"
-            )
-            # Score badge
-            match_color = {
-                "hybrid": "#7eb8da",
-                "semantic": "#b87eb8",
-                "keyword": "#b8a07e",
-            }.get(scored.match_type, "#6b6b6b")
-            ui.label(f"{scored.match_type} {scored.score:.3f}").classes(
-                "source-badge"
-            ).style(f"color: {match_color}; background: rgba(255,255,255,0.04)")
-
-        ui.label(str(title)).classes("text-sm font-medium mb-1")
-
-        if preview:
-            ui.label(preview).classes("text-xs leading-relaxed").style(
-                "color: #6b6b6b; display: -webkit-box; -webkit-line-clamp: 3; "
-                "-webkit-box-orient: vertical; overflow: hidden"
-            )
-
-        ui.label(_time_ago(created)).classes("text-muted text-xs mt-2")
+    doc_dict = {
+        "id": doc.id,
+        "source_type": doc.source_type or "scribble",
+        "tidy_title": doc.tidy_title,
+        "title": doc.title,
+        "tidy_text": doc.tidy_text,
+        "text": doc.text,
+        "created_at": created,
+    }
+    render_document_card(
+        doc_dict,
+        show_score=True,
+        score=scored.score,
+        match_type=scored.match_type,
+    )
 
 
 def _render_engram_card(row: dict) -> None:

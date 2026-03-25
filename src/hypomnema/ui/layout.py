@@ -45,7 +45,8 @@ def sidebar() -> None:
         ui.space()
         ui.separator().classes("my-4").style("background: #1e1e1e")
 
-        # Minimap container — populated asynchronously after page load
+        # Minimap container — populated asynchronously after page load.
+        # TODO: cache minimap SVG across pages to avoid re-querying on every navigation.
         minimap_container = ui.element("div").classes("px-1 mb-2")
 
         async def _load_minimap() -> None:

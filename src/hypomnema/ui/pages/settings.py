@@ -8,45 +8,14 @@ import logging
 from nicegui import app, ui
 
 from hypomnema.ui.layout import page_layout
+from hypomnema.ui.utils import (
+    API_KEY_FIELD,
+    DEFAULT_LLM_MODELS,
+    LLM_MODELS,
+    LLM_PROVIDERS,
+)
 
 logger = logging.getLogger(__name__)
-
-_ENCRYPTED_KEYS = {"anthropic_api_key", "google_api_key", "openai_api_key"}
-
-_LLM_PROVIDERS = {
-    "claude": "Anthropic Claude",
-    "google": "Google Gemini",
-    "openai": "OpenAI",
-    "ollama": "Ollama (local)",
-    "mock": "Mock (testing)",
-}
-
-_LLM_MODELS: dict[str, list[str]] = {
-    "claude": ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022"],
-    "google": [
-        "gemini-2.5-flash",
-        "gemini-3-flash-preview",
-        "gemini-2.5-pro",
-        "gemini-3-pro-preview",
-    ],
-    "openai": ["gpt-5.4", "gpt-5-mini", "gpt-4.1-mini", "gpt-4o"],
-    "ollama": [],
-    "mock": [],
-}
-
-_DEFAULT_LLM_MODELS: dict[str, str] = {
-    "claude": "claude-sonnet-4-20250514",
-    "google": "gemini-2.5-flash",
-    "openai": "gpt-5-mini",
-    "ollama": "llama3.1",
-    "mock": "",
-}
-
-_API_KEY_FIELD: dict[str, str] = {
-    "claude": "anthropic_api_key",
-    "google": "google_api_key",
-    "openai": "openai_api_key",
-}
 
 _FEED_TYPES = ["rss", "scrape", "youtube"]
 
@@ -86,13 +55,13 @@ async def settings_page() -> None:
         with ui.card().classes("w-full mb-6").style("background: #111"):
             # Provider selector
             provider_select = ui.select(
-                options=_LLM_PROVIDERS,
+                options=LLM_PROVIDERS,
                 value=current_provider,
                 label="Provider",
             ).props('outlined dense dark color="grey-7"').classes("w-full mb-3")
 
             # Model selector
-            model_options = _LLM_MODELS.get(current_provider, [])
+            model_options = LLM_MODELS.get(current_provider, [])
             model_select = ui.select(
                 options=model_options if model_options else ["(custom)"],
                 value=current_model if current_model in model_options else (
@@ -116,7 +85,7 @@ async def settings_page() -> None:
                 password=True,
                 password_toggle_button=True,
             ).props('outlined dense dark color="grey-7"').classes("w-full mb-3")
-            api_key_input.set_visibility(current_provider in _API_KEY_FIELD)
+            api_key_input.set_visibility(current_provider in API_KEY_FIELD)
 
             # Ollama base URL
             ollama_url_input = ui.input(
@@ -140,17 +109,17 @@ async def settings_page() -> None:
             def _on_provider_change(e: object) -> None:
                 """Update model options when provider changes."""
                 provider = provider_select.value
-                models = _LLM_MODELS.get(provider, [])
+                models = LLM_MODELS.get(provider, [])
 
                 if models:
                     model_select.options = models
-                    model_select.value = _DEFAULT_LLM_MODELS.get(provider, models[0])
+                    model_select.value = DEFAULT_LLM_MODELS.get(provider, models[0])
                 else:
                     model_select.options = ["(custom)"]
                     model_select.value = "(custom)"
                 model_select.update()
 
-                api_key_input.set_visibility(provider in _API_KEY_FIELD)
+                api_key_input.set_visibility(provider in API_KEY_FIELD)
                 api_key_input.value = ""
                 custom_model_input.set_visibility(provider == "ollama")
                 ollama_url_input.set_visibility(provider == "ollama")
@@ -185,7 +154,7 @@ async def settings_page() -> None:
                     if not api_key and fernet_key and db:
                         from hypomnema.db.settings_store import get_setting
 
-                        key_field = _API_KEY_FIELD.get(provider, "")
+                        key_field = API_KEY_FIELD.get(provider, "")
                         if key_field:
                             stored = await get_setting(db, key_field, fernet_key=fernet_key)
                             if stored:
@@ -203,7 +172,7 @@ async def settings_page() -> None:
                         llm = build_llm(
                             provider,
                             api_key=api_key,
-                            model=model or _DEFAULT_LLM_MODELS.get(provider, ""),
+                            model=model or DEFAULT_LLM_MODELS.get(provider, ""),
                             base_url=base_url,
                         )
                         await llm.complete(
@@ -212,7 +181,7 @@ async def settings_page() -> None:
                         )
                         llm_status.style("color: #4caf50")
                         llm_status.set_text(
-                            f"Connected: {model or _DEFAULT_LLM_MODELS.get(provider, provider)} is reachable."
+                            f"Connected: {model or DEFAULT_LLM_MODELS.get(provider, provider)} is reachable."
                         )
                     except Exception as exc:
                         llm_status.style("color: #ef5350")
@@ -238,7 +207,7 @@ async def settings_page() -> None:
                         else model_select.value
                     )
                     if model == "(custom)":
-                        model = _DEFAULT_LLM_MODELS.get(provider, "")
+                        model = DEFAULT_LLM_MODELS.get(provider, "")
 
                     # Save provider and model
                     await set_setting(db, "llm_provider", provider, fernet_key=fernet_key, encrypt_value=False)
@@ -246,7 +215,7 @@ async def settings_page() -> None:
 
                     # Save API key if entered (non-empty, not masked)
                     api_key = api_key_input.value or ""
-                    key_field = _API_KEY_FIELD.get(provider, "")
+                    key_field = API_KEY_FIELD.get(provider, "")
                     if api_key and key_field and not api_key.startswith("****"):
                         await set_setting(db, key_field, api_key, fernet_key=fernet_key, encrypt_value=True)
 
@@ -492,7 +461,7 @@ async def settings_page() -> None:
                 return []
             cursor = await db.execute(
                 "SELECT id, name, feed_type, url, schedule, active, last_fetched, created_at "
-                "FROM feed_sources ORDER BY created_at DESC"
+                "FROM feed_sources ORDER BY created_at DESC LIMIT 100"
             )
             rows = [dict(r) for r in await cursor.fetchall()]
             await cursor.close()

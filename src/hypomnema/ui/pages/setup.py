@@ -8,6 +8,12 @@ import logging
 from nicegui import app, ui
 
 from hypomnema.ui.layout import page_layout
+from hypomnema.ui.utils import (
+    API_KEY_FIELD,
+    DEFAULT_LLM_MODELS,
+    LLM_MODELS,
+    LLM_PROVIDERS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,37 +23,8 @@ _EMBEDDING_PROVIDERS = {
     "google": "Google Embeddings",
 }
 
-_LLM_PROVIDERS = {
-    "claude": "Anthropic Claude",
-    "google": "Google Gemini",
-    "openai": "OpenAI",
-    "ollama": "Ollama (local)",
-}
-
-_LLM_MODELS: dict[str, list[str]] = {
-    "claude": ["claude-sonnet-4-20250514", "claude-3-5-haiku-20241022"],
-    "google": [
-        "gemini-2.5-flash",
-        "gemini-3-flash-preview",
-        "gemini-2.5-pro",
-        "gemini-3-pro-preview",
-    ],
-    "openai": ["gpt-5.4", "gpt-5-mini", "gpt-4.1-mini", "gpt-4o"],
-    "ollama": [],
-}
-
-_DEFAULT_LLM_MODELS: dict[str, str] = {
-    "claude": "claude-sonnet-4-20250514",
-    "google": "gemini-2.5-flash",
-    "openai": "gpt-5-mini",
-    "ollama": "llama3.1",
-}
-
-_API_KEY_FIELD: dict[str, str] = {
-    "claude": "anthropic_api_key",
-    "google": "google_api_key",
-    "openai": "openai_api_key",
-}
+# Setup wizard excludes "mock" from LLM providers — filter it out
+_SETUP_LLM_PROVIDERS = {k: v for k, v in LLM_PROVIDERS.items() if k != "mock"}
 
 
 @ui.page("/setup")
@@ -215,13 +192,13 @@ async def setup_page() -> None:
                 ).classes("text-xs mb-4").style("color: #6b6b6b")
 
                 llm_provider_select = ui.select(
-                    options=_LLM_PROVIDERS,
+                    options=_SETUP_LLM_PROVIDERS,
                     value="google",
                     label="Provider",
                 ).props('outlined dense dark color="grey-7"').classes("w-full mb-3")
 
                 llm_model_select = ui.select(
-                    options=_LLM_MODELS["google"],
+                    options=LLM_MODELS["google"],
                     value="gemini-2.5-flash",
                     label="Model",
                 ).props('outlined dense dark color="grey-7"').classes("w-full mb-3")
@@ -258,11 +235,11 @@ async def setup_page() -> None:
                     provider = llm_provider_select.value
                     wizard_state["llm_provider"] = provider
                     wizard_state["llm_tested"] = False
-                    models = _LLM_MODELS.get(provider, [])
+                    models = LLM_MODELS.get(provider, [])
 
                     if models:
                         llm_model_select.options = models
-                        llm_model_select.value = _DEFAULT_LLM_MODELS.get(provider, models[0])
+                        llm_model_select.value = DEFAULT_LLM_MODELS.get(provider, models[0])
                         llm_model_select.set_visibility(True)
                     else:
                         llm_model_select.options = ["(custom)"]
@@ -270,8 +247,8 @@ async def setup_page() -> None:
                         llm_model_select.set_visibility(provider != "ollama")
 
                     llm_custom_model_input.set_visibility(provider == "ollama")
-                    llm_custom_model_input.value = _DEFAULT_LLM_MODELS.get(provider, "")
-                    llm_key_input.set_visibility(provider in _API_KEY_FIELD)
+                    llm_custom_model_input.value = DEFAULT_LLM_MODELS.get(provider, "")
+                    llm_key_input.set_visibility(provider in API_KEY_FIELD)
                     llm_key_input.value = ""
                     llm_ollama_url.set_visibility(provider == "ollama")
                     llm_openai_url.set_visibility(provider == "openai")
@@ -289,10 +266,10 @@ async def setup_page() -> None:
                     )
                     if model == "(custom)":
                         model = ""
-                    model = model or _DEFAULT_LLM_MODELS.get(provider, "")
+                    model = model or DEFAULT_LLM_MODELS.get(provider, "")
                     api_key = llm_key_input.value or ""
 
-                    if provider in _API_KEY_FIELD and not api_key:
+                    if provider in API_KEY_FIELD and not api_key:
                         llm_status.style("color: #ef5350")
                         llm_status.set_text("API key is required.")
                         return
@@ -360,13 +337,13 @@ async def setup_page() -> None:
                             else llm_model_select.value
                         )
                         if model == "(custom)":
-                            model = _DEFAULT_LLM_MODELS.get(provider, "")
-                        model = model or _DEFAULT_LLM_MODELS.get(provider, "")
+                            model = DEFAULT_LLM_MODELS.get(provider, "")
+                        model = model or DEFAULT_LLM_MODELS.get(provider, "")
                         api_key = llm_key_input.value or ""
                         ollama_base_url = llm_ollama_url.value or "http://localhost:11434"
                         openai_base_url = llm_openai_url.value or ""
 
-                        if provider in _API_KEY_FIELD and not api_key:
+                        if provider in API_KEY_FIELD and not api_key:
                             llm_status.style("color: #ef5350")
                             llm_status.set_text(
                                 "Please enter an API key and test the connection first."
@@ -430,7 +407,7 @@ async def setup_page() -> None:
 
                             # Save LLM API key
                             if api_key:
-                                key_field = _API_KEY_FIELD.get(provider, "")
+                                key_field = API_KEY_FIELD.get(provider, "")
                                 if key_field:
                                     await set_setting(
                                         db, key_field, api_key,

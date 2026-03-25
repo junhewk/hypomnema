@@ -134,7 +134,7 @@ async def engram_detail_page(engram_id: str) -> None:
         cursor = await db.execute(
             "SELECT d.* FROM documents d "
             "JOIN document_engrams de ON d.id = de.document_id "
-            "WHERE de.engram_id = ?",
+            "WHERE de.engram_id = ? LIMIT 100",
             (engram_id,),
         )
         docs = [dict(r) for r in await cursor.fetchall()]

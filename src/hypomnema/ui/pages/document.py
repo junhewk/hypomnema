@@ -2,33 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-
 from nicegui import app, ui
 
 from hypomnema.ui.layout import page_layout
 from hypomnema.ui.theme import SOURCE_STYLES
-
-
-def _time_ago(iso: str) -> str:
-    """Format ISO timestamp as relative time."""
-    try:
-        dt = datetime.fromisoformat(iso.replace("Z", "+00:00"))
-        diff = datetime.now(tz=UTC) - dt
-        seconds = int(diff.total_seconds())
-        if seconds < 60:
-            return f"{seconds}s ago"
-        minutes = seconds // 60
-        if minutes < 60:
-            return f"{minutes}m ago"
-        hours = minutes // 60
-        if hours < 24:
-            return f"{hours}h ago"
-        days = hours // 24
-        return f"{days}d ago"
-    except Exception:
-        return iso
-
+from hypomnema.ui.utils import time_ago
 
 SUMMARY_MAX_LENGTH = 600
 
@@ -158,7 +136,7 @@ async def document_detail_page(doc_id: str) -> None:
         cursor = await db.execute(
             "SELECT e.id, e.canonical_name FROM engrams e "
             "JOIN document_engrams de ON e.id = de.engram_id "
-            "WHERE de.document_id = ?",
+            "WHERE de.document_id = ? LIMIT 200",
             (doc_id,),
         )
         engrams = [dict(r) for r in await cursor.fetchall()]
@@ -206,7 +184,7 @@ async def document_detail_page(doc_id: str) -> None:
             ui.label(str(title)).classes("text-lg font-medium mb-1")
 
             # Timestamp
-            ui.label(_time_ago(created_at)).classes("text-xs mb-4").style(
+            ui.label(time_ago(created_at)).classes("text-xs mb-4").style(
                 "color: rgba(107,107,107,0.6); font-size: 10px"
             )
 

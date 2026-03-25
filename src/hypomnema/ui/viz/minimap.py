@@ -25,7 +25,7 @@ async def _fetch_minimap_data() -> tuple[list[dict[str, Any]], list[dict[str, An
 
     cursor = await db.execute(
         "SELECT p.engram_id, p.x, p.y, p.z, p.cluster_id "
-        "FROM projections p"
+        "FROM projections p LIMIT 3000"
     )
     proj_rows = await cursor.fetchall()
     await cursor.close()
