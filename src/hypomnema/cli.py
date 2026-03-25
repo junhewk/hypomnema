@@ -5,149 +5,15 @@ from __future__ import annotations
 import argparse
 import asyncio
 import os
-import shutil
-import subprocess
 import sys
-import threading
-import urllib.request
-from contextlib import contextmanager
 from pathlib import Path
-from time import sleep
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
-    from hypomnema.config import Settings
-
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-_FRONTEND_DIR = _REPO_ROOT / "frontend"
-_FRONTEND_BUILD_ENV_FILE = "hypomnema-build-env"
+    pass
 
 
-def _find_npm() -> str:
-    npm = shutil.which("npm")
-    if npm is None:
-        print("Error: Node.js not found. Install from https://nodejs.org", file=sys.stderr)
-        sys.exit(1)
-    return npm
-
-
-def _ensure_frontend() -> None:
-    if not (_FRONTEND_DIR / "package.json").exists():
-        print(f"Error: frontend/package.json not found at {_FRONTEND_DIR}", file=sys.stderr)
-        sys.exit(1)
-
-
-def _ensure_node_modules(npm: str) -> None:
-    if not (_FRONTEND_DIR / "node_modules").exists():
-        print("Installing frontend dependencies...")
-        subprocess.run([npm, "install"], cwd=_FRONTEND_DIR, check=True)
-
-
-def _has_production_frontend_build(next_dir: Path) -> bool:
-    """Return whether `.next` contains a production build usable by `next start`."""
-    return next_dir.exists() and (next_dir / "BUILD_ID").is_file()
-
-
-def _frontend_public_env(settings: Settings) -> dict[str, str]:
-    return {
-        "NEXT_PUBLIC_API_URL": "auto",
-        "NEXT_PUBLIC_API_PORT": str(settings.port),
-    }
-
-
-def _frontend_build_signature(settings: Settings) -> str:
-    public_env = _frontend_public_env(settings)
-    return "\n".join(f"{key}={value}" for key, value in sorted(public_env.items()))
-
-
-def _frontend_source_is_stale(next_dir: Path) -> bool:
-    """Return True if any frontend source file is newer than the production build."""
-    build_id = next_dir / "BUILD_ID"
-    if not build_id.is_file():
-        return True
-    build_mtime = build_id.stat().st_mtime
-
-    frontend_dir = next_dir.parent
-    # Check source files
-    src_dir = frontend_dir / "src"
-    if src_dir.is_dir():
-        for path in src_dir.rglob("*"):
-            if path.suffix in (".ts", ".tsx", ".css", ".json") and path.stat().st_mtime > build_mtime:
-                return True
-    # Check root config files
-    for name in ("package.json", "next.config.ts", "tailwind.config.ts"):
-        cfg = frontend_dir / name
-        if cfg.is_file() and cfg.stat().st_mtime > build_mtime:
-            return True
-    return False
-
-
-def _has_matching_production_frontend_build(next_dir: Path, settings: Settings) -> bool:
-    if not _has_production_frontend_build(next_dir):
-        return False
-    if _frontend_source_is_stale(next_dir):
-        return False
-    build_env_file = next_dir / _FRONTEND_BUILD_ENV_FILE
-    if not build_env_file.is_file():
-        return False
-    return build_env_file.read_text(encoding="utf-8") == _frontend_build_signature(settings)
-
-
-def _write_frontend_build_signature(next_dir: Path, settings: Settings) -> None:
-    (next_dir / _FRONTEND_BUILD_ENV_FILE).write_text(
-        _frontend_build_signature(settings),
-        encoding="utf-8",
-    )
-
-
-def _open_when_ready(url: str, port: int, timeout: int = 30) -> None:
-    import webbrowser
-
-    for _ in range(timeout * 2):
-        try:
-            urllib.request.urlopen(f"http://localhost:{port}", timeout=2)  # noqa: S310
-            webbrowser.open(url)
-            return
-        except Exception:  # noqa: BLE001
-            sleep(0.5)
-
-
-def _frontend_env(settings: Settings) -> dict[str, str]:
-    """Build environment for the frontend process."""
-    env = {
-        **os.environ,
-        "PORT": str(settings.frontend_port),
-        **_frontend_public_env(settings),
-    }
-    # In server mode, bind Next.js to all interfaces so it's reachable remotely
-    if settings.is_remote:
-        env["HOSTNAME"] = "0.0.0.0"
-    return env
-
-
-def _backend_env(settings: Settings) -> dict[str, str]:
-    return {
-        "HYPOMNEMA_MODE": settings.mode,
-    }
-
-
-@contextmanager
-def _temporary_env(overrides: dict[str, str]) -> Iterator[None]:
-    previous = {key: os.environ.get(key) for key in overrides}
-    os.environ.update(overrides)
-    try:
-        yield
-    finally:
-        for key, value in previous.items():
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-
-
-def _load_settings(default_mode: Literal["local", "server"]) -> Settings:
+def _load_settings(default_mode: Literal["local", "server"]) -> object:
     from hypomnema.config import Settings
 
     if "HYPOMNEMA_MODE" in os.environ:
@@ -155,100 +21,75 @@ def _load_settings(default_mode: Literal["local", "server"]) -> Settings:
     return Settings(mode=default_mode)
 
 
-def _run(
-    *,
-    settings: Settings,
-    npm: str,
-    reload: bool,
-    frontend_cmd: list[str],
-    open_browser: bool,
-) -> None:
-    import uvicorn
-
-    _ensure_frontend()
-    _ensure_node_modules(npm)
-
-    frontend_proc = subprocess.Popen(
-        frontend_cmd,
-        cwd=_FRONTEND_DIR,
-        env=_frontend_env(settings),
-    )
-
-    if open_browser:
-        url = f"http://localhost:{settings.frontend_port}"
-        threading.Thread(
-            target=_open_when_ready,
-            args=(url, settings.frontend_port),
-            daemon=True,
-        ).start()
-
-    try:
-        with _temporary_env(_backend_env(settings)):
-            uvicorn.run(
-                "hypomnema.main:create_app",
-                factory=True,
-                host=settings.host,
-                port=settings.port,
-                reload=reload,
-                reload_dirs=[str(_REPO_ROOT / "backend" / "src")] if reload else None,
-                log_level="info",
-            )
-    finally:
-        frontend_proc.terminate()
-        try:
-            frontend_proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            frontend_proc.kill()
-
-
 def cmd_dev(args: argparse.Namespace) -> None:
-    npm = _find_npm()
-    settings = _load_settings("local")
-    _run(
-        settings=settings,
-        npm=npm,
+    """Development mode — browser, hot-reload enabled."""
+    from nicegui import ui
+
+    from hypomnema.config import Settings
+    from hypomnema.ui.app import configure
+
+    settings = Settings(mode="local") if "HYPOMNEMA_MODE" not in os.environ else Settings()
+    configure(settings)
+
+    ui.run(
+        host="127.0.0.1",
+        port=settings.port,
+        title="Hypomnema",
+        dark=True,
         reload=True,
-        frontend_cmd=[npm, "run", "dev"],
-        open_browser=not args.no_browser,
+        show=not args.no_browser,
+        storage_secret="hypomnema-dev",
     )
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
-    npm = _find_npm()
-    settings = _load_settings("server")
+    """Production / server mode — remote access."""
+    from nicegui import ui
 
-    # Build with NEXT_PUBLIC_API_URL so Next.js inlines the correct backend URL
-    next_dir = _FRONTEND_DIR / ".next"
-    if args.build or not _has_matching_production_frontend_build(next_dir, settings):
-        _ensure_frontend()
-        _ensure_node_modules(npm)
-        if args.build:
-            print("Building frontend for production...")
-        else:
-            print("Production frontend build missing, incomplete, or outdated; rebuilding...")
-        subprocess.run(
-            [npm, "run", "build"],
-            cwd=_FRONTEND_DIR,
-            env=_frontend_env(settings),
-            check=True,
-        )
-        _write_frontend_build_signature(next_dir, settings)
+    from hypomnema.config import Settings
+    from hypomnema.ui.app import configure
 
-    _run(
-        settings=settings,
-        npm=npm,
+    settings = Settings(mode="server") if "HYPOMNEMA_MODE" not in os.environ else Settings()
+    configure(settings)
+
+    ui.run(
+        host=settings.host,
+        port=settings.port,
+        title="Hypomnema",
+        dark=True,
         reload=False,
-        frontend_cmd=[npm, "run", "start"],
-        open_browser=False,
+        show=False,
+        storage_secret="hypomnema-server",
     )
 
 
-def _default_eval_output_dir(settings: Settings) -> Path:
-    return settings.db_path.parent / "evals" / "tidy-text"
+def cmd_desktop(args: argparse.Namespace) -> None:
+    """Desktop mode — native window via pywebview."""
+    from nicegui import ui
+
+    from hypomnema.config import Settings
+    from hypomnema.ui.app import configure
+
+    settings = Settings(mode="local") if "HYPOMNEMA_MODE" not in os.environ else Settings()
+    configure(settings)
+
+    ui.run(
+        native=True,
+        port=0,  # random ephemeral port
+        title="Hypomnema",
+        dark=True,
+        reload=False,
+        window_size=(1200, 800),
+        storage_secret="hypomnema-desktop",
+    )
 
 
-def _default_engram_dedupe_output_dir(settings: Settings) -> Path:
-    return settings.db_path.parent / "evals" / "engram-dedupe"
+def _default_eval_output_dir(settings: object) -> Path:
+    return settings.db_path.parent / "evals" / "tidy-text"  # type: ignore[union-attr]
+
+
+def _default_engram_dedupe_output_dir(settings: object) -> Path:
+    return settings.db_path.parent / "evals" / "engram-dedupe"  # type: ignore[union-attr]
 
 
 def cmd_eval_tidy_text(args: argparse.Namespace) -> None:
@@ -474,11 +315,12 @@ def main() -> None:
     )
     sub = parser.add_subparsers(dest="command")
 
-    dev_p = sub.add_parser("dev", help="Development mode (default)")
+    dev_p = sub.add_parser("dev", help="Development mode with hot-reload")
     dev_p.add_argument("--no-browser", action="store_true")
 
-    serve_p = sub.add_parser("serve", help="Production mode (defaults to server deployment mode)")
-    serve_p.add_argument("--build", action="store_true", help="Force frontend rebuild")
+    sub.add_parser("serve", help="Production server mode")
+
+    sub.add_parser("desktop", help="Desktop mode (native window)")
 
     from hypomnema.evals.tidy_text_corpus import DEFAULT_REPRESENTATIVE_CASE_LIMIT
     from hypomnema.ontology.extractor import DEFAULT_PROMPT_VARIANT, list_prompt_variants
@@ -560,6 +402,8 @@ def main() -> None:
         cmd_dev(args)
     elif args.command == "serve":
         cmd_serve(args)
+    elif args.command == "desktop":
+        cmd_desktop(args)
     elif args.command == "eval" and args.eval_command == "tidy-text":
         cmd_eval_tidy_text(args)
     elif args.command == "eval" and args.eval_command == "tidy-text-matrix":

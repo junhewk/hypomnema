@@ -5,8 +5,8 @@ description = "Automated Ontological Synthesizer"
 license = "AGPL-3.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
+    "nicegui>=2.0,<3",
     "fastapi>=0.115,<1",
-    "uvicorn[standard]>=0.34,<1",
     "aiosqlite>=0.20,<1",
     "sqlite-vec>=0.1.6,<1",
     "pydantic>=2.10,<3",
@@ -14,13 +14,10 @@ dependencies = [
     "anthropic>=0.42,<1",
     "google-genai>=1.5,<2",
     "apscheduler>=3.11,<4",
-    "python-multipart>=0.0.18,<1",
     "pypdf>=5.0,<6",
     "python-docx>=1.1,<2",
     "feedparser>=6.0,<7",
     "youtube-transcript-api>=1.0,<2",
-    "umap-learn>=0.5,<1",
-    "scikit-learn>=1.6,<2",
     "httpx>=0.28,<1",
     "trafilatura>=2.0,<3",
     "cryptography>=44,<45",
@@ -31,6 +28,7 @@ dependencies = [
 
 [project.optional-dependencies]
 local-embeddings = ["sentence-transformers>=3.4,<4"]
+projection = ["umap-learn>=0.5,<1", "scikit-learn>=1.6,<2"]
 
 [dependency-groups]
 dev = [

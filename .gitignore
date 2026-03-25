@@ -6,13 +6,7 @@ __pycache__/
 *.db
 
 # uv
-backend/.python-version
-
-# Node
-node_modules/
-package-lock.json
-.next/
-out/
+.python-version
 
 # IDE
 .idea/
@@ -25,7 +19,7 @@ out/
 Thumbs.db
 
 # Data & secrets
-backend/data/
+data/
 .hypomnema_key
 
 # Environment
@@ -39,8 +33,6 @@ backend/data/
 htmlcov/
 dist/
 build/
-frontend/test-results/
-desktop/src-tauri/binaries/
-desktop/src-tauri/resources/hypomnema-server/
-desktop/src-tauri/gen/
-desktop/src-tauri/target/
+
+# NiceGUI
+.nicegui/
