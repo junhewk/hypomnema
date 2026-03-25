@@ -29,13 +29,8 @@ async def stream_page() -> None:
     with page_layout("Stream"):
         # Scribble input — entire card is a drop zone
         with ui.card().classes("w-full mb-6").style(
-            "background: #111; border: 1px dashed transparent; transition: border-color 0.2s"
+            "background: #111; transition: border-color 0.2s; border: 1px dashed transparent"
         ) as input_card:
-            # Drop zone overlay behavior via JS
-            input_card.on("dragover.prevent", lambda e: input_card.style("border-color: #7eb8da"))
-            input_card.on("dragleave", lambda e: input_card.style("border-color: transparent"))
-            input_card.on("drop.prevent", lambda e: input_card.style("border-color: transparent"))
-
             text_input = ui.textarea(
                 placeholder="Drop a thought, paste a URL, or drag a file..."
             ).classes("w-full").props('autogrow outlined dense dark color="grey-7"')
@@ -56,28 +51,32 @@ async def stream_page() -> None:
                     on_click=lambda: _submit_scribble(text_input),
                 ).props('flat dense size="sm" color="grey-6" no-caps').classes("text-xs")
 
-            # Wire native drop on the card to the hidden upload
-            ui.add_body_html("""
-            <script>
-            document.addEventListener('DOMContentLoaded', () => {
-                const cards = document.querySelectorAll('.q-card');
-                const card = cards[0];
-                if (!card) return;
-                card.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    const files = e.dataTransfer?.files;
-                    if (!files || files.length === 0) return;
-                    const input = card.querySelector('input[type=file]');
-                    if (input) {
-                        const dt = new DataTransfer();
-                        for (const f of files) dt.items.add(f);
-                        input.files = dt.files;
-                        input.dispatchEvent(new Event('change', {bubbles: true}));
-                    }
-                });
-            });
-            </script>
-            """)
+        # Wire dropzone on the card via JS (targets this specific card by NiceGUI element id)
+        card_id = f"c{input_card.id}"
+        upload_id = f"c{upload.id}"
+        ui.timer(0.3, lambda: ui.run_javascript(f"""
+            var card = document.getElementById('{card_id}');
+            var upEl = document.getElementById('{upload_id}');
+            if (!card || !upEl) return;
+            var inp = upEl.querySelector('input[type=file]');
+            card.addEventListener('dragover', function(e) {{
+                e.preventDefault();
+                card.style.borderColor = '#7eb8da';
+            }});
+            card.addEventListener('dragleave', function(e) {{
+                card.style.borderColor = 'transparent';
+            }});
+            card.addEventListener('drop', function(e) {{
+                e.preventDefault();
+                card.style.borderColor = 'transparent';
+                if (!e.dataTransfer || !e.dataTransfer.files.length || !inp) return;
+                var dt = new DataTransfer();
+                for (var i = 0; i < e.dataTransfer.files.length; i++) dt.items.add(e.dataTransfer.files[i]);
+                inp.files = dt.files;
+                inp.dispatchEvent(new Event('change', {{bubbles: true}}));
+            }});
+        """), once=True)
+
 
         # Document list with auto-refresh when items are processing
         doc_container = ui.column().classes("w-full gap-0")
