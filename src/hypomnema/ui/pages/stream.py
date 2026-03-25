@@ -77,7 +77,6 @@ async def stream_page() -> None:
             }});
         """), once=True)
 
-
         # Document list with auto-refresh when items are processing
         doc_container = ui.column().classes("w-full gap-0")
         last_snapshot: dict[str, int] = {}  # {doc_id: processed} for change detection
@@ -175,7 +174,7 @@ async def _handle_file_upload(e: object) -> None:
     import tempfile
     from pathlib import Path
 
-    from hypomnema.ingestion.file_parser import parse_file
+    from hypomnema.ingestion.file_parser import ingest_file
 
     upload_event = e
     content = upload_event.content.read()  # type: ignore[attr-defined]
@@ -186,20 +185,10 @@ async def _handle_file_upload(e: object) -> None:
         tmp_path = Path(tmp.name)
 
     try:
-        parsed = parse_file(tmp_path)
-        db = app.state.db
-        cursor = await db.execute(
-            "INSERT INTO documents (source_type, title, text, mime_type, source_uri) "
-            "VALUES ('file', ?, ?, ?, ?) RETURNING id",
-            (parsed.title, parsed.text, parsed.mime_type, str(tmp_path)),
-        )
-        row = await cursor.fetchone()
-        await db.commit()
-        assert row is not None
-        doc_id = str(row[0])
+        doc = await ingest_file(app.state.db, tmp_path)
 
         if app.state.ontology_queue:
-            await app.state.ontology_queue.enqueue(doc_id)
+            await app.state.ontology_queue.enqueue(doc.id)
 
         ui.notify(f"Uploaded: {name}", type="positive")
         ui.navigate.to("/")

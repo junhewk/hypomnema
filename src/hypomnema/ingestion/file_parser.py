@@ -243,7 +243,18 @@ def parse_pdf(path: Path) -> str:
 
 def parse_docx(path: Path) -> str:
     doc = DocxDocument(str(path))
-    text = "\n".join(p.text for p in doc.paragraphs).strip()
+    parts: list[str] = []
+    # Paragraphs
+    for p in doc.paragraphs:
+        if p.text.strip():
+            parts.append(p.text)
+    # Tables (python-docx stores table text separately from paragraphs)
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+            if cells:
+                parts.append(" | ".join(cells))
+    text = "\n".join(parts).strip()
     if not text:
         raise ValueError(f"No extractable text in {path.name}")
     return text
