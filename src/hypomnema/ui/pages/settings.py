@@ -9,6 +9,7 @@ from nicegui import app, ui
 
 from hypomnema.ui.layout import page_layout
 from hypomnema.ui.utils import (
+    get_db,
     API_KEY_FIELD,
     DEFAULT_LLM_MODELS,
     LLM_MODELS,
@@ -23,7 +24,7 @@ _FEED_TYPES = ["rss", "scrape", "youtube"]
 @ui.page("/settings")
 async def settings_page() -> None:
     """Settings management page."""
-    db = app.state.db
+    db = get_db()
     fernet_key = getattr(app.state, "fernet_key", None)
     settings = getattr(app.state, "settings", None)
 
@@ -37,7 +38,7 @@ async def settings_page() -> None:
     # Determine current values
     current_provider = (
         masked_settings.get("llm_provider")
-        or (settings.llm_provider if settings else "mock")
+        or (settings.llm_provider if settings else "google")
     )
     current_model = (
         masked_settings.get("llm_model")
@@ -132,10 +133,6 @@ async def settings_page() -> None:
                 async def _test_connection() -> None:
                     """Test the selected LLM provider connection."""
                     provider = provider_select.value
-                    if provider == "mock":
-                        llm_status.style("color: #4caf50")
-                        llm_status.set_text("Mock provider requires no connection.")
-                        return
 
                     llm_status.style("color: #6b6b6b")
                     llm_status.set_text("Testing connection...")
@@ -246,25 +243,20 @@ async def settings_page() -> None:
                     new_settings = Settings.with_db_overrides(app.state.settings, db_settings)
                     app.state.settings = new_settings
 
-                    if provider != "mock":
-                        resolved_key = api_key_for_provider(provider, new_settings)
-                        resolved_url = base_url_for_provider(provider, new_settings)
-                        new_llm = build_llm(
-                            provider,
-                            api_key=resolved_key,
-                            model=new_settings.llm_model,
-                            base_url=resolved_url,
-                        )
-                        llm_lock = getattr(app.state, "llm_lock", None)
-                        if llm_lock:
-                            async with llm_lock:
-                                app.state.llm = new_llm
-                        else:
+                    resolved_key = api_key_for_provider(provider, new_settings)
+                    resolved_url = base_url_for_provider(provider, new_settings)
+                    new_llm = build_llm(
+                        provider,
+                        api_key=resolved_key,
+                        model=new_settings.llm_model,
+                        base_url=resolved_url,
+                    )
+                    llm_lock = getattr(app.state, "llm_lock", None)
+                    if llm_lock:
+                        async with llm_lock:
                             app.state.llm = new_llm
                     else:
-                        from hypomnema.llm.mock import MockLLMClient
-
-                        app.state.llm = MockLLMClient()
+                        app.state.llm = new_llm
 
                     ui.notify("LLM settings saved", type="positive")
                     llm_status.style("color: #4caf50")
@@ -283,15 +275,15 @@ async def settings_page() -> None:
         with ui.card().classes("w-full mb-6").style("background: #111"):
             emb_provider = masked_settings.get(
                 "embedding_provider",
-                settings.embedding_provider if settings else "local",
+                settings.embedding_provider if settings else "google",
             )
             emb_model = masked_settings.get(
                 "embedding_model",
-                settings.embedding_model if settings else "all-MiniLM-L6-v2",
+                settings.embedding_model if settings else "gemini-embedding-001",
             )
             emb_dim = masked_settings.get(
                 "embedding_dim",
-                str(settings.embedding_dim) if settings else "384",
+                str(settings.embedding_dim) if settings else "3072",
             )
 
             with ui.row().classes("items-center gap-4 mb-2"):
@@ -352,7 +344,6 @@ async def settings_page() -> None:
                     from hypomnema.embeddings.factory import EMBEDDING_DEFAULTS
 
                     emb_options = {
-                        "local": "Local (sentence-transformers)",
                         "openai": "OpenAI Embeddings",
                         "google": "Google Embeddings",
                     }
@@ -367,12 +358,7 @@ async def settings_page() -> None:
                         password=True,
                         password_toggle_button=True,
                     ).props('outlined dense dark color="grey-7"').classes("w-full mb-3")
-                    new_emb_api_key.set_visibility(emb_provider != "local")
-
-                    def _on_emb_change(e: object) -> None:
-                        new_emb_api_key.set_visibility(new_emb_provider.value != "local")
-
-                    new_emb_provider.on("update:model-value", _on_emb_change)
+                    new_emb_api_key.set_visibility(True)
 
                     with ui.row().classes("gap-2 justify-end"):
                         ui.button("Cancel", on_click=dialog.close).props(

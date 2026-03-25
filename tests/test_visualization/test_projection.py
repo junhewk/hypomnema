@@ -8,8 +8,6 @@ from hypomnema.ontology.engram import bytes_to_embedding, embedding_to_bytes
 from hypomnema.visualization.projection import (
     _compute_clusters,
     _detect_gaps,
-    _run_hdbscan,
-    _run_umap,
     compute_projections,
     fetch_engram_embeddings,
     load_clusters,
@@ -17,6 +15,20 @@ from hypomnema.visualization.projection import (
     load_projections,
 )
 from tests.conftest import insert_engram_with_embedding, make_embedding
+
+_has_projection_deps = True
+try:
+    import umap  # noqa: F401
+    import sklearn  # noqa: F401
+except ImportError:
+    _has_projection_deps = False
+
+_skip_no_projection = pytest.mark.skipif(
+    not _has_projection_deps, reason="umap-learn / scikit-learn not installed"
+)
+
+if _has_projection_deps:
+    from hypomnema.visualization.projection import _run_hdbscan, _run_umap
 
 # ── Unit tests ─────────────────────────────────────────────
 
@@ -34,6 +46,7 @@ class TestBytesToEmbedding:
         arr[0] = 99.0  # should not raise
 
 
+@_skip_no_projection
 class TestRunUmap:
     def test_produces_3d_output(self) -> None:
         embeddings = np.stack([make_embedding(i) for i in range(20)])
@@ -46,6 +59,7 @@ class TestRunUmap:
         assert coords.shape == (5, 3)
 
 
+@_skip_no_projection
 class TestRunHdbscan:
     def test_returns_labels(self) -> None:
         coords = np.random.default_rng(0).standard_normal((30, 3)).astype(np.float32)
@@ -73,6 +87,7 @@ class TestComputeClusters:
         assert clusters[0].centroid_z == pytest.approx(3.0)
 
 
+@_skip_no_projection
 class TestDetectGaps:
     def test_finds_gap_between_distant_clusters(self) -> None:
         coords = np.array([[0, 0, 0], [1, 0, 0], [10, 0, 0], [11, 0, 0]], dtype=np.float32)
@@ -156,6 +171,7 @@ class TestFetchEngramEmbeddings:
         assert ids == []
 
 
+@_skip_no_projection
 @pytest.mark.asyncio
 class TestComputeProjections:
     async def test_full_pipeline(self, tmp_db: object) -> None:
@@ -174,6 +190,7 @@ class TestComputeProjections:
 
 @pytest.mark.asyncio
 class TestLoadProjections:
+    @_skip_no_projection
     async def test_loads_stored(self, tmp_db: object) -> None:
         for i in range(20):
             await insert_engram_with_embedding(tmp_db, f"stored_{i}", make_embedding(i))  # type: ignore[arg-type]
@@ -188,6 +205,7 @@ class TestLoadProjections:
 
 @pytest.mark.asyncio
 class TestLoadClusters:
+    @_skip_no_projection
     async def test_derives_from_stored(self, tmp_db: object) -> None:
         for i in range(20):
             await insert_engram_with_embedding(tmp_db, f"cl_{i}", make_embedding(i))  # type: ignore[arg-type]

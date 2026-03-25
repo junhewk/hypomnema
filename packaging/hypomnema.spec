@@ -70,6 +70,7 @@ a = Analysis(
         "uvicorn.logging",
         "uvicorn.lifespan.on",
         "engineio.async_drivers.threading",
+        "numpy",
     ],
     hookspath=[str(repo_root / "packaging" / "hooks")],
     excludes=[

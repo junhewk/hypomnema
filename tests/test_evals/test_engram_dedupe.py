@@ -153,7 +153,7 @@ class TestRunEngramDedupeEval:
         _seed_audit_db(db_path)
         settings = Settings(
             db_path=db_path,
-            embedding_provider="local",
+            embedding_provider="google",
             embedding_model="unit-test",
             embedding_dim=embeddings.dimension,
         )
@@ -198,7 +198,7 @@ class TestRunEngramDedupeEval:
         _seed_audit_db(db_path)
         settings = Settings(
             db_path=db_path,
-            embedding_provider="local",
+            embedding_provider="google",
             embedding_model="unit-test",
             embedding_dim=embeddings.dimension,
         )
@@ -228,7 +228,7 @@ class TestRunEngramDedupeEval:
         _seed_audit_db(db_path)
         settings = Settings(
             db_path=db_path,
-            embedding_provider="local",
+            embedding_provider="google",
             embedding_model="unit-test",
             embedding_dim=embeddings.dimension,
         )

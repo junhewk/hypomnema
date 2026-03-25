@@ -26,37 +26,43 @@ async def get_db(request: Request) -> AsyncGenerator[aiosqlite.Connection, None]
             yield conn
     else:
         # Fallback for tests or pre-pool setups
-        yield request.app.state.db
+        yield getattr(request.app.state, "db", None)  # type: ignore[misc]
 
 
 def get_llm(request: Request) -> LLMClient:
-    llm = request.app.state.llm
+    llm = getattr(request.app.state, "llm", None)
     if llm is None:
         raise HTTPException(status_code=503, detail="Setup not complete")
     return llm  # type: ignore[no-any-return]
 
 
 def get_embeddings(request: Request) -> EmbeddingModel:
-    emb = request.app.state.embeddings
+    emb = getattr(request.app.state, "embeddings", None)
     if emb is None:
         raise HTTPException(status_code=503, detail="Setup not complete")
     return emb  # type: ignore[no-any-return]
 
 
 def get_scheduler(request: Request) -> FeedScheduler:
-    return request.app.state.scheduler  # type: ignore[no-any-return]
+    return getattr(request.app.state, "scheduler", None)  # type: ignore[return-value]
 
 
 def get_settings(request: Request) -> Settings:
-    return request.app.state.settings  # type: ignore[no-any-return]
+    settings = getattr(request.app.state, "settings", None)
+    if settings is None:
+        raise HTTPException(status_code=503, detail="Setup not complete")
+    return settings  # type: ignore[no-any-return]
 
 
 def get_fernet_key(request: Request) -> bytes:
-    return request.app.state.fernet_key  # type: ignore[no-any-return]
+    return getattr(request.app.state, "fernet_key", None)  # type: ignore[return-value]
 
 
 def get_llm_lock(request: Request) -> asyncio.Lock:
-    return request.app.state.llm_lock  # type: ignore[no-any-return]
+    lock = getattr(request.app.state, "llm_lock", None)
+    if lock is None:
+        raise HTTPException(status_code=503, detail="Setup not complete")
+    return lock  # type: ignore[no-any-return]
 
 
 DB = Annotated["aiosqlite.Connection", Depends(get_db)]

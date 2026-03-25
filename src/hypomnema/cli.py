@@ -25,10 +25,9 @@ def cmd_dev(args: argparse.Namespace) -> None:
     """Development mode — browser, hot-reload enabled."""
     from nicegui import ui
 
-    from hypomnema.config import Settings
     from hypomnema.ui.app import configure
 
-    settings = Settings(mode="local") if "HYPOMNEMA_MODE" not in os.environ else Settings()
+    settings = _load_settings("local")
     configure(settings)
 
     ui.run(
@@ -47,10 +46,9 @@ def cmd_serve(args: argparse.Namespace) -> None:
     """Production / server mode — remote access."""
     from nicegui import ui
 
-    from hypomnema.config import Settings
     from hypomnema.ui.app import configure
 
-    settings = Settings(mode="server") if "HYPOMNEMA_MODE" not in os.environ else Settings()
+    settings = _load_settings("server")
     configure(settings)
 
     ui.run(
@@ -69,10 +67,9 @@ def cmd_desktop(args: argparse.Namespace) -> None:
     """Desktop mode — native window via pywebview."""
     from nicegui import ui
 
-    from hypomnema.config import Settings
     from hypomnema.ui.app import configure
 
-    settings = Settings(mode="local") if "HYPOMNEMA_MODE" not in os.environ else Settings()
+    settings = _load_settings("local")
     configure(settings)
 
     ui.run(
@@ -265,9 +262,6 @@ def cmd_tidy_backfill(args: argparse.Namespace) -> None:
 
     base_settings = _load_settings("local")
     settings = asyncio.run(load_effective_settings(base_settings))
-    if settings.llm_provider == "mock":
-        print("Error: tidy backfill requires a configured non-mock LLM provider.", file=sys.stderr)
-        sys.exit(1)
 
     async def _run() -> int:
         db = await get_connection(settings.db_path, settings.sqlite_vec_path)
@@ -312,6 +306,11 @@ def cmd_tidy_backfill(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    # Required for PyInstaller frozen builds on macOS (NiceGUI spawns child processes)
+    from multiprocessing import freeze_support
+
+    freeze_support()
+
     parser = argparse.ArgumentParser(
         prog="hypomnema",
         description="Automated Ontological Synthesizer",
@@ -325,77 +324,80 @@ def main() -> None:
 
     sub.add_parser("desktop", help="Desktop mode (native window)")
 
-    from hypomnema.evals.tidy_text_corpus import DEFAULT_REPRESENTATIVE_CASE_LIMIT
-    from hypomnema.ontology.extractor import DEFAULT_PROMPT_VARIANT, list_prompt_variants
-    from hypomnema.tidy import ALL_TIDY_LEVELS, DEFAULT_TIDY_LEVEL
+    # Eval/tidy subcommands pull heavy deps (numpy, ontology, etc.) — skip in
+    # frozen desktop builds where they'll never be used.
+    if not getattr(sys, "frozen", False):
+        from hypomnema.evals.tidy_text_corpus import DEFAULT_REPRESENTATIVE_CASE_LIMIT
+        from hypomnema.ontology.extractor import DEFAULT_PROMPT_VARIANT, list_prompt_variants
+        from hypomnema.tidy import ALL_TIDY_LEVELS, DEFAULT_TIDY_LEVEL
 
-    eval_p = sub.add_parser("eval", help="Local evaluation utilities")
-    eval_sub = eval_p.add_subparsers(dest="eval_command")
+        eval_p = sub.add_parser("eval", help="Local evaluation utilities")
+        eval_sub = eval_p.add_subparsers(dest="eval_command")
 
-    tidy_p = eval_sub.add_parser("tidy-text", help="Run the tidy-text eval corpus")
-    tidy_p.add_argument("--dataset", choices=("smoke", "full"), default="smoke")
-    tidy_p.add_argument("--variant", choices=list_prompt_variants(), default=DEFAULT_PROMPT_VARIANT)
-    tidy_p.add_argument("--tidy-level", choices=ALL_TIDY_LEVELS, default=DEFAULT_TIDY_LEVEL)
-    tidy_p.add_argument("--provider", default=None, help="Override generation provider")
-    tidy_p.add_argument("--model", default=None, help="Override generation model")
-    tidy_p.add_argument("--judge-provider", default=None)
-    tidy_p.add_argument("--judge-model", default=None)
-    tidy_p.add_argument("--secondary-judge-provider", default=None)
-    tidy_p.add_argument("--secondary-judge-model", default=None)
-    tidy_p.add_argument("--no-judge", action="store_true", help="Skip LLM judge scoring")
-    tidy_p.add_argument("--output-dir", type=Path, default=None)
+        tidy_p = eval_sub.add_parser("tidy-text", help="Run the tidy-text eval corpus")
+        tidy_p.add_argument("--dataset", choices=("smoke", "full"), default="smoke")
+        tidy_p.add_argument("--variant", choices=list_prompt_variants(), default=DEFAULT_PROMPT_VARIANT)
+        tidy_p.add_argument("--tidy-level", choices=ALL_TIDY_LEVELS, default=DEFAULT_TIDY_LEVEL)
+        tidy_p.add_argument("--provider", default=None, help="Override generation provider")
+        tidy_p.add_argument("--model", default=None, help="Override generation model")
+        tidy_p.add_argument("--judge-provider", default=None)
+        tidy_p.add_argument("--judge-model", default=None)
+        tidy_p.add_argument("--secondary-judge-provider", default=None)
+        tidy_p.add_argument("--secondary-judge-model", default=None)
+        tidy_p.add_argument("--no-judge", action="store_true", help="Skip LLM judge scoring")
+        tidy_p.add_argument("--output-dir", type=Path, default=None)
 
-    tidy_matrix_p = eval_sub.add_parser(
-        "tidy-text-matrix",
-        help="Generate tidy-text outputs first, save JSON, then evaluate a representative subset",
-    )
-    tidy_matrix_p.add_argument("--variant", choices=list_prompt_variants(), default=DEFAULT_PROMPT_VARIANT)
-    tidy_matrix_p.add_argument(
-        "--tidy-level",
-        choices=ALL_TIDY_LEVELS,
-        action="append",
-        default=None,
-        help="Run only the specified tidy level; may be passed multiple times",
-    )
-    tidy_matrix_p.add_argument(
-        "--max-cases",
-        type=int,
-        default=DEFAULT_REPRESENTATIVE_CASE_LIMIT,
-        help="Representative cases before budget capping",
-    )
-    tidy_matrix_p.add_argument(
-        "--case-id",
-        action="append",
-        default=None,
-        help="Run only the specified eligible case id; may be passed multiple times",
-    )
-    tidy_matrix_p.add_argument(
-        "--generated-json",
-        type=Path,
-        default=None,
-        help="Skip generation and evaluate an existing generation artifact",
-    )
-    tidy_matrix_p.add_argument(
-        "--refresh-corpus",
-        action="store_true",
-        help="Rebuild the cached real-text corpus before generation",
-    )
-    tidy_matrix_p.add_argument("--with-judge", action="store_true", help="Enable primary judge scoring")
-    tidy_matrix_p.add_argument("--judge-provider", default=None)
-    tidy_matrix_p.add_argument("--judge-model", default=None)
-    tidy_matrix_p.add_argument("--secondary-judge-provider", default=None)
-    tidy_matrix_p.add_argument("--secondary-judge-model", default=None)
-    tidy_matrix_p.add_argument("--output-dir", type=Path, default=None)
+        tidy_matrix_p = eval_sub.add_parser(
+            "tidy-text-matrix",
+            help="Generate tidy-text outputs first, save JSON, then evaluate a representative subset",
+        )
+        tidy_matrix_p.add_argument("--variant", choices=list_prompt_variants(), default=DEFAULT_PROMPT_VARIANT)
+        tidy_matrix_p.add_argument(
+            "--tidy-level",
+            choices=ALL_TIDY_LEVELS,
+            action="append",
+            default=None,
+            help="Run only the specified tidy level; may be passed multiple times",
+        )
+        tidy_matrix_p.add_argument(
+            "--max-cases",
+            type=int,
+            default=DEFAULT_REPRESENTATIVE_CASE_LIMIT,
+            help="Representative cases before budget capping",
+        )
+        tidy_matrix_p.add_argument(
+            "--case-id",
+            action="append",
+            default=None,
+            help="Run only the specified eligible case id; may be passed multiple times",
+        )
+        tidy_matrix_p.add_argument(
+            "--generated-json",
+            type=Path,
+            default=None,
+            help="Skip generation and evaluate an existing generation artifact",
+        )
+        tidy_matrix_p.add_argument(
+            "--refresh-corpus",
+            action="store_true",
+            help="Rebuild the cached real-text corpus before generation",
+        )
+        tidy_matrix_p.add_argument("--with-judge", action="store_true", help="Enable primary judge scoring")
+        tidy_matrix_p.add_argument("--judge-provider", default=None)
+        tidy_matrix_p.add_argument("--judge-model", default=None)
+        tidy_matrix_p.add_argument("--secondary-judge-provider", default=None)
+        tidy_matrix_p.add_argument("--secondary-judge-model", default=None)
+        tidy_matrix_p.add_argument("--output-dir", type=Path, default=None)
 
-    engram_p = eval_sub.add_parser("engram-dedupe", help="Run the engram dedupe eval corpus")
-    engram_p.add_argument("--dataset", choices=("smoke", "full"), default="smoke")
-    engram_p.add_argument("--output-dir", type=Path, default=None)
+        engram_p = eval_sub.add_parser("engram-dedupe", help="Run the engram dedupe eval corpus")
+        engram_p.add_argument("--dataset", choices=("smoke", "full"), default="smoke")
+        engram_p.add_argument("--output-dir", type=Path, default=None)
 
-    tidy_root = sub.add_parser("tidy", help="Tidy-text maintenance utilities")
-    tidy_sub = tidy_root.add_subparsers(dest="tidy_command")
-    tidy_backfill_p = tidy_sub.add_parser("backfill", help="Recompute tidy output for existing documents")
-    tidy_backfill_p.add_argument("--level", choices=ALL_TIDY_LEVELS, default=DEFAULT_TIDY_LEVEL)
-    tidy_backfill_p.add_argument("--scope", choices=("mismatched", "missing", "all"), default="mismatched")
+        tidy_root = sub.add_parser("tidy", help="Tidy-text maintenance utilities")
+        tidy_sub = tidy_root.add_subparsers(dest="tidy_command")
+        tidy_backfill_p = tidy_sub.add_parser("backfill", help="Recompute tidy output for existing documents")
+        tidy_backfill_p.add_argument("--level", choices=ALL_TIDY_LEVELS, default=DEFAULT_TIDY_LEVEL)
+        tidy_backfill_p.add_argument("--scope", choices=("mismatched", "missing", "all"), default="mismatched")
 
     args = parser.parse_args()
     if args.command is None:
@@ -423,3 +425,7 @@ def main() -> None:
         cmd_tidy_backfill(args)
     elif args.command == "tidy":
         parser.error("tidy requires a subcommand")
+
+
+if __name__ == "__main__":
+    main()

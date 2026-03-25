@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import aiosqlite
+import pytest
 
 from hypomnema.embeddings.mock import MockEmbeddingModel
 from hypomnema.ingestion.file_parser import ingest_file
@@ -11,6 +12,13 @@ from hypomnema.llm.mock import MockLLMClient
 from hypomnema.ontology.pipeline import link_document, process_document
 from hypomnema.search.doc_search import search_documents
 from hypomnema.visualization.projection import compute_projections
+
+_has_projection_deps = True
+try:
+    import umap  # noqa: F401
+    import sklearn  # noqa: F401
+except ImportError:
+    _has_projection_deps = False
 
 
 async def test_scribble_to_engrams_to_edges(
@@ -92,6 +100,7 @@ async def test_search_after_ingestion(
     assert any(r.document.id == doc.id for r in results)
 
 
+@pytest.mark.skipif(not _has_projection_deps, reason="umap-learn / scikit-learn not installed")
 async def test_projections_computed(
     tmp_db: aiosqlite.Connection,
     int_llm: MockLLMClient,

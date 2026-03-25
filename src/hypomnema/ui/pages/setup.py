@@ -17,24 +17,20 @@ from hypomnema.ui.utils import (
     DEFAULT_LLM_MODELS,
     LLM_MODELS,
     LLM_PROVIDERS,
+    get_db,
 )
 
 logger = logging.getLogger(__name__)
 
 _EMBEDDING_PROVIDERS = {
-    "local": "Local (sentence-transformers)",
     "openai": "OpenAI Embeddings",
     "google": "Google Embeddings",
 }
 
-# Setup wizard excludes "mock" from LLM providers — filter it out
-_SETUP_LLM_PROVIDERS = {k: v for k, v in LLM_PROVIDERS.items() if k != "mock"}
-
-
 @ui.page("/setup")
 async def setup_page() -> None:
     """First-run setup wizard."""
-    db = app.state.db
+    db = get_db()
     fernet_key = getattr(app.state, "fernet_key", None)
 
     # Check if already set up — redirect to home
@@ -48,7 +44,7 @@ async def setup_page() -> None:
 
     # Wizard state
     wizard_state: dict[str, object] = {
-        "emb_provider": "local",
+        "emb_provider": "google",
         "emb_api_key": "",
         "emb_validated": False,
         "llm_provider": "google",
@@ -74,13 +70,12 @@ async def setup_page() -> None:
             with ui.step("Embedding Provider").props('icon="memory"'):
                 ui.label(
                     "Choose how document and engram embeddings are computed. "
-                    "Local runs on your machine (requires ~500MB RAM). "
-                    "Cloud providers require an API key."
+                    "An API key is required."
                 ).classes("text-xs mb-4").style("color: #6b6b6b")
 
                 emb_provider_radio = ui.radio(
                     options=_EMBEDDING_PROVIDERS,
-                    value="local",
+                    value="google",
                 ).props('dark color="grey-7"').classes("mb-3")
 
                 # API key for cloud providers
@@ -90,33 +85,21 @@ async def setup_page() -> None:
                     password=True,
                     password_toggle_button=True,
                 ).props('outlined dense dark color="grey-7"').classes("w-full mb-3")
-                emb_key_input.set_visibility(False)
+                emb_key_input.set_visibility(True)
 
                 emb_status = ui.label("").classes("text-xs mb-3").style("color: #6b6b6b")
 
                 def _on_emb_provider_change(e: object) -> None:
                     provider = emb_provider_radio.value
                     wizard_state["emb_provider"] = provider
-                    wizard_state["emb_validated"] = provider == "local"
-                    needs_key = provider in ("openai", "google")
-                    emb_key_input.set_visibility(needs_key)
-                    if provider == "local":
-                        emb_status.style("color: #4caf50")
-                        emb_status.set_text("Local embeddings require no API key.")
-                    else:
-                        emb_status.set_text("")
+                    wizard_state["emb_validated"] = False
+                    emb_status.set_text("")
 
                 emb_provider_radio.on("update:model-value", _on_emb_provider_change)
 
                 async def _validate_embedding() -> None:
                     """Validate the embedding provider connection."""
                     provider = str(wizard_state["emb_provider"])
-
-                    if provider == "local":
-                        wizard_state["emb_validated"] = True
-                        emb_status.style("color: #4caf50")
-                        emb_status.set_text("Local embeddings are ready.")
-                        return
 
                     api_key = emb_key_input.value or ""
                     if not api_key:
@@ -165,10 +148,6 @@ async def setup_page() -> None:
 
                 with ui.stepper_navigation():
                     async def _next_step_1() -> None:
-                        provider = str(wizard_state["emb_provider"])
-                        if provider == "local":
-                            wizard_state["emb_validated"] = True
-
                         if not wizard_state["emb_validated"]:
                             emb_status.style("color: #ef5350")
                             emb_status.set_text(
@@ -176,12 +155,11 @@ async def setup_page() -> None:
                             )
                             return
 
-                        if provider != "local":
-                            wizard_state["emb_api_key"] = emb_key_input.value or ""
-                            if not wizard_state["emb_api_key"]:
-                                emb_status.style("color: #ef5350")
-                                emb_status.set_text("API key is required.")
-                                return
+                        wizard_state["emb_api_key"] = emb_key_input.value or ""
+                        if not wizard_state["emb_api_key"]:
+                            emb_status.style("color: #ef5350")
+                            emb_status.set_text("API key is required.")
+                            return
 
                         stepper.next()
 
@@ -197,7 +175,7 @@ async def setup_page() -> None:
                 ).classes("text-xs mb-4").style("color: #6b6b6b")
 
                 llm_provider_select = ui.select(
-                    options=_SETUP_LLM_PROVIDERS,
+                    options=LLM_PROVIDERS,
                     value="google",
                     label="Provider",
                 ).props('outlined dense dark color="grey-7"').classes("w-full mb-3")

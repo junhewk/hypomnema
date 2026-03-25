@@ -87,25 +87,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         vec_schema_rebuilt = await ensure_vec_tables(db, settings.embedding_dim)
 
         # Embeddings
-        if settings.llm_provider == "mock":
-            from hypomnema.embeddings.mock import MockEmbeddingModel
-
-            app.state.embeddings = MockEmbeddingModel(dimension=settings.embedding_dim)
-        else:
-            app.state.embeddings = build_embeddings(settings)
+        app.state.embeddings = build_embeddings(settings)
 
         # LLM
-        if settings.llm_provider == "mock":
-            from hypomnema.llm.mock import MockLLMClient
-
-            app.state.llm = MockLLMClient()
-        else:
-            app.state.llm = build_llm(
-                settings.llm_provider,
-                api_key=api_key_for_provider(settings.llm_provider, settings),
-                model=settings.llm_model,
-                base_url=base_url_for_provider(settings.llm_provider, settings),
-            )
+        app.state.llm = build_llm(
+            settings.llm_provider,
+            api_key=api_key_for_provider(settings.llm_provider, settings),
+            model=settings.llm_model,
+            base_url=base_url_for_provider(settings.llm_provider, settings),
+        )
 
         # Feed scheduler
         from hypomnema.scheduler.cron import FeedScheduler

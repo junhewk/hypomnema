@@ -28,7 +28,7 @@ from hypomnema.scheduler.cron import FeedScheduler
 async def app(tmp_path: Path):
     """Test app with real DB, mock LLM/embeddings, no scheduler running."""
     db_path = tmp_path / "test.db"
-    settings = Settings(db_path=db_path, llm_provider="mock")
+    settings = Settings(db_path=db_path)
 
     test_app = create_app(settings, use_lifespan=False)
 

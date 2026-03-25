@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sys
 
 from nicegui import app
 
@@ -57,7 +58,11 @@ def configure(settings: Settings | None = None) -> None:
     # Serve static assets (icon, favicon)
     from pathlib import Path
 
-    static_dir = Path(__file__).resolve().parent.parent.parent.parent / "static"
+    if getattr(sys, "frozen", False):
+        # PyInstaller bundles static/ into _MEIPASS
+        static_dir = Path(sys._MEIPASS) / "static"  # type: ignore[attr-defined]
+    else:
+        static_dir = Path(__file__).resolve().parent.parent.parent.parent / "static"
     if static_dir.is_dir():
         app.add_static_files("/static", str(static_dir))
 
@@ -77,7 +82,24 @@ def configure(settings: Settings | None = None) -> None:
 
 async def _startup() -> None:
     """Initialize database, embeddings, LLM, scheduler, and queue on app startup."""
-    settings: Settings = app.state.settings
+    # Pre-set all state attributes so pages never hit AttributeError, even if
+    # startup fails partway through (e.g. missing sqlite-vec in frozen builds).
+    app.state.db = None
+    app.state.pool = None
+    app.state.fernet_key = None
+    app.state.llm_lock = asyncio.Lock()
+    app.state.embeddings = None
+    app.state.llm = None
+    app.state.scheduler = None
+    app.state.ontology_queue = None
+
+    from hypomnema.api.schemas import EmbeddingChangeStatus
+
+    app.state.embedding_change_status = EmbeddingChangeStatus()
+    app.state.embedding_change_task = None
+
+    settings: Settings = getattr(app.state, "settings", None) or Settings()
+    app.state.settings = settings
 
     # Database
     db = await get_connection(settings.db_path, settings.sqlite_vec_path)
@@ -106,15 +128,6 @@ async def _startup() -> None:
             await set_setting(db, "auth_passphrase_hash", hashed, fernet_key=fernet_key, encrypt_value=True)
             logger.info("Pre-set passphrase from HYPOMNEMA_PASSPHRASE env var")
 
-    # LLM lock for hot-swap
-    app.state.llm_lock = asyncio.Lock()
-
-    # Embedding change status
-    from hypomnema.api.schemas import EmbeddingChangeStatus
-
-    app.state.embedding_change_status = EmbeddingChangeStatus()
-    app.state.embedding_change_task = None
-
     # Check if setup is complete
     db_settings = await get_all_settings(db, fernet_key=fernet_key)
     setup_complete = db_settings.get("setup_complete")
@@ -126,25 +139,15 @@ async def _startup() -> None:
         vec_schema_rebuilt = await ensure_vec_tables(db, settings.embedding_dim)
 
         # Embeddings
-        if settings.llm_provider == "mock":
-            from hypomnema.embeddings.mock import MockEmbeddingModel
-
-            app.state.embeddings = MockEmbeddingModel(dimension=settings.embedding_dim)
-        else:
-            app.state.embeddings = build_embeddings(settings)
+        app.state.embeddings = build_embeddings(settings)
 
         # LLM
-        if settings.llm_provider == "mock":
-            from hypomnema.llm.mock import MockLLMClient
-
-            app.state.llm = MockLLMClient()
-        else:
-            app.state.llm = build_llm(
-                settings.llm_provider,
-                api_key=api_key_for_provider(settings.llm_provider, settings),
-                model=settings.llm_model,
-                base_url=base_url_for_provider(settings.llm_provider, settings),
-            )
+        app.state.llm = build_llm(
+            settings.llm_provider,
+            api_key=api_key_for_provider(settings.llm_provider, settings),
+            model=settings.llm_model,
+            base_url=base_url_for_provider(settings.llm_provider, settings),
+        )
 
         # Feed scheduler
         from hypomnema.scheduler.cron import FeedScheduler
@@ -182,12 +185,6 @@ async def _startup() -> None:
                     status="in_progress", total=total, processed=0
                 )
                 app.state.embedding_change_task = asyncio.create_task(_reprocess_all_documents(app, total))
-    else:
-        # Setup mode
-        app.state.embeddings = None
-        app.state.llm = None
-        app.state.scheduler = None
-        app.state.ontology_queue = None
 
 
 async def _shutdown() -> None:

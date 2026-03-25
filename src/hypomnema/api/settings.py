@@ -144,12 +144,11 @@ async def update_settings(
 
     # Hot-swap LLM
     provider = new_settings.llm_provider
-    if provider != "mock":
-        api_key = api_key_for_provider(provider, new_settings)
-        base_url = base_url_for_provider(provider, new_settings)
-        new_llm = build_llm(provider, api_key=api_key, model=new_settings.llm_model, base_url=base_url)
-        async with llm_lock:
-            request.app.state.llm = new_llm
+    api_key = api_key_for_provider(provider, new_settings)
+    base_url = base_url_for_provider(provider, new_settings)
+    new_llm = build_llm(provider, api_key=api_key, model=new_settings.llm_model, base_url=base_url)
+    async with llm_lock:
+        request.app.state.llm = new_llm
 
     # Build masked response from already-decrypted settings
     masked_keys = {k: mask_key(v) for k, v in db_settings.items() if k in _ENCRYPTED_KEYS and v}
@@ -228,7 +227,7 @@ async def complete_setup(
 
     # 8. Initialize LLM if provider specified
     provider = new_settings.llm_provider
-    if provider and provider != "mock":
+    if provider:
         async with llm_lock:
             request.app.state.llm = build_llm(
                 provider,
@@ -336,8 +335,6 @@ async def _resolve_embedding_configuration(
     openai_base_url: str | None = None,
 ) -> tuple[int, str]:
     default_dim, default_model = EMBEDDING_DEFAULTS[provider]
-    if provider == "local":
-        return default_dim, default_model
 
     result = await _check_embedding_connection(
         ConnectivityCheck(
@@ -401,11 +398,7 @@ async def _check_embedding_connection(
     base_url = _resolve_base_url(provider, body, settings)
     try:
         embeddings: EmbeddingModel
-        if provider == "local":
-            from hypomnema.embeddings.local_gpu import LocalEmbeddingModel
-
-            embeddings = LocalEmbeddingModel(model_name=model)
-        elif provider == "openai":
+        if provider == "openai":
             from hypomnema.embeddings.openai import OpenAIEmbeddingModel
 
             if not api_key:
@@ -614,17 +607,10 @@ async def check_connection(
 
 @router.get("/providers", response_model=ProvidersResponse)
 async def get_providers() -> ProvidersResponse:
-    """Return available provider metadata (excludes mock)."""
+    """Return available provider metadata."""
     return ProvidersResponse(
         llm=_LLM_PROVIDER_CATALOG,
         embedding=[
-            EmbeddingProviderInfo(
-                id="local",
-                name="Local (sentence-transformers)",
-                default_model=EMBEDDING_DEFAULTS["local"][1],
-                default_dimension=EMBEDDING_DEFAULTS["local"][0],
-                requires_key=False,
-            ),
             EmbeddingProviderInfo(
                 id="openai",
                 name="OpenAI Embeddings",

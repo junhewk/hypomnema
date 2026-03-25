@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 
 from hypomnema.llm.claude import ClaudeLLMClient
 from hypomnema.llm.google import GoogleLLMClient
-from hypomnema.llm.mock import MockLLMClient
 from hypomnema.llm.ollama import OllamaLLMClient
 from hypomnema.llm.openai import OpenAILLMClient
 
@@ -42,8 +41,6 @@ def base_url_for_provider(provider: str, settings: Settings) -> str:
 def build_llm(provider: str, *, api_key: str = "", model: str = "", base_url: str = "") -> LLMClient:
     """Build an LLM client for the given provider."""
     match provider:
-        case "mock":
-            return MockLLMClient()
         case "claude":
             return ClaudeLLMClient(api_key=api_key, model=model)
         case "google":

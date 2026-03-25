@@ -32,11 +32,11 @@ class Settings(BaseSettings):
     db_path: Path = Path("data/hypomnema.db")
 
     # Embedding
-    embedding_dim: int = 384
-    embedding_model: str = "all-MiniLM-L6-v2"
+    embedding_dim: int = 3072
+    embedding_model: str = "gemini-embedding-001"
 
     # LLM
-    llm_provider: Literal["claude", "google", "openai", "ollama", "mock"] = "mock"
+    llm_provider: Literal["claude", "google", "openai", "ollama"] = "google"
     llm_model: str = ""
     anthropic_api_key: str = ""
     google_api_key: str = ""
@@ -45,8 +45,8 @@ class Settings(BaseSettings):
     openai_base_url: str = ""
     tidy_level: TidyLevel = DEFAULT_TIDY_LEVEL
 
-    # Embedding provider (fixed at install time — not changeable at runtime)
-    embedding_provider: Literal["local", "openai", "google"] = "local"
+    # Embedding provider (changeable at runtime via Settings — triggers full rebuild)
+    embedding_provider: Literal["openai", "google"] = "google"
 
     # Auth (server mode only)
     passphrase: str = ""

@@ -10,6 +10,7 @@ from nicegui import app, ui
 
 from hypomnema.ui.components.document_card import render_document_card
 from hypomnema.ui.layout import page_layout
+from hypomnema.ui.utils import get_db
 
 if TYPE_CHECKING:
     from hypomnema.search.doc_search import ScoredDocument
@@ -77,7 +78,7 @@ def _render_edge_card(row: dict[str, Any]) -> None:
 @ui.page("/search")
 async def search_page() -> None:
     """Search page with document and knowledge graph modes."""
-    db = app.state.db
+    db = get_db()
     embeddings = getattr(app.state, "embeddings", None)
 
     # Debounce state

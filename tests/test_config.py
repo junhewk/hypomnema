@@ -14,10 +14,10 @@ class TestSettingsDefaults:
         assert Settings().db_path == Path("data/hypomnema.db")
 
     def test_default_embedding_dim(self):
-        assert Settings().embedding_dim == 384
+        assert Settings().embedding_dim == 3072
 
-    def test_default_llm_provider_is_mock(self):
-        assert Settings().llm_provider == "mock"
+    def test_default_llm_provider(self):
+        assert Settings().llm_provider == "google"
 
     def test_default_host_is_localhost(self):
         assert Settings().host == "127.0.0.1"

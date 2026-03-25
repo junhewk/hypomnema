@@ -6,11 +6,12 @@ from nicegui import app, ui
 
 from hypomnema.ui.components.document_card import render_document_card
 from hypomnema.ui.layout import page_layout
+from hypomnema.ui.utils import get_db
 
 
 async def _load_documents() -> list[dict[str, object]]:
     """Fetch recent documents from the database."""
-    db = app.state.db
+    db = get_db()
     if db is None:
         return []
     cursor = await db.execute(
@@ -26,6 +27,11 @@ async def _load_documents() -> list[dict[str, object]]:
 @ui.page("/")
 async def stream_page() -> None:
     """Main document stream."""
+    # Redirect to setup wizard if not configured
+    if getattr(app.state, "embeddings", None) is None:
+        ui.navigate.to("/setup")
+        return
+
     with page_layout("Stream"):
         # Scribble input — entire card is a drop zone
         with ui.card().classes("w-full mb-6").style(
@@ -126,7 +132,7 @@ async def _submit_scribble(text_input: ui.textarea) -> None:
     if not text or not text.strip():
         return
 
-    db = app.state.db
+    db = get_db()
     if db is None:
         ui.notify("Database not ready", type="negative")
         return
@@ -146,7 +152,10 @@ async def _submit_text(text: str) -> None:
     """Create a scribble document."""
     from hypomnema.ingestion.scribble import create_scribble
 
-    db = app.state.db
+    db = get_db()
+    if db is None:
+        ui.notify("Database not ready", type="negative")
+        return
     doc = await create_scribble(db, text)
 
     # Enqueue for ontology processing
@@ -161,7 +170,7 @@ async def _submit_url(url: str) -> None:
     from hypomnema.ingestion.url_fetch import fetch_url
 
     try:
-        doc = await fetch_url(app.state.db, url)
+        doc = await fetch_url(get_db(), url)
         if app.state.ontology_queue:
             await app.state.ontology_queue.enqueue(doc.id)
         ui.notify(f"Fetched: {doc.title or url}", type="positive")
@@ -185,7 +194,7 @@ async def _handle_file_upload(e: object) -> None:
         tmp_path = Path(tmp.name)
 
     try:
-        doc = await ingest_file(app.state.db, tmp_path)
+        doc = await ingest_file(get_db(), tmp_path)
 
         if app.state.ontology_queue:
             await app.state.ontology_queue.enqueue(doc.id)

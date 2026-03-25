@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from nicegui import app, ui
+from nicegui import ui
 
 from hypomnema.ui.layout import page_layout
 from hypomnema.ui.theme import SOURCE_STYLES
+from hypomnema.ui.utils import get_db
 
 
 def _render_edge_row(edge: dict[str, Any], engram_id: str, direction: str) -> None:
@@ -93,7 +94,7 @@ def _render_source_docs(docs: list[dict[str, Any]]) -> None:
 @ui.page("/engrams/{engram_id}")
 async def engram_detail_page(engram_id: str) -> None:
     """Engram detail view."""
-    db = app.state.db
+    db = get_db()
 
     with page_layout("Engram"):
         # Back button

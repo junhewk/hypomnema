@@ -10,8 +10,9 @@ import html
 import logging
 from typing import Any
 
-from nicegui import app, ui
+from nicegui import ui
 
+from hypomnema.ui.utils import get_db
 from hypomnema.ui.viz.transforms import cluster_color
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 async def _fetch_minimap_data() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Fetch projections and edges for the minimap."""
-    db = app.state.db
+    db = get_db()
     if db is None:
         return [], []
 

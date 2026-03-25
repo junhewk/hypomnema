@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from nicegui import app, ui
+from nicegui import ui
 
 from hypomnema.ui.layout import page_layout
 from hypomnema.ui.theme import SOURCE_STYLES
-from hypomnema.ui.utils import time_ago
+from hypomnema.ui.utils import get_db, time_ago
 
 SUMMARY_MAX_LENGTH = 600
 
@@ -107,7 +107,7 @@ def _render_related_docs(related: list[dict[str, object]]) -> None:
 @ui.page("/documents/{doc_id}")
 async def document_detail_page(doc_id: str) -> None:
     """Document detail view."""
-    db = app.state.db
+    db = get_db()
 
     with page_layout("Document"):
         # Back button

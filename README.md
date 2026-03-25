@@ -25,20 +25,27 @@ Hypomnema extracts concepts from your research material, deduplicates them, link
 - **Title + TL;DR** — files and URL fetches get an LLM-generated title revision and concise summary; scribbles get full tidy rewriting
 - **3D visualization** — constellation-mode point cloud with PageRank node sizing, cluster color reveal, cinematic auto-orbit (via 3d-force-graph)
 - **Full-text + semantic search** — FTS5 for keyword search, sqlite-vec for vector similarity
-- **Multi-provider** — Claude, Gemini, OpenAI, Ollama for LLM; local sentence-transformers, OpenAI, or Google for embeddings. Hot-swappable at runtime.
+- **Multi-provider** — Claude, Gemini, OpenAI, Ollama for LLM; OpenAI or Google for embeddings. Hot-swappable at runtime.
 - **Single-file database** — everything in one portable SQLite file. No Postgres, no external services.
 - **Encrypted at rest** — API keys stored with Fernet encryption
+- **Desktop app** — native window via pywebview, built with PyInstaller for macOS/Windows/Linux
 
 ## Quick Start
+
+### Prerequisites
+
+- Python 3.12+
+- [uv](https://docs.astral.sh/uv/)
+- An API key for at least one LLM provider (Google, OpenAI, Anthropic, or local Ollama)
 
 ### Local development
 
 ```bash
-uv sync --extra local-embeddings
+uv sync
 uv run hypomnema dev
 ```
 
-Opens `http://localhost:8073`. Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
+Opens `http://localhost:8073`. On first run, a setup wizard guides you through embedding and LLM provider configuration.
 
 ### Docker
 
@@ -68,8 +75,8 @@ All settings use the `HYPOMNEMA_` prefix. Copy [`.env.example`](./.env.example) 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HYPOMNEMA_LLM_PROVIDER` | `mock` | `claude`, `google`, `openai`, `ollama`, or `mock` |
-| `HYPOMNEMA_EMBEDDING_PROVIDER` | `local` | `local`, `openai`, or `google` |
+| `HYPOMNEMA_LLM_PROVIDER` | `google` | `claude`, `google`, `openai`, or `ollama` |
+| `HYPOMNEMA_EMBEDDING_PROVIDER` | `google` | `openai` or `google` |
 | `HYPOMNEMA_ANTHROPIC_API_KEY` | | Required if using Claude |
 | `HYPOMNEMA_GOOGLE_API_KEY` | | Required if using Gemini |
 | `HYPOMNEMA_OPENAI_API_KEY` | | Required if using OpenAI |
@@ -98,7 +105,7 @@ Single Python stack, single codebase:
 ## Contributing
 
 ```bash
-uv sync --extra local-embeddings
+uv sync
 uv run ruff check .
 uv run mypy .
 uv run pytest

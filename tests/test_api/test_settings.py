@@ -31,7 +31,7 @@ class TestSettingsAPI:
         response = await client.get("/api/settings")
         assert response.status_code == 200
         data = response.json()
-        assert data["llm_provider"] == "mock"
+        assert data["llm_provider"] == "google"
         # The stored key should be masked
         assert "sk-secret" not in data["openai_api_key"]
         # Embedding info should be present
@@ -98,9 +98,9 @@ class TestSettingsAPI:
         assert "mock" not in llm_ids
         assert any(model["id"] == "gpt-5-mini" for model in data["llm"][llm_ids.index("openai")]["models"])
         embed_ids = [p["id"] for p in data["embedding"]]
-        assert "local" in embed_ids
+        assert "local" not in embed_ids
         assert "openai" in embed_ids
-        assert data["embedding"][embed_ids.index("local")]["default_model"] == "all-MiniLM-L6-v2"
+        assert "google" in embed_ids
 
     async def test_hot_swap_replaces_llm(self, app, client):
         """PUT /api/settings with new provider should swap the LLM instance."""

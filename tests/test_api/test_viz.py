@@ -5,6 +5,17 @@ from httpx import AsyncClient
 
 from tests.conftest import insert_engram_with_embedding, make_embedding
 
+_has_projection_deps = True
+try:
+    import umap  # noqa: F401
+    import sklearn  # noqa: F401
+except ImportError:
+    _has_projection_deps = False
+
+_skip_no_projection = pytest.mark.skipif(
+    not _has_projection_deps, reason="umap-learn / scikit-learn not installed"
+)
+
 
 async def _seed_engrams(app: object, count: int = 20) -> list[str]:
     db = app.state.db  # type: ignore[attr-defined]
@@ -22,6 +33,7 @@ class TestVizProjections:
         assert resp.status_code == 200
         assert resp.json() == []
 
+    @_skip_no_projection
     async def test_after_recompute(self, client: AsyncClient, app: object) -> None:
         await _seed_engrams(app, 20)
         await client.post("/api/viz/recompute")
@@ -41,6 +53,7 @@ class TestVizClusters:
         assert resp.status_code == 200
         assert resp.json() == []
 
+    @_skip_no_projection
     async def test_after_recompute(self, client: AsyncClient, app: object) -> None:
         await _seed_engrams(app, 20)
         await client.post("/api/viz/recompute")
@@ -68,6 +81,7 @@ class TestVizEdges:
 
 @pytest.mark.asyncio
 class TestRecompute:
+    @_skip_no_projection
     async def test_returns_projections(self, client: AsyncClient, app: object) -> None:
         await _seed_engrams(app, 20)
         resp = await client.post("/api/viz/recompute")

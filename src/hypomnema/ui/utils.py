@@ -3,6 +3,14 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
+
+
+def get_db() -> Any:
+    """Return the shared database connection from app.state, or None if unavailable."""
+    from nicegui import app
+
+    return getattr(app.state, "db", None)
 
 
 def time_ago(iso: str) -> str:
@@ -32,7 +40,6 @@ LLM_PROVIDERS = {
     "google": "Google Gemini",
     "openai": "OpenAI",
     "ollama": "Ollama (local)",
-    "mock": "Mock (testing)",
 }
 
 LLM_MODELS: dict[str, list[str]] = {
@@ -45,7 +52,6 @@ LLM_MODELS: dict[str, list[str]] = {
     ],
     "openai": ["gpt-5.4", "gpt-5-mini", "gpt-4.1-mini", "gpt-4o"],
     "ollama": [],
-    "mock": [],
 }
 
 DEFAULT_LLM_MODELS: dict[str, str] = {
@@ -53,7 +59,6 @@ DEFAULT_LLM_MODELS: dict[str, str] = {
     "google": "gemini-2.5-flash",
     "openai": "gpt-5-mini",
     "ollama": "llama3.1",
-    "mock": "",
 }
 
 API_KEY_FIELD: dict[str, str] = {

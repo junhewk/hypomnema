@@ -62,8 +62,8 @@ All settings use `HYPOMNEMA_` env prefix. Key env vars:
 
 - `HYPOMNEMA_MODE` — `local` (default), `server`, or `desktop`; `serve` defaults to `server` if unset
 - `HYPOMNEMA_HOST` — bind address (default `127.0.0.1`, set to Tailscale IP for server mode)
-- `HYPOMNEMA_LLM_PROVIDER` — `claude`, `google`, `openai`, `ollama`, or `mock` (default `mock`)
-- `HYPOMNEMA_EMBEDDING_PROVIDER` — `local`, `openai`, or `google` (default `local`, fixed at startup)
+- `HYPOMNEMA_LLM_PROVIDER` — `claude`, `google`, `openai`, or `ollama` (default `google`)
+- `HYPOMNEMA_EMBEDDING_PROVIDER` — `openai` or `google` (default `google`)
 - `HYPOMNEMA_ANTHROPIC_API_KEY`, `HYPOMNEMA_GOOGLE_API_KEY`, `HYPOMNEMA_OPENAI_API_KEY` — provider API keys
 - `HYPOMNEMA_DB_PATH` — SQLite database path (default `data/hypomnema.db`)
 

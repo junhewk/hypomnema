@@ -11,8 +11,9 @@ import json
 import logging
 from typing import Any
 
-from nicegui import app, ui
+from nicegui import ui
 
+from hypomnema.ui.utils import get_db
 from hypomnema.ui.viz.transforms import (
     cluster_color,
     compute_page_rank,
@@ -25,7 +26,7 @@ _LABEL_RANK_THRESHOLD = 0.3
 
 
 async def _fetch_projections() -> list[dict[str, Any]]:
-    db = app.state.db
+    db = get_db()
     if db is None:
         return []
     cursor = await db.execute(
@@ -38,7 +39,7 @@ async def _fetch_projections() -> list[dict[str, Any]]:
 
 
 async def _fetch_edges() -> list[dict[str, Any]]:
-    db = app.state.db
+    db = get_db()
     if db is None:
         return []
     cursor = await db.execute(
