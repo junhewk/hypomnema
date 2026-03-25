@@ -145,22 +145,27 @@ _GRAPH_INIT_JS = """
     .linkOpacity(1.0)
     .onNodeClick(node => {
       if (!node || !node.id) return;
-      // Show/update floating tooltip
+      console.log('Node clicked:', node.id, node.name);
       let tip = document.getElementById('hypo-viz-tooltip');
       if (!tip) {
         tip = document.createElement('div');
         tip.id = 'hypo-viz-tooltip';
-        tip.style.cssText = 'position:fixed;top:16px;right:16px;z-index:9999;'
-          + 'background:rgba(13,13,13,0.92);border:1px solid #1e1e1e;'
-          + 'backdrop-filter:blur(8px);padding:10px 14px;border-radius:4px;'
-          + 'font-family:JetBrains Mono,monospace;max-width:300px';
+        Object.assign(tip.style, {
+          position: 'fixed', top: '16px', right: '16px', zIndex: '9999',
+          background: 'rgba(13,13,13,0.92)', border: '1px solid #1e1e1e',
+          backdropFilter: 'blur(8px)', padding: '10px 14px', borderRadius: '4px',
+          fontFamily: "'JetBrains Mono', monospace", maxWidth: '300px',
+          color: '#d4d4d4'
+        });
         document.body.appendChild(tip);
       }
-      tip.innerHTML = `<div style="color:#d4d4d4;font-size:13px;margin-bottom:4px">${node.name}</div>`
-        + `<a href="/engrams/${node.id}" style="color:#7eb8da;font-size:10px;text-decoration:none">`
-        + `View engram →</a>`
-        + `<span onclick="this.parentElement.style.display='none'" `
-        + `style="position:absolute;top:4px;right:8px;color:#4a4a4a;cursor:pointer;font-size:14px">×</span>`;
+      const name = node.name || node.id;
+      const id = node.id;
+      tip.innerHTML = '<div style="font-size:13px;margin-bottom:6px">' + name + '</div>'
+        + '<a href="/engrams/' + id + '" style="color:#7eb8da;font-size:10px;text-decoration:none">'
+        + 'View engram &rarr;</a>'
+        + '<div onclick="document.getElementById(\'hypo-viz-tooltip\').style.display=\'none\'" '
+        + 'style="position:absolute;top:4px;right:8px;color:#4a4a4a;cursor:pointer;font-size:14px">&times;</div>';
       tip.style.display = 'block';
     })
     .onNodeDragEnd(node => {
