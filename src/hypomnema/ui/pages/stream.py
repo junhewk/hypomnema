@@ -44,20 +44,34 @@ async def stream_page() -> None:
                     on_click=lambda: _submit_scribble(text_input),
                 ).props('flat dense color="grey-5"').classes("text-xs")
 
-        # Document list
+        # Document list with auto-refresh when items are processing
         doc_container = ui.column().classes("w-full gap-0")
 
-        docs = await _load_documents()
-        with doc_container:
-            if not docs:
-                ui.label("No documents yet. Write something above to get started.").classes(
-                    "text-muted text-xs text-center py-8"
-                )
-            else:
-                for doc in docs:
-                    render_document_card(doc)
+        async def _refresh_docs() -> None:
+            """Reload the document list into the container."""
+            doc_container.clear()
+            docs = await _load_documents()
+            with doc_container:
+                if not docs:
+                    ui.label("No documents yet. Write something above to get started.").classes(
+                        "text-muted text-xs text-center py-8"
+                    )
+                else:
+                    for doc in docs:
+                        render_document_card(doc)
+                    ui.label(f"{len(docs)} documents").classes("text-muted text-xs text-center mt-4")
 
-                ui.label(f"{len(docs)} documents").classes("text-muted text-xs text-center mt-4")
+            # Check if any docs are still processing — keep polling
+            has_unprocessed = any(not d.get("processed") for d in docs)
+            if has_unprocessed:
+                poll_timer.activate()
+            else:
+                poll_timer.deactivate()
+
+        poll_timer = ui.timer(5.0, _refresh_docs, active=False)
+
+        # Initial load
+        await _refresh_docs()
 
 
 async def _submit_scribble(text_input: ui.textarea) -> None:

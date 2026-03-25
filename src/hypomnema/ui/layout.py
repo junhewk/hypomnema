@@ -28,18 +28,20 @@ def sidebar() -> None:
 
         ui.separator().classes("mb-4").style("background: #1e1e1e")
 
-        # Nav items
+        # Nav items — use div + on_click to avoid nested <a> tag issues
         for item in _NAV_ITEMS:
-            with ui.element("a").classes(
-                "flex items-center gap-3 px-3 py-2 rounded no-underline cursor-pointer"
+            path = item["path"]  # capture for closure
+            with ui.element("div").classes(
+                "relative flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
             ).style(
                 "color: #6b6b6b; transition: color 0.15s, background 0.15s"
-            ).on("mouseenter", lambda e: e.sender.style("color: #d4d4d4; background: rgba(255,255,255,0.03)")).on(
+            ).on(
+                "mouseenter", lambda e: e.sender.style("color: #d4d4d4; background: rgba(255,255,255,0.03)")
+            ).on(
                 "mouseleave", lambda e: e.sender.style("color: #6b6b6b; background: transparent")
-            ):
+            ).on("click", lambda _, p=path: ui.navigate.to(p)):
                 ui.icon(item["icon"]).classes("text-lg")
                 ui.label(item["label"]).classes("text-xs tracking-wider uppercase")
-                ui.element("a").props(f'href="{item["path"]}"').classes("absolute inset-0")
 
         # Spacer + minimap + viz link at bottom
         ui.space()
@@ -50,7 +52,6 @@ def sidebar() -> None:
         minimap_container = ui.element("div").classes("px-1 mb-2")
 
         async def _load_minimap() -> None:
-            """Load the minimap after the page renders."""
             if getattr(app.state, "db", None) is None:
                 return
             try:
@@ -63,12 +64,24 @@ def sidebar() -> None:
 
         asyncio.ensure_future(_load_minimap())
 
-        with ui.element("a").classes(
-            "flex items-center gap-3 px-3 py-2 rounded no-underline cursor-pointer"
-        ).style("color: #6b6b6b"):
+        # Viz link
+        with ui.element("div").classes(
+            "relative flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
+        ).style("color: #6b6b6b").on("click", lambda: ui.navigate.to("/viz")):
             ui.icon("hub").classes("text-lg")
             ui.label("Visualization").classes("text-xs tracking-wider uppercase")
-            ui.element("a").props('href="/viz"').classes("absolute inset-0")
+
+        ui.separator().classes("my-2").style("background: #1e1e1e")
+
+        # Collapse button
+        def _toggle_drawer() -> None:
+            drawer.toggle()
+
+        with ui.element("div").classes(
+            "flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
+        ).style("color: #4a4a4a").on("click", _toggle_drawer):
+            ui.icon("chevron_left").classes("text-lg")
+            ui.label("Collapse").classes("text-xs tracking-wider uppercase")
 
 
 def page_layout(title: str | None = None) -> ui.element:
