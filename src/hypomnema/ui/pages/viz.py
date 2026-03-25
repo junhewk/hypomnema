@@ -14,24 +14,31 @@ logger = logging.getLogger(__name__)
 @ui.page("/viz")
 async def viz_page() -> None:
     """Full visualization page with 3D force-directed graph."""
-    # Minimal chrome — dark background, no max-width constraint
-    ui.add_head_html(
-        '<link rel="preconnect" href="https://fonts.googleapis.com">'
-        '<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600'
-        '&display=swap" rel="stylesheet">'
-    )
     from hypomnema.ui.theme import CUSTOM_CSS
 
     ui.add_head_html(CUSTOM_CSS)
+    ui.add_head_html(
+        '<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600'
+        '&display=swap" rel="stylesheet">'
+    )
+    # Force full viewport, no scroll
+    ui.add_head_html("""
+    <style>
+    body, html { margin: 0; padding: 0; overflow: hidden; height: 100vh; }
+    .nicegui-content { padding: 0 !important; height: 100vh; overflow: hidden; }
+    .q-page { padding: 0 !important; min-height: 100vh !important; }
+    </style>
+    """)
 
     from hypomnema.ui.layout import sidebar
 
     sidebar(mini=True)
 
-    with ui.element("main").classes("w-full h-screen relative").style(
-        "background: #0a0a0a; overflow: hidden"
+    # Full viewport container
+    with ui.element("main").classes("w-full relative").style(
+        "height: 100vh; background: #0a0a0a; overflow: hidden"
     ):
-        # Tooltip card — appears on node click
+        # Tooltip card
         tooltip_card = ui.card().classes("absolute").style(
             "display: none; top: 16px; right: 16px; z-index: 30; "
             "background: rgba(13,13,13,0.92); border: 1px solid #1e1e1e; "
@@ -48,9 +55,9 @@ async def viz_page() -> None:
                 "text-xs no-underline"
             ).style("color: #7eb8da; font-size: 10px")
 
-        # Graph container — takes full viewport
-        graph_container = ui.element("div").classes("w-full").style(
-            "height: calc(100vh - 0px)"
+        # Graph fills entire viewport
+        graph_container = ui.element("div").style(
+            "width: 100%; height: 100vh; position: absolute; top: 0; left: 0"
         )
 
         def _on_node_click(eid: str, name: str) -> None:
@@ -66,14 +73,15 @@ async def viz_page() -> None:
         result = await render_graph(
             graph_container,
             on_node_click=_on_node_click,
-            height="calc(100vh - 0px)",
+            height="100vh",
         )
 
-        # HUD overlay — bottom stats bar
+        # HUD overlay — bottom
+        node_count = result.get("node_count", 0)
+        edge_count = result.get("edge_count", 0)
         with ui.element("div").classes(
             "absolute bottom-3 left-3 right-3 flex items-end justify-between pointer-events-none"
         ).style("z-index: 20"):
-            # Left: spread control
             with ui.card().classes("pointer-events-auto").style(
                 "background: rgba(13,13,13,0.75); border: 1px solid #1e1e1e; "
                 "backdrop-filter: blur(8px); padding: 8px 12px"
@@ -87,13 +95,10 @@ async def viz_page() -> None:
 
                 def _on_spread(e: object) -> None:
                     val = spread_slider.value
-                    ui.run_javascript(f"window.__hypomnema_update_spread({val})")
+                    ui.run_javascript(f"if(window.__hypomnema_update_spread) window.__hypomnema_update_spread({val})")
 
                 spread_slider.on("update:model-value", _on_spread)
 
-            # Right: stats
-            node_count = result.get("node_count", 0)
-            edge_count = result.get("edge_count", 0)
             ui.label(
                 f"{node_count} nodes / {edge_count} edges"
             ).classes("pointer-events-auto text-xs").style(
