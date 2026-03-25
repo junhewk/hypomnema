@@ -1,4 +1,10 @@
-"""FastAPI application factory and lifespan."""
+"""FastAPI application factory — retained for test compatibility.
+
+The primary application entry point is now hypomnema.ui.app.configure(),
+which sets up NiceGUI with the same API routers. This module preserves
+create_app() so that tests (which need a bare FastAPI app without NiceGUI)
+continue to work.
+"""
 
 from __future__ import annotations
 
@@ -21,34 +27,9 @@ from hypomnema.llm.factory import api_key_for_provider, base_url_for_provider, b
 logger = logging.getLogger(__name__)
 
 
-def _configure_json_logging() -> None:
-    """Switch all loggers to JSON-line output."""
-    import json as _json
-
-    class _JsonFormatter(logging.Formatter):
-        def format(self, record: logging.LogRecord) -> str:
-            return _json.dumps(
-                {
-                    "ts": self.formatTime(record, self.datefmt),
-                    "level": record.levelname,
-                    "logger": record.name,
-                    "msg": record.getMessage(),
-                }
-            )
-
-    handler = logging.StreamHandler()
-    handler.setFormatter(_JsonFormatter())
-    root = logging.getLogger()
-    root.handlers.clear()
-    root.addHandler(handler)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings: Settings = app.state.settings
-
-    if settings.json_logs:
-        _configure_json_logging()
 
     # Database
     db = await get_connection(settings.db_path, settings.sqlite_vec_path)
@@ -238,10 +219,5 @@ def create_app(settings: Settings | None = None, *, use_lifespan: bool = True) -
         from hypomnema.api.auth import PassphraseAuthMiddleware
 
         app.add_middleware(PassphraseAuthMiddleware)  # type: ignore[arg-type]
-
-    if settings.static_dir and settings.static_dir.exists():
-        from starlette.staticfiles import StaticFiles
-
-        app.mount("/", StaticFiles(directory=str(settings.static_dir), html=True), name="static")
 
     return app

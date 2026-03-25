@@ -7,10 +7,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
-
-if TYPE_CHECKING:
-    pass
+from typing import Literal
 
 
 def _load_settings(default_mode: Literal["local", "server"]) -> object:
