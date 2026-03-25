@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from nicegui import app, ui
 
@@ -11,6 +12,8 @@ _NAV_ITEMS = [
     {"label": "Search", "icon": "search", "path": "/search"},
     {"label": "Settings", "icon": "settings", "path": "/settings"},
 ]
+
+_ICON_PATH = Path(__file__).resolve().parent.parent.parent.parent / "static" / "icon.png"
 
 
 def sidebar(*, mini: bool = False) -> None:
@@ -24,23 +27,27 @@ def sidebar(*, mini: bool = False) -> None:
     with ui.left_drawer(value=True, bordered=True).classes("px-2 py-4") as drawer:
         drawer.props(f"width=200 mini-width=56 {'mini' if mini else ''}")
 
+        # Elements that hide when mini — wrapped in a container with a CSS class
+        # Quasar mini mode collapses the drawer width; we hide text/minimap via JS
+
         # Icon + logo
         with ui.element("div").classes("flex items-center gap-2 mb-1 px-1"):
-            ui.image("/static/icon.png").classes("w-8 h-8 rounded")
-            ui.label("hypomnema").classes(
+            ui.image("/static/icon.png").classes("w-8 h-8 rounded flex-shrink-0")
+            logo_text = ui.label("hypomnema").classes(
                 "text-sm font-bold tracking-wider uppercase"
             ).style("color: #d4d4d4; letter-spacing: 0.15em")
-        ui.label("ontological synthesizer").classes(
+        subtitle = ui.label("ontological synthesizer").classes(
             "text-[9px] text-center w-full mb-6"
         ).style("color: #4a4a4a; letter-spacing: 0.1em")
 
         ui.separator().classes("mb-4").style("background: #1e1e1e")
 
-        # Nav items
+        # Nav items — icon always visible, label hidden in mini
+        nav_labels: list[ui.label] = []
         for item in _NAV_ITEMS:
             path = item["path"]
             with ui.element("div").classes(
-                "relative flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
+                "flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
             ).style(
                 "color: #6b6b6b; transition: color 0.15s, background 0.15s"
             ).on(
@@ -48,14 +55,15 @@ def sidebar(*, mini: bool = False) -> None:
             ).on(
                 "mouseleave", lambda e: e.sender.style("color: #6b6b6b; background: transparent")
             ).on("click", lambda _, p=path: ui.navigate.to(p)):
-                ui.icon(item["icon"]).classes("text-lg")
-                ui.label(item["label"]).classes("text-xs tracking-wider uppercase")
+                ui.icon(item["icon"]).classes("text-lg flex-shrink-0")
+                lbl = ui.label(item["label"]).classes("text-xs tracking-wider uppercase")
+                nav_labels.append(lbl)
 
-        # Spacer + minimap + viz link at bottom
+        # Spacer
         ui.space()
         ui.separator().classes("my-4").style("background: #1e1e1e")
 
-        # Minimap container
+        # Minimap container — hidden in mini mode
         minimap_container = ui.element("div").classes("px-1 mb-2")
 
         async def _load_minimap() -> None:
@@ -73,26 +81,41 @@ def sidebar(*, mini: bool = False) -> None:
 
         # Viz link
         with ui.element("div").classes(
-            "relative flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
+            "flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
         ).style("color: #6b6b6b").on("click", lambda: ui.navigate.to("/viz")):
-            ui.icon("hub").classes("text-lg")
-            ui.label("Visualization").classes("text-xs tracking-wider uppercase")
+            ui.icon("hub").classes("text-lg flex-shrink-0")
+            viz_label = ui.label("Visualization").classes("text-xs tracking-wider uppercase")
 
         ui.separator().classes("my-2").style("background: #1e1e1e")
 
-        # Collapse/expand toggle — switches drawer to mini mode (icon-only), not hidden
+        # Collapse/expand toggle
+        with ui.element("div").classes(
+            "flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
+        ).style("color: #4a4a4a") as collapse_btn:
+            collapse_icon = ui.icon("chevron_left").classes("text-lg flex-shrink-0")
+            collapse_label = ui.label("Collapse").classes("text-xs tracking-wider uppercase")
+
+        # All text elements to show/hide on mini toggle
+        text_elements = [logo_text, subtitle, *nav_labels, viz_label, collapse_label, minimap_container]
+
+        def _apply_mini(is_collapsed: bool) -> None:
+            for el in text_elements:
+                el.set_visibility(not is_collapsed)
+            collapse_icon.props(f"name={'chevron_right' if is_collapsed else 'chevron_left'}")
+
         def _toggle_mini() -> None:
             is_mini["value"] = not is_mini["value"]
             if is_mini["value"]:
                 drawer.props(add="mini")
             else:
                 drawer.props(remove="mini")
+            _apply_mini(is_mini["value"])
 
-        with ui.element("div").classes(
-            "flex items-center gap-3 px-3 py-2 rounded cursor-pointer"
-        ).style("color: #4a4a4a").on("click", _toggle_mini):
-            ui.icon("chevron_left").classes("text-lg")
-            ui.label("Collapse").classes("text-xs tracking-wider uppercase")
+        collapse_btn.on("click", _toggle_mini)
+
+        # Apply initial state
+        if mini:
+            _apply_mini(True)
 
 
 def page_layout(title: str | None = None) -> ui.element:
