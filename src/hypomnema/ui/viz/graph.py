@@ -143,6 +143,7 @@ _GRAPH_INIT_JS = """
     .graphData(data)
     .nodeThreeObject(node => {
       const group = new THREE.Group();
+      group.__graphData = node;
       // Flat circle sprite — size 0.03 base, up to 0.09 for top-ranked
       const size = 0.03 + (node.rank || 0) * 0.06;
       const spriteMat = new THREE.SpriteMaterial({
@@ -167,12 +168,27 @@ _GRAPH_INIT_JS = """
       }
       return group;
     })
-    .linkColor(link => {
-      var c = Math.round((0.25 + (link.confidence || 0.3) * 0.45) * 255);
-      return 'rgb(' + c + ',' + c + ',' + c + ')';
+    .linkThreeObject(link => {
+      var c = (0.25 + (link.confidence || 0.3) * 0.45);
+      var mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(c, c, c),
+        transparent: true, opacity: 0.6
+      });
+      var geo = new THREE.CylinderGeometry(0.003, 0.003, 1, 4, 1);
+      geo.translate(0, 0.5, 0);
+      geo.rotateX(Math.PI / 2);
+      return new THREE.Mesh(geo, mat);
     })
-    .linkWidth(0.5)
-    .linkOpacity(0.8);
+    .linkPositionUpdate(function(obj, coords) {
+      var start = coords.start;
+      var end = coords.end;
+      if (!start || !end) return;
+      var dx = end.x - start.x, dy = end.y - start.y, dz = end.z - start.z;
+      var len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      obj.position.set(start.x, start.y, start.z);
+      obj.scale.z = len;
+      obj.lookAt(end.x, end.y, end.z);
+    });
 
   // Disable forces — use UMAP fixed positions
   graph.d3Force('charge', null);
@@ -213,7 +229,7 @@ _GRAPH_INIT_JS = """
   hud.innerHTML = '<span style="color:#6b6b6b">orbit</span> drag'
     + ' &nbsp; <span style="color:#6b6b6b">zoom</span> scroll'
     + ' &nbsp; <span style="color:#6b6b6b">pan</span> right-drag'
-    + ' &nbsp; <span style="color:#6b6b6b">spread</span> alt+scroll'
+    + ' &nbsp; <span style="color:#6b6b6b">spread</span> ctrl+scroll'
     + '<br><span style="color:#6b6b6b">move</span> drag node'
     + ' &nbsp; <span style="color:#6b6b6b">push/pull</span> alt+drag node'
     + ' &nbsp; <span style="color:#6b6b6b">inspect</span> click node'
@@ -289,8 +305,9 @@ _GRAPH_INIT_JS = """
     var hits = raycaster.intersectObjects(scene.children, true);
     for (var i = 0; i < hits.length; i++) {
       var obj = hits[i].object;
-      while (obj && !obj.__data) { obj = obj.parent; }
-      if (obj && obj.__data) {
+      while (obj && !obj.__data && !obj.__graphData) { obj = obj.parent; }
+      var nd = obj && (obj.__graphData || obj.__data);
+      if (nd) {
         pendingHit = obj;
         dragActive = false;
         return;
@@ -337,10 +354,11 @@ _GRAPH_INIT_JS = """
         var newPos = intersection.add(dragOffset);
         dragNode.position.copy(newPos);
       }
-      if (dragNode.__data) {
-        dragNode.__data.fx = dragNode.position.x;
-        dragNode.__data.fy = dragNode.position.y;
-        dragNode.__data.fz = dragNode.position.z;
+      var dd = dragNode.__graphData || dragNode.__data;
+      if (dd) {
+        dd.fx = dragNode.position.x;
+        dd.fy = dragNode.position.y;
+        dd.fz = dragNode.position.z;
       }
     }
   });
@@ -354,17 +372,25 @@ _GRAPH_INIT_JS = """
       renderer.domElement.style.cursor = 'grab';
     }
     pendingHit = null;
-    // Click (no drag) — show panel
+    // Click (no drag) — show panel or close it
     if (!wasDrag && Math.abs(e.clientX-mouseDown.x)+Math.abs(e.clientY-mouseDown.y) < 4) {
       var rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(mouse, camera);
       var hits = raycaster.intersectObjects(scene.children, true);
+      var foundNode = false;
       for (var i = 0; i < hits.length; i++) {
         var obj = hits[i].object;
-        while (obj && !obj.__data) { obj = obj.parent; }
-        if (obj && obj.__data) { showPanel(obj.__data); return; }
+        while (obj && !obj.__data && !obj.__graphData) { obj = obj.parent; }
+        var nd2 = obj && (obj.__graphData || obj.__data);
+        if (nd2) { showPanel(nd2); foundNode = true; break; }
+      }
+      // Click on empty space — close panel
+      if (!foundNode && panel) {
+        panel.style.opacity = '0';
+        panel.style.transform = 'translateX(10px)';
+        panel.style.pointerEvents = 'none';
       }
     }
   });
@@ -380,9 +406,10 @@ _GRAPH_INIT_JS = """
     if (hoverSprite) { scene.remove(hoverSprite); hoverSprite = null; }
     for (var i = 0; i < hits.length; i++) {
       var obj = hits[i].object;
-      while (obj && !obj.__data) { obj = obj.parent; }
-      if (obj && obj.__data && !obj.__data.show_label) {
-        hoverSprite = new SpriteText(obj.__data.name);
+      while (obj && !obj.__data && !obj.__graphData) { obj = obj.parent; }
+      var nd3 = obj && (obj.__graphData || obj.__data);
+      if (nd3 && !nd3.show_label) {
+        hoverSprite = new SpriteText(nd3.name);
         hoverSprite.color = 'rgba(220,220,220,0.9)';
         hoverSprite.textHeight = 0.035;
         hoverSprite.backgroundColor = 'rgba(10,10,10,0.6)';
@@ -406,14 +433,15 @@ _GRAPH_INIT_JS = """
     renderer.setSize(w, h);
   });
 
-  // Spread: Alt+scroll scales node positions from centroid
+  // Spread: Ctrl+scroll scales node positions from centroid
   var spreadFactor = 1.0;
   data.nodes.forEach(function(n) { n._ox = n.fx; n._oy = n.fy; n._oz = n.fz; });
 
+  // Intercept wheel BEFORE OrbitControls (capture phase)
   renderer.domElement.addEventListener('wheel', function(e) {
-    if (!e.altKey) return;
+    if (!e.ctrlKey) return;
     e.preventDefault();
-    e.stopPropagation();
+    e.stopImmediatePropagation();
     spreadFactor += e.deltaY > 0 ? -0.08 : 0.08;
     spreadFactor = Math.max(0.3, Math.min(3.0, spreadFactor));
     graph.graphData().nodes.forEach(function(n) {
@@ -423,14 +451,7 @@ _GRAPH_INIT_JS = """
       n.x = n.fx; n.y = n.fy; n.z = n.fz;
     });
     graph.graphData(graph.graphData());
-  }, {passive: false});
-  // Prevent OrbitControls zoom on Alt+scroll
-  controls.mouseButtons.DOLLY = null;
-  var origWheel = controls.enableZoom;
-  renderer.domElement.addEventListener('wheel', function(e) {
-    if (e.altKey) controls.enableZoom = false;
-    else controls.enableZoom = true;
-  }, {capture: true});
+  }, {passive: false, capture: true});
 
   // Fit camera to data bounds
   var xs = data.nodes.map(function(n){return n.fx});
