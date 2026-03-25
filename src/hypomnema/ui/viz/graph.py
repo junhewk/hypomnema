@@ -136,8 +136,8 @@ _GRAPH_INIT_JS = """
     .graphData(data)
     .nodeThreeObject(node => {
       const group = new THREE.Group();
-      // Sphere — radius 0.04 base, up to 0.1 for top-ranked
-      const r = 0.04 + (node.rank || 0) * 0.06;
+      // Sphere — radius 0.02 base, up to 0.08 for top-ranked (wider range)
+      const r = 0.02 + (node.rank || 0) * 0.06;
       const geo = new THREE.SphereGeometry(r, 16, 12);
       const mat = new THREE.MeshPhongMaterial({
         color: new THREE.Color(node.color || '#787068'),
@@ -149,22 +149,22 @@ _GRAPH_INIT_JS = """
       // Label for high-rank nodes
       if (node.show_label) {
         const sprite = new SpriteText(node.name);
-        sprite.color = 'rgba(200,200,200,0.75)';
-        sprite.textHeight = 0.08;
-        sprite.backgroundColor = 'rgba(10,10,10,0.5)';
-        sprite.padding = 0.5;
-        sprite.borderRadius = 0.5;
-        sprite.position.y = r + 0.06;
+        sprite.color = 'rgba(200,200,200,0.7)';
+        sprite.textHeight = 0.04;
+        sprite.backgroundColor = 'rgba(10,10,10,0.4)';
+        sprite.padding = 0.2;
+        sprite.borderRadius = 0.3;
+        sprite.position.y = r + 0.04;
         group.add(sprite);
       }
       return group;
     })
     .linkColor(link => {
-      var c = Math.round((0.1 + (link.confidence || 0.3) * 0.15) * 255);
+      var c = Math.round((0.15 + (link.confidence || 0.3) * 0.35) * 255);
       return 'rgb(' + c + ',' + c + ',' + c + ')';
     })
-    .linkWidth(0.004)
-    .linkOpacity(0.4);
+    .linkWidth(0.003)
+    .linkOpacity(0.7);
 
   // Disable forces — use UMAP fixed positions
   graph.d3Force('charge', null);
@@ -174,20 +174,44 @@ _GRAPH_INIT_JS = """
   graph.tickFrame();
   scene.add(graph);
 
-  // Right detail panel
+  // Floating detail card
   var panel = document.getElementById('hypo-detail-panel');
   if (!panel) {
     panel = document.createElement('div');
     panel.id = 'hypo-detail-panel';
     Object.assign(panel.style, {
-      position: 'fixed', top: '0', right: '0', width: '0', height: '100vh',
-      background: '#0d0d0d', borderLeft: '1px solid #1e1e1e',
+      position: 'fixed', top: '16px', right: '16px',
+      width: '260px', maxHeight: 'calc(100vh - 32px)',
+      background: 'rgba(13,13,13,0.88)', border: '1px solid #1e1e1e',
+      backdropFilter: 'blur(12px)', borderRadius: '6px',
       fontFamily: "'JetBrains Mono',monospace", color: '#d4d4d4',
-      transition: 'width 0.2s ease', overflow: 'hidden auto',
-      zIndex: '9999', boxSizing: 'border-box'
+      transition: 'opacity 0.2s ease, transform 0.2s ease',
+      overflow: 'hidden auto', zIndex: '9999', boxSizing: 'border-box',
+      opacity: '0', transform: 'translateX(10px)', pointerEvents: 'none'
     });
     document.body.appendChild(panel);
   }
+
+  // Controls HUD (bottom-left)
+  var hud = document.createElement('div');
+  Object.assign(hud.style, {
+    position: 'fixed', bottom: '16px', left: '72px',
+    background: 'rgba(13,13,13,0.7)', border: '1px solid #1e1e1e',
+    backdropFilter: 'blur(8px)', borderRadius: '4px',
+    fontFamily: "'JetBrains Mono',monospace", color: '#4a4a4a',
+    fontSize: '9px', padding: '8px 12px', zIndex: '9998',
+    letterSpacing: '0.05em', lineHeight: '1.6'
+  });
+  hud.innerHTML = '<span style="color:#6b6b6b">orbit</span> drag'
+    + ' &nbsp; <span style="color:#6b6b6b">zoom</span> scroll'
+    + ' &nbsp; <span style="color:#6b6b6b">pan</span> right-drag'
+    + '<br><span style="color:#6b6b6b">move node</span> drag on node'
+    + ' &nbsp; <span style="color:#6b6b6b">inspect</span> click node'
+    + ' &nbsp; <span style="color:#6b6b6b">'
+    + data.nodes.length + '</span> nodes'
+    + ' &nbsp; <span style="color:#6b6b6b">'
+    + data.links.length + '</span> edges';
+  document.body.appendChild(hud);
 
   function showPanel(node) {
     var edges = data.links.filter(function(l) {
@@ -221,22 +245,31 @@ _GRAPH_INIT_JS = """
       + '+' + (edges.length-20) + ' more</div>';
     html += '</div>';
     panel.innerHTML = html;
-    panel.style.width = '260px';
+    panel.style.opacity = '1';
+    panel.style.transform = 'translateX(0)';
+    panel.style.pointerEvents = 'auto';
     var cb = document.getElementById('hypo-panel-close');
-    if (cb) cb.onclick = function() { panel.style.width = '0'; };
+    if (cb) cb.onclick = function() {
+      panel.style.opacity = '0';
+      panel.style.transform = 'translateX(10px)';
+      panel.style.pointerEvents = 'none';
+    };
   }
 
-  // Raycaster for node click
+  // Raycaster for click + drag
   const raycaster = new THREE.Raycaster();
   const mouse = new THREE.Vector2();
   var mouseDown = new THREE.Vector2();
 
+  // Node drag
+  var dragNode = null;
+  var dragPlane = new THREE.Plane();
+  var dragOffset = new THREE.Vector3();
+  var intersection = new THREE.Vector3();
+
   renderer.domElement.addEventListener('pointerdown', function(e) {
     mouseDown.set(e.clientX, e.clientY);
-  });
-  renderer.domElement.addEventListener('pointerup', function(e) {
-    // Only click if mouse didn't move (not a drag)
-    if (Math.abs(e.clientX - mouseDown.x) + Math.abs(e.clientY - mouseDown.y) > 5) return;
+    if (e.button !== 0) return;
     var rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -246,8 +279,56 @@ _GRAPH_INIT_JS = """
       var obj = hits[i].object;
       while (obj && !obj.__data) { obj = obj.parent; }
       if (obj && obj.__data) {
-        showPanel(obj.__data);
+        dragNode = obj;
+        controls.enabled = false;
+        dragPlane.setFromNormalAndCoplanarPoint(
+          camera.getWorldDirection(new THREE.Vector3()).negate(),
+          obj.position
+        );
+        raycaster.ray.intersectPlane(dragPlane, intersection);
+        dragOffset.copy(obj.position).sub(intersection);
+        renderer.domElement.style.cursor = 'grabbing';
         return;
+      }
+    }
+  });
+
+  renderer.domElement.addEventListener('pointermove', function(e) {
+    if (dragNode) {
+      var rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      raycaster.ray.intersectPlane(dragPlane, intersection);
+      var newPos = intersection.add(dragOffset);
+      dragNode.position.copy(newPos);
+      if (dragNode.__data) {
+        dragNode.__data.fx = newPos.x;
+        dragNode.__data.fy = newPos.y;
+        dragNode.__data.fz = newPos.z;
+      }
+      return;
+    }
+  });
+
+  renderer.domElement.addEventListener('pointerup', function(e) {
+    var wasDrag = dragNode != null;
+    if (dragNode) {
+      controls.enabled = true;
+      dragNode = null;
+      renderer.domElement.style.cursor = 'grab';
+    }
+    // Click (not drag) — show panel
+    if (!wasDrag && Math.abs(e.clientX-mouseDown.x)+Math.abs(e.clientY-mouseDown.y) < 5) {
+      var rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      var hits = raycaster.intersectObjects(scene.children, true);
+      for (var i = 0; i < hits.length; i++) {
+        var obj = hits[i].object;
+        while (obj && !obj.__data) { obj = obj.parent; }
+        if (obj && obj.__data) { showPanel(obj.__data); return; }
       }
     }
   });
@@ -267,12 +348,12 @@ _GRAPH_INIT_JS = """
       if (obj && obj.__data && !obj.__data.show_label) {
         hoverSprite = new SpriteText(obj.__data.name);
         hoverSprite.color = 'rgba(220,220,220,0.9)';
-        hoverSprite.textHeight = 0.07;
-        hoverSprite.backgroundColor = 'rgba(10,10,10,0.7)';
-        hoverSprite.padding = 0.4;
-        hoverSprite.borderRadius = 0.5;
+        hoverSprite.textHeight = 0.035;
+        hoverSprite.backgroundColor = 'rgba(10,10,10,0.6)';
+        hoverSprite.padding = 0.15;
+        hoverSprite.borderRadius = 0.2;
         hoverSprite.position.copy(obj.position);
-        hoverSprite.position.y += 0.12;
+        hoverSprite.position.y += 0.08;
         scene.add(hoverSprite);
         renderer.domElement.style.cursor = 'pointer';
         return;
