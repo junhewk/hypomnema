@@ -58,6 +58,7 @@ asyncio_mode = "auto"
 python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
+exclude = ["packaging/", "desktop/", "frontend/"]
 
 [[tool.mypy.overrides]]
 module = ["sqlite_vec"]

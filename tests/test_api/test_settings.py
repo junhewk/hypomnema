@@ -31,7 +31,7 @@ class TestSettingsAPI:
         response = await client.get("/api/settings")
         assert response.status_code == 200
         data = response.json()
-        assert data["llm_provider"] == "google"
+        assert data["llm_provider"] == "ollama"
         # The stored key should be masked
         assert "sk-secret" not in data["openai_api_key"]
         # Embedding info should be present

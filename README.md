@@ -61,13 +61,9 @@ Set a passphrase for remote access:
 HYPOMNEMA_PASSPHRASE=your-secret docker compose up --build
 ```
 
-### Desktop
+### Desktop app
 
-```bash
-uv run hypomnema desktop
-```
-
-Opens a native window via [pywebview](https://pywebview.flowrl.com/). No browser required.
+Download the latest `.app` (macOS) or `.exe` (Windows) from [Releases](https://github.com/junhewk/hypomnema/releases). No Python or dependencies required.
 
 ## Configuration
 

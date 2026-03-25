@@ -40,3 +40,57 @@ jobs:
 
       - name: Build Docker image
         run: docker build .
+
+  desktop-macos:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --group desktop
+
+      - name: Build desktop app
+        run: uv run python packaging/build.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hypomnema-macOS
+          path: packaging/dist/Hypomnema.app
+
+  desktop-windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --group desktop
+
+      - name: Build desktop app
+        run: uv run python packaging/build.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Hypomnema-Windows
+          path: packaging/dist/hypomnema/

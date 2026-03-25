@@ -37,4 +37,13 @@ build/
 # NiceGUI
 .nicegui/
 .playwright-cli/
+.playwright-mcp/
 viz-*.png
+
+# Old/unused build directories
+desktop/
+frontend/
+
+# PyInstaller
+packaging/build/
+packaging/dist/
