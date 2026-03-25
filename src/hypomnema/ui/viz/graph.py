@@ -119,6 +119,7 @@ _GRAPH_INIT_JS = """
     .backgroundColor('{{BG_COLOR}}')
     .graphData(graphData)
     .nodeVal(d => d.size)
+    .nodeRelSize(1)
     .nodeColor(d => d.color)
     .nodeOpacity(0.9)
     .nodeResolution(16)
