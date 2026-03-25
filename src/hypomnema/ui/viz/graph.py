@@ -125,46 +125,54 @@ _GRAPH_INIT_JS = """
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
 
-  // Lights
-  scene.add(new THREE.AmbientLight(0x666666));
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-  dirLight.position.set(5, 10, 7);
-  scene.add(dirLight);
+  // Lights — bright ambient so nodes are clearly visible
+  scene.add(new THREE.AmbientLight(0xffffff, 1.5));
+
+  // Circle texture for flat dot sprites
+  var canvas = document.createElement('canvas');
+  canvas.width = 64; canvas.height = 64;
+  var ctx = canvas.getContext('2d');
+  ctx.beginPath();
+  ctx.arc(32, 32, 30, 0, Math.PI * 2);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  var circleTexture = new THREE.CanvasTexture(canvas);
 
   // Force graph
   const graph = new ThreeForceGraph()
     .graphData(data)
     .nodeThreeObject(node => {
       const group = new THREE.Group();
-      // Sphere — radius 0.02 base, up to 0.08 for top-ranked (wider range)
-      const r = 0.02 + (node.rank || 0) * 0.06;
-      const geo = new THREE.SphereGeometry(r, 16, 12);
-      const mat = new THREE.MeshPhongMaterial({
+      // Flat circle sprite — size 0.03 base, up to 0.09 for top-ranked
+      const size = 0.03 + (node.rank || 0) * 0.06;
+      const spriteMat = new THREE.SpriteMaterial({
         color: new THREE.Color(node.color || '#787068'),
-        transparent: true, opacity: 0.9,
-        shininess: 40
+        transparent: true, opacity: 0.92,
+        map: circleTexture
       });
-      group.add(new THREE.Mesh(geo, mat));
+      const dot = new THREE.Sprite(spriteMat);
+      dot.scale.set(size, size, 1);
+      group.add(dot);
 
       // Label for high-rank nodes
       if (node.show_label) {
         const sprite = new SpriteText(node.name);
-        sprite.color = 'rgba(200,200,200,0.7)';
-        sprite.textHeight = 0.04;
-        sprite.backgroundColor = 'rgba(10,10,10,0.4)';
-        sprite.padding = 0.2;
-        sprite.borderRadius = 0.3;
-        sprite.position.y = r + 0.04;
+        sprite.color = 'rgba(210,210,210,0.8)';
+        sprite.textHeight = 0.03;
+        sprite.backgroundColor = 'rgba(10,10,10,0.35)';
+        sprite.padding = 0.15;
+        sprite.borderRadius = 0.2;
+        sprite.position.y = size * 0.5 + 0.025;
         group.add(sprite);
       }
       return group;
     })
     .linkColor(link => {
-      var c = Math.round((0.15 + (link.confidence || 0.3) * 0.35) * 255);
+      var c = Math.round((0.25 + (link.confidence || 0.3) * 0.45) * 255);
       return 'rgb(' + c + ',' + c + ',' + c + ')';
     })
-    .linkWidth(0.003)
-    .linkOpacity(0.7);
+    .linkWidth(0.5)
+    .linkOpacity(0.8);
 
   // Disable forces — use UMAP fixed positions
   graph.d3Force('charge', null);
@@ -205,8 +213,9 @@ _GRAPH_INIT_JS = """
   hud.innerHTML = '<span style="color:#6b6b6b">orbit</span> drag'
     + ' &nbsp; <span style="color:#6b6b6b">zoom</span> scroll'
     + ' &nbsp; <span style="color:#6b6b6b">pan</span> right-drag'
-    + ' &nbsp; <span style="color:#6b6b6b">spread</span> shift+scroll'
-    + '<br><span style="color:#6b6b6b">move node</span> drag on node'
+    + ' &nbsp; <span style="color:#6b6b6b">spread</span> alt+scroll'
+    + '<br><span style="color:#6b6b6b">move</span> drag node'
+    + ' &nbsp; <span style="color:#6b6b6b">push/pull</span> alt+drag node'
     + ' &nbsp; <span style="color:#6b6b6b">inspect</span> click node'
     + ' &nbsp; <span style="color:#6b6b6b">'
     + data.nodes.length + '</span> nodes'
@@ -262,11 +271,13 @@ _GRAPH_INIT_JS = """
   const mouse = new THREE.Vector2();
   var mouseDown = new THREE.Vector2();
 
-  // Node drag
+  // Node drag + click + push/pull
   var dragNode = null;
+  var dragActive = false; // true only after movement threshold
   var dragPlane = new THREE.Plane();
   var dragOffset = new THREE.Vector3();
   var intersection = new THREE.Vector3();
+  var pendingHit = null; // node hit on pointerdown, confirmed as drag after threshold
 
   renderer.domElement.addEventListener('pointerdown', function(e) {
     mouseDown.set(e.clientX, e.clientY);
@@ -280,47 +291,71 @@ _GRAPH_INIT_JS = """
       var obj = hits[i].object;
       while (obj && !obj.__data) { obj = obj.parent; }
       if (obj && obj.__data) {
-        dragNode = obj;
-        controls.enabled = false;
-        dragPlane.setFromNormalAndCoplanarPoint(
-          camera.getWorldDirection(new THREE.Vector3()).negate(),
-          obj.position
-        );
-        raycaster.ray.intersectPlane(dragPlane, intersection);
-        dragOffset.copy(obj.position).sub(intersection);
-        renderer.domElement.style.cursor = 'grabbing';
+        pendingHit = obj;
+        dragActive = false;
         return;
       }
     }
+    pendingHit = null;
   });
 
   renderer.domElement.addEventListener('pointermove', function(e) {
-    if (dragNode) {
+    if (!pendingHit) return;
+    var dist = Math.abs(e.clientX - mouseDown.x) + Math.abs(e.clientY - mouseDown.y);
+    // Activate drag after 4px movement
+    if (!dragActive && dist > 4) {
+      dragActive = true;
+      dragNode = pendingHit;
+      controls.enabled = false;
+      dragPlane.setFromNormalAndCoplanarPoint(
+        camera.getWorldDirection(new THREE.Vector3()).negate(),
+        dragNode.position
+      );
+      var rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((mouseDown.x - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((mouseDown.y - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      raycaster.ray.intersectPlane(dragPlane, intersection);
+      dragOffset.copy(dragNode.position).sub(intersection);
+      renderer.domElement.style.cursor = 'grabbing';
+    }
+    if (dragActive && dragNode) {
       var rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(mouse, camera);
-      raycaster.ray.intersectPlane(dragPlane, intersection);
-      var newPos = intersection.add(dragOffset);
-      dragNode.position.copy(newPos);
-      if (dragNode.__data) {
-        dragNode.__data.fx = newPos.x;
-        dragNode.__data.fy = newPos.y;
-        dragNode.__data.fz = newPos.z;
+      if (e.altKey) {
+        // Alt+drag: push/pull along camera direction
+        var dy = e.clientY - mouseDown.y;
+        var camDir = camera.getWorldDirection(new THREE.Vector3());
+        var pushDist = dy * 0.005;
+        dragNode.position.addScaledVector(camDir, pushDist);
+        mouseDown.set(e.clientX, e.clientY);
+      } else {
+        // Normal drag: move on camera plane
+        raycaster.ray.intersectPlane(dragPlane, intersection);
+        var newPos = intersection.add(dragOffset);
+        dragNode.position.copy(newPos);
       }
-      return;
+      if (dragNode.__data) {
+        dragNode.__data.fx = dragNode.position.x;
+        dragNode.__data.fy = dragNode.position.y;
+        dragNode.__data.fz = dragNode.position.z;
+      }
     }
   });
 
   renderer.domElement.addEventListener('pointerup', function(e) {
-    var wasDrag = dragNode != null;
+    var wasDrag = dragActive;
     if (dragNode) {
       controls.enabled = true;
       dragNode = null;
+      dragActive = false;
       renderer.domElement.style.cursor = 'grab';
     }
-    // Click (not drag) — show panel
-    if (!wasDrag && Math.abs(e.clientX-mouseDown.x)+Math.abs(e.clientY-mouseDown.y) < 5) {
+    pendingHit = null;
+    // Click (no drag) — show panel
+    if (!wasDrag && Math.abs(e.clientX-mouseDown.x)+Math.abs(e.clientY-mouseDown.y) < 4) {
       var rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -371,18 +406,16 @@ _GRAPH_INIT_JS = """
     renderer.setSize(w, h);
   });
 
-  // Spread: Shift+scroll scales all node positions from centroid
+  // Spread: Alt+scroll scales node positions from centroid
   var spreadFactor = 1.0;
-  // Store original positions for spread
   data.nodes.forEach(function(n) { n._ox = n.fx; n._oy = n.fy; n._oz = n.fz; });
 
   renderer.domElement.addEventListener('wheel', function(e) {
-    if (!e.shiftKey) return;
+    if (!e.altKey) return;
     e.preventDefault();
     e.stopPropagation();
-    var delta = e.deltaY > 0 ? -0.05 : 0.05;
-    spreadFactor = Math.max(0.3, Math.min(3.0, spreadFactor + delta));
-    // Update node positions
+    spreadFactor += e.deltaY > 0 ? -0.08 : 0.08;
+    spreadFactor = Math.max(0.3, Math.min(3.0, spreadFactor));
     graph.graphData().nodes.forEach(function(n) {
       n.fx = n._ox * spreadFactor;
       n.fy = n._oy * spreadFactor;
@@ -391,6 +424,13 @@ _GRAPH_INIT_JS = """
     });
     graph.graphData(graph.graphData());
   }, {passive: false});
+  // Prevent OrbitControls zoom on Alt+scroll
+  controls.mouseButtons.DOLLY = null;
+  var origWheel = controls.enableZoom;
+  renderer.domElement.addEventListener('wheel', function(e) {
+    if (e.altKey) controls.enableZoom = false;
+    else controls.enableZoom = true;
+  }, {capture: true});
 
   // Fit camera to data bounds
   var xs = data.nodes.map(function(n){return n.fx});
