@@ -146,7 +146,11 @@ async def render_graph(
     avg_size = sum(_node_size(r) for r in ranks) / len(ranks) if ranks else 4.0
 
     # Build scene
-    height_px = int(height.replace("px", "")) if "px" in height else 600
+    # Parse numeric height for scene, fall back to 600 for CSS calc() values
+    try:
+        height_px = int(height.replace("px", ""))
+    except ValueError:
+        height_px = 600
 
     def _handle_click(e: Any) -> None:
         """Handle scene click events to identify clicked nodes."""
@@ -167,7 +171,7 @@ async def render_graph(
             grid=False,
             background_color=_BG_COLOR,
             on_click=_handle_click,
-        ).classes("w-full")
+        ).classes("w-full").style(f"height: {height}")
 
         with scene:
             # Render nodes as individual spheres for click detection,
