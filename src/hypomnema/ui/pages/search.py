@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nicegui import app, ui
 
@@ -38,7 +38,7 @@ def _render_doc_result(scored: ScoredDocument) -> None:
     )
 
 
-def _render_engram_card(row: dict) -> None:
+def _render_engram_card(row: dict[str, Any]) -> None:
     """Render a single engram result card."""
     with ui.card().classes("w-full mb-3 animate-fade-up").style(
         "border-left: 2px solid #7eb8da"
@@ -50,7 +50,7 @@ def _render_engram_card(row: dict) -> None:
             )
 
 
-def _render_edge_card(row: dict) -> None:
+def _render_edge_card(row: dict[str, Any]) -> None:
     """Render a single edge result card."""
     confidence = row.get("confidence", 0.0)
     conf_color = "#4caf50" if confidence >= 0.7 else "#ff9800" if confidence >= 0.4 else "#ef5350"
@@ -255,7 +255,7 @@ async def search_page() -> None:
             # Cancel existing timer
             if debounce_timer["timer"] is not None:
                 timer = debounce_timer["timer"]
-                timer.cancel()  # type: ignore[union-attr]
+                timer.cancel()  # type: ignore[attr-defined]
                 debounce_timer["timer"] = None
 
             if not current_query["value"].strip():
@@ -273,7 +273,7 @@ async def search_page() -> None:
 
         def _on_mode_change(e: object) -> None:
             """Handle mode toggle change."""
-            current_mode["value"] = mode_toggle.value  # type: ignore[assignment]
+            current_mode["value"] = mode_toggle.value
             if current_query["value"].strip():
                 asyncio.ensure_future(_on_search_trigger())
 

@@ -7,10 +7,13 @@ import asyncio
 import os
 import sys
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from hypomnema.config import Settings
 
 
-def _load_settings(default_mode: Literal["local", "server"]) -> object:
+def _load_settings(default_mode: Literal["local", "server"]) -> Settings:
     from hypomnema.config import Settings
 
     if "HYPOMNEMA_MODE" in os.environ:
@@ -81,12 +84,12 @@ def cmd_desktop(args: argparse.Namespace) -> None:
     )
 
 
-def _default_eval_output_dir(settings: object) -> Path:
-    return settings.db_path.parent / "evals" / "tidy-text"  # type: ignore[union-attr]
+def _default_eval_output_dir(settings: Settings) -> Path:
+    return settings.db_path.parent / "evals" / "tidy-text"
 
 
-def _default_engram_dedupe_output_dir(settings: object) -> Path:
-    return settings.db_path.parent / "evals" / "engram-dedupe"  # type: ignore[union-attr]
+def _default_engram_dedupe_output_dir(settings: Settings) -> Path:
+    return settings.db_path.parent / "evals" / "engram-dedupe"
 
 
 def cmd_eval_tidy_text(args: argparse.Namespace) -> None:

@@ -369,6 +369,7 @@ async def settings_page() -> None:
                                 from hypomnema.db.settings_store import get_all_settings, set_setting
                                 from hypomnema.embeddings.factory import build_embeddings
 
+                                assert fernet_key is not None
                                 dim, model = EMBEDDING_DEFAULTS[provider]
 
                                 # Store new API key if provided
@@ -455,7 +456,7 @@ async def settings_page() -> None:
 
         feeds_container = ui.column().classes("w-full gap-0 mb-4")
 
-        async def _load_feeds() -> list[dict]:
+        async def _load_feeds() -> list[dict[str, object]]:
             """Load all feed sources from DB."""
             if db is None:
                 return []
@@ -481,7 +482,7 @@ async def settings_page() -> None:
                     for feed in feeds:
                         _render_feed_card(feed)
 
-        def _render_feed_card(feed: dict) -> None:
+        def _render_feed_card(feed: dict[str, object]) -> None:
             """Render a single feed source card."""
             feed_id = str(feed["id"])
             is_active = bool(feed.get("active", 1))

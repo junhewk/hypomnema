@@ -6,6 +6,7 @@ Ported from the original TypeScript vizTransforms.ts.
 from __future__ import annotations
 
 from collections import defaultdict
+from typing import Any
 
 
 def hsl_to_rgb(h: float, s: float, lightness: float) -> tuple[float, float, float]:
@@ -63,7 +64,7 @@ def cluster_color_rgb(cluster_id: int | None) -> tuple[float, float, float]:
 
 
 def compute_page_rank(
-    edges: list[dict],
+    edges: list[dict[str, Any]],
     damping: float = 0.85,
     iterations: int = 20,
 ) -> dict[str, float]:

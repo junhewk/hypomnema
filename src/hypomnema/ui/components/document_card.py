@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from nicegui import ui
 
 from hypomnema.ui.theme import SOURCE_STYLES
@@ -9,7 +11,7 @@ from hypomnema.ui.utils import time_ago
 
 
 def render_document_card(
-    doc: dict,
+    doc: dict[str, Any],
     *,
     show_score: bool = False,
     show_edit: bool = False,

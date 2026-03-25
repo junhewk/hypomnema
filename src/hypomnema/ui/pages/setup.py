@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import TYPE_CHECKING
 
 from nicegui import app, ui
 
 from hypomnema.ui.layout import page_layout
+
+if TYPE_CHECKING:
+    from hypomnema.embeddings.base import EmbeddingModel
 from hypomnema.ui.utils import (
     API_KEY_FIELD,
     DEFAULT_LLM_MODELS,
@@ -129,21 +133,22 @@ async def setup_page() -> None:
 
                         _, default_model = EMBEDDING_DEFAULTS[provider]
 
+                        emb_model: EmbeddingModel
                         if provider == "openai":
                             from hypomnema.embeddings.openai import OpenAIEmbeddingModel
 
-                            model = OpenAIEmbeddingModel(api_key=api_key, model=default_model)
+                            emb_model = OpenAIEmbeddingModel(api_key=api_key, model=default_model)
                         elif provider == "google":
                             from hypomnema.embeddings.google import GoogleEmbeddingModel
 
-                            model = GoogleEmbeddingModel(api_key=api_key, model=default_model)
+                            emb_model = GoogleEmbeddingModel(api_key=api_key, model=default_model)
                         else:
                             emb_status.style("color: #ef5350")
                             emb_status.set_text(f"Unknown provider: {provider}")
                             return
 
                         # Test with a simple embed call
-                        await asyncio.to_thread(model.embed, ["wired"])
+                        await asyncio.to_thread(emb_model.embed, ["wired"])
 
                         wizard_state["emb_validated"] = True
                         emb_status.style("color: #4caf50")

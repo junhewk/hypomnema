@@ -98,7 +98,7 @@ async def _submit_text(text: str) -> None:
 
 async def _submit_url(url: str) -> None:
     """Fetch a URL and create a document."""
-    from hypomnema.ingestion.url_fetcher import fetch_url
+    from hypomnema.ingestion.url_fetch import fetch_url
 
     try:
         doc = await fetch_url(app.state.db, url)
@@ -116,7 +116,7 @@ async def _handle_file_upload(e: object) -> None:
 
     from hypomnema.ingestion.file_parser import parse_file
 
-    upload_event = e  # type: ignore[assignment]
+    upload_event = e
     content = upload_event.content.read()  # type: ignore[attr-defined]
     name = upload_event.name  # type: ignore[attr-defined]
 

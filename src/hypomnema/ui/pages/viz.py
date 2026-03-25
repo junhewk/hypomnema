@@ -108,7 +108,7 @@ async def viz_page() -> None:
                 ).props('flat dense color="grey-6"').classes("text-xs w-full")
 
             # Right: stats
-            stats_label = ui.label(
+            stats_label: ui.label = ui.label(
                 f"{stats['node_count']} nodes / {stats['edge_count']} edges"
             ).classes("pointer-events-auto text-xs").style(
                 "color: #4a4a4a; font-family: 'JetBrains Mono', monospace; font-size: 10px"
@@ -136,7 +136,7 @@ async def viz_page() -> None:
 
         def _schedule_spread_update() -> None:
             if debounce_handle["timer"] is not None:
-                debounce_handle["timer"].cancel()  # type: ignore[union-attr]
+                debounce_handle["timer"].cancel()  # type: ignore[attr-defined]
             loop = asyncio.get_event_loop()
             debounce_handle["timer"] = loop.call_later(
                 0.5,

@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from nicegui import app, ui
 
 from hypomnema.ui.layout import page_layout
 from hypomnema.ui.theme import SOURCE_STYLES
 
 
-def _render_edge_row(edge: dict[str, object], engram_id: str, direction: str) -> None:
+def _render_edge_row(edge: dict[str, Any], engram_id: str, direction: str) -> None:
     """Render a single edge row."""
     if direction == "outgoing":
         linked_id = str(edge["target_engram_id"])
@@ -18,8 +20,8 @@ def _render_edge_row(edge: dict[str, object], engram_id: str, direction: str) ->
         linked_name = str(edge["source_name"])
 
     predicate = str(edge.get("predicate", ""))
-    confidence = edge.get("confidence", 0)
-    confidence_pct = f"{float(confidence) * 100:.0f}%" if confidence else "0%"
+    confidence = float(edge.get("confidence") or 0)
+    confidence_pct = f"{confidence * 100:.0f}%" if confidence else "0%"
 
     with ui.row().classes("items-center gap-2 py-1"):
         ui.link(linked_name, f"/engrams/{linked_id}").classes(
@@ -36,7 +38,7 @@ def _render_edge_row(edge: dict[str, object], engram_id: str, direction: str) ->
         )
 
 
-def _render_edges(edges: list[dict[str, object]], engram_id: str) -> None:
+def _render_edges(edges: list[dict[str, Any]], engram_id: str) -> None:
     """Render edges grouped by direction."""
     outgoing = [e for e in edges if str(e["source_engram_id"]) == engram_id]
     incoming = [e for e in edges if str(e["target_engram_id"]) == engram_id]
@@ -60,7 +62,7 @@ def _render_edges(edges: list[dict[str, object]], engram_id: str) -> None:
             _render_edge_row(edge, engram_id, "incoming")
 
 
-def _render_source_docs(docs: list[dict[str, object]]) -> None:
+def _render_source_docs(docs: list[dict[str, Any]]) -> None:
     """Render source documents as cards."""
     if not docs:
         ui.label("No source documents.").classes("text-muted text-xs")
