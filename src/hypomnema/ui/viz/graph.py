@@ -205,6 +205,7 @@ _GRAPH_INIT_JS = """
   hud.innerHTML = '<span style="color:#6b6b6b">orbit</span> drag'
     + ' &nbsp; <span style="color:#6b6b6b">zoom</span> scroll'
     + ' &nbsp; <span style="color:#6b6b6b">pan</span> right-drag'
+    + ' &nbsp; <span style="color:#6b6b6b">spread</span> shift+scroll'
     + '<br><span style="color:#6b6b6b">move node</span> drag on node'
     + ' &nbsp; <span style="color:#6b6b6b">inspect</span> click node'
     + ' &nbsp; <span style="color:#6b6b6b">'
@@ -369,6 +370,27 @@ _GRAPH_INIT_JS = """
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
   });
+
+  // Spread: Shift+scroll scales all node positions from centroid
+  var spreadFactor = 1.0;
+  // Store original positions for spread
+  data.nodes.forEach(function(n) { n._ox = n.fx; n._oy = n.fy; n._oz = n.fz; });
+
+  renderer.domElement.addEventListener('wheel', function(e) {
+    if (!e.shiftKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    var delta = e.deltaY > 0 ? -0.05 : 0.05;
+    spreadFactor = Math.max(0.3, Math.min(3.0, spreadFactor + delta));
+    // Update node positions
+    graph.graphData().nodes.forEach(function(n) {
+      n.fx = n._ox * spreadFactor;
+      n.fy = n._oy * spreadFactor;
+      n.fz = n._oz * spreadFactor;
+      n.x = n.fx; n.y = n.fy; n.z = n.fz;
+    });
+    graph.graphData(graph.graphData());
+  }, {passive: false});
 
   // Fit camera to data bounds
   var xs = data.nodes.map(function(n){return n.fx});
