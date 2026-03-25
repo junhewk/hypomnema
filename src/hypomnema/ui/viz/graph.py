@@ -85,8 +85,8 @@ def _build_graph_data(
             "cluster_id": p["cluster_id"],
             "color": cluster_color(p["cluster_id"]),
             "rank": norm_rank,
-            # Size: base 2, top nodes up to 6
-            "size": 2.0 + norm_rank * 4.0,
+            # Size: base 0.3, top nodes up to 1.0
+            "size": 0.3 + norm_rank * 0.7,
             # Show label for high-rank nodes
             "show_label": norm_rank >= _LABEL_RANK_THRESHOLD,
         })
@@ -130,12 +130,12 @@ _GRAPH_INIT_JS = """
     .nodeThreeObject(node => {
       if (!node.show_label) return null;
       const sprite = new SpriteText(node.name);
-      sprite.color = 'rgba(200,200,200,0.85)';
-      sprite.textHeight = Math.max(1.2, node.size * 0.4);
-      sprite.backgroundColor = 'rgba(10,10,10,0.6)';
-      sprite.padding = 1;
-      sprite.borderRadius = 2;
-      sprite.position.y = node.size * 0.15 + 2;
+      sprite.color = 'rgba(200,200,200,0.8)';
+      sprite.textHeight = 0.4;
+      sprite.backgroundColor = 'rgba(10,10,10,0.5)';
+      sprite.padding = 0.3;
+      sprite.borderRadius = 1;
+      sprite.position.y = node.size * 0.3 + 0.5;
       return sprite;
     })
     .linkColor(link => {
