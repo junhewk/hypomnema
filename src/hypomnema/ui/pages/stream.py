@@ -82,7 +82,7 @@ async def stream_page() -> None:
         last_snapshot: dict[str, int] = {}  # {doc_id: processed} for change detection
 
         def _build_snapshot(docs: list[dict[str, object]]) -> dict[str, int]:
-            return {str(d["id"]): int(d.get("processed") or 0) for d in docs}
+            return {str(d["id"]): int(d.get("processed") or 0) for d in docs}  # type: ignore[call-overload]
 
         def _render_doc_list(docs: list[dict[str, object]]) -> None:
             doc_container.clear()
