@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from nicegui import app, ui
+from nicegui import app
 
 from hypomnema.config import Settings
 from hypomnema.crypto import get_or_create_key
@@ -65,9 +65,7 @@ def configure(settings: Settings | None = None) -> None:
     import hypomnema.ui.pages.settings  # noqa: F401
     import hypomnema.ui.pages.setup  # noqa: F401
     import hypomnema.ui.pages.stream  # noqa: F401
-
-    # Placeholder pages for routes not yet implemented
-    _register_placeholder_pages()
+    import hypomnema.ui.pages.viz  # noqa: F401
 
 
 async def _startup() -> None:
@@ -197,15 +195,3 @@ async def _shutdown() -> None:
         await app.state.pool.close()
     if getattr(app.state, "db", None):
         await app.state.db.close()
-
-
-def _register_placeholder_pages() -> None:
-    """Register placeholder pages for routes not yet implemented."""
-
-    @ui.page("/viz")
-    def viz_page() -> None:
-        from hypomnema.ui.layout import page_layout
-
-        with page_layout("Visualization"):
-            ui.label("Visualization").classes("text-lg font-medium mb-4")
-            ui.label("Coming soon.").classes("text-muted text-xs")

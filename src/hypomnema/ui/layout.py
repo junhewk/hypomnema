@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from nicegui import ui
+import asyncio
+
+from nicegui import app, ui
 
 _NAV_ITEMS = [
     {"label": "Stream", "icon": "rss_feed", "path": "/"},
@@ -39,9 +41,27 @@ def sidebar() -> None:
                 ui.label(item["label"]).classes("text-xs tracking-wider uppercase")
                 ui.element("a").props(f'href="{item["path"]}"').classes("absolute inset-0")
 
-        # Spacer + viz link at bottom
+        # Spacer + minimap + viz link at bottom
         ui.space()
         ui.separator().classes("my-4").style("background: #1e1e1e")
+
+        # Minimap container — populated asynchronously after page load
+        minimap_container = ui.element("div").classes("px-1 mb-2")
+
+        async def _load_minimap() -> None:
+            """Load the minimap after the page renders."""
+            if getattr(app.state, "db", None) is None:
+                return
+            try:
+                from hypomnema.ui.viz.minimap import render_minimap
+
+                with minimap_container:
+                    await render_minimap(width=176, height=110)
+            except Exception:
+                pass  # Silently skip minimap if data unavailable
+
+        asyncio.ensure_future(_load_minimap())
+
         with ui.element("a").classes(
             "flex items-center gap-3 px-3 py-2 rounded no-underline cursor-pointer"
         ).style("color: #6b6b6b"):
