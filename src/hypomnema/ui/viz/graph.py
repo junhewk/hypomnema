@@ -178,26 +178,43 @@ _GRAPH_INIT_JS = """
   graph.tickFrame();
   scene.add(graph);
 
-  // Render edges manually using fixed UMAP positions (forces are off, so built-in links have no coords)
-  var posMap = {};
-  data.nodes.forEach(function(n) { posMap[n.id] = new THREE.Vector3(n.fx, n.fy, n.fz); });
+  // Render edges manually (forces are off, built-in links have no coords)
+  // Store node position lookup that updates when nodes are dragged
+  var nodeById = {};
+  data.nodes.forEach(function(n) { nodeById[n.id] = n; });
+
+  var edgeLines = []; // [{line, sid, tid}]
   var edgeGroup = new THREE.Group();
   edgeGroup.name = 'edges';
   data.links.forEach(function(link) {
     var sid = (typeof link.source === 'object') ? link.source.id : link.source;
     var tid = (typeof link.target === 'object') ? link.target.id : link.target;
-    var p1 = posMap[sid], p2 = posMap[tid];
-    if (!p1 || !p2) return;
+    if (!nodeById[sid] || !nodeById[tid]) return;
     var c = 0.2 + (link.confidence || 0.3) * 0.4;
-    var points = [p1, p2];
-    var geo = new THREE.BufferGeometry().setFromPoints(points);
+    var geo = new THREE.BufferGeometry();
+    var positions = new Float32Array(6);
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     var mat = new THREE.LineBasicMaterial({
-      color: new THREE.Color(c, c, c),
-      transparent: true, opacity: 0.5
+      color: new THREE.Color(c, c, c), transparent: true, opacity: 0.5
     });
-    edgeGroup.add(new THREE.Line(geo, mat));
+    var line = new THREE.Line(geo, mat);
+    edgeLines.push({line: line, sid: sid, tid: tid});
+    edgeGroup.add(line);
   });
   scene.add(edgeGroup);
+
+  // Update edge positions from current node fx/fy/fz
+  function updateEdges() {
+    edgeLines.forEach(function(e) {
+      var n1 = nodeById[e.sid], n2 = nodeById[e.tid];
+      if (!n1 || !n2) return;
+      var pos = e.line.geometry.attributes.position.array;
+      pos[0] = n1.fx; pos[1] = n1.fy; pos[2] = n1.fz;
+      pos[3] = n2.fx; pos[4] = n2.fy; pos[5] = n2.fz;
+      e.line.geometry.attributes.position.needsUpdate = true;
+    });
+  }
+  updateEdges();
 
   // Floating detail card
   var panel = document.getElementById('hypo-detail-panel');
@@ -230,7 +247,7 @@ _GRAPH_INIT_JS = """
   hud.innerHTML = '<span style="color:#6b6b6b">orbit</span> drag'
     + ' &nbsp; <span style="color:#6b6b6b">zoom</span> scroll'
     + ' &nbsp; <span style="color:#6b6b6b">pan</span> right-drag'
-    + ' &nbsp; <span style="color:#6b6b6b">spread</span> ctrl+scroll or +/-'
+    + ' &nbsp; <span style="color:#6b6b6b">spread</span> +/&minus; keys'
     + '<br><span style="color:#6b6b6b">move</span> drag node'
     + ' &nbsp; <span style="color:#6b6b6b">push/pull</span> alt+drag node'
     + ' &nbsp; <span style="color:#6b6b6b">inspect</span> click node'
@@ -360,6 +377,7 @@ _GRAPH_INIT_JS = """
         dd.fx = dragNode.position.x;
         dd.fy = dragNode.position.y;
         dd.fz = dragNode.position.z;
+        updateEdges();
       }
     }
   });
@@ -434,55 +452,30 @@ _GRAPH_INIT_JS = """
     renderer.setSize(w, h);
   });
 
-  // Spread: Ctrl+scroll or +/- keys
+  // Spread: +/- keys scale all node positions from centroid
   var spreadFactor = 1.0;
   data.nodes.forEach(function(n) { n._ox = n.fx; n._oy = n.fy; n._oz = n.fz; });
 
   function applySpread() {
-    graph.graphData().nodes.forEach(function(n) {
+    data.nodes.forEach(function(n) {
       n.fx = n._ox * spreadFactor;
       n.fy = n._oy * spreadFactor;
       n.fz = n._oz * spreadFactor;
       n.x = n.fx; n.y = n.fy; n.z = n.fz;
     });
     graph.graphData(graph.graphData());
-    // Also update manual edges
-    if (edgeGroup) {
-      scene.remove(edgeGroup);
-      edgeGroup = new THREE.Group();
-      edgeGroup.name = 'edges';
-      data.links.forEach(function(link) {
-        var sid = (typeof link.source === 'object') ? link.source.id : link.source;
-        var tid = (typeof link.target === 'object') ? link.target.id : link.target;
-        var n1 = data.nodes.find(function(n){return n.id===sid});
-        var n2 = data.nodes.find(function(n){return n.id===tid});
-        if (!n1 || !n2) return;
-        var p1 = new THREE.Vector3(n1.fx, n1.fy, n1.fz);
-        var p2 = new THREE.Vector3(n2.fx, n2.fy, n2.fz);
-        var c = 0.2 + (link.confidence || 0.3) * 0.4;
-        var geo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
-        var mat = new THREE.LineBasicMaterial({
-          color: new THREE.Color(c, c, c), transparent: true, opacity: 0.5
-        });
-        edgeGroup.add(new THREE.Line(geo, mat));
-      });
-      scene.add(edgeGroup);
-    }
+    updateEdges();
   }
 
-  // Ctrl+scroll for spread
-  document.addEventListener('wheel', function(e) {
-    if (!e.ctrlKey) return;
-    e.preventDefault();
-    spreadFactor += e.deltaY > 0 ? -0.08 : 0.08;
-    spreadFactor = Math.max(0.3, Math.min(3.0, spreadFactor));
-    applySpread();
-  }, {passive: false});
-
-  // Also +/- keys as fallback
   document.addEventListener('keydown', function(e) {
-    if (e.key === '=' || e.key === '+') { spreadFactor = Math.min(3.0, spreadFactor + 0.1); applySpread(); }
-    if (e.key === '-') { spreadFactor = Math.max(0.3, spreadFactor - 0.1); applySpread(); }
+    if (e.key === '=' || e.key === '+') {
+      spreadFactor = Math.min(3.0, spreadFactor + 0.1);
+      applySpread();
+    }
+    if (e.key === '-') {
+      spreadFactor = Math.max(0.3, spreadFactor - 0.1);
+      applySpread();
+    }
   });
 
   // Fit camera to data bounds
