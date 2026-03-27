@@ -24,6 +24,7 @@ _SENTINEL = _Sentinel()
 class PipelineJob:
     document_id: str
     revision: int | None = None
+    incremental: bool = False
 
 
 class OntologyQueue:
@@ -37,8 +38,10 @@ class OntologyQueue:
     def start(self) -> None:
         self._worker_task = asyncio.create_task(self._worker())
 
-    async def enqueue(self, document_id: str, revision: int | None = None) -> None:
-        await self._queue.put(PipelineJob(document_id, revision))
+    async def enqueue(
+        self, document_id: str, revision: int | None = None, *, incremental: bool = False
+    ) -> None:
+        await self._queue.put(PipelineJob(document_id, revision, incremental=incremental))
 
     @property
     def pending(self) -> int:
@@ -52,9 +55,14 @@ class OntologyQueue:
                 return
             assert isinstance(job, PipelineJob)
             try:
-                from hypomnema.api.documents import _run_ontology_pipeline
+                if job.incremental:
+                    from hypomnema.api.documents import _run_revision_pipeline
 
-                await _run_ontology_pipeline(self._app, job.document_id, job.revision)
+                    await _run_revision_pipeline(self._app, job.document_id, job.revision)
+                else:
+                    from hypomnema.api.documents import _run_ontology_pipeline
+
+                    await _run_ontology_pipeline(self._app, job.document_id, job.revision)
             except Exception:
                 logger.exception("Queue worker: pipeline failed for %s", job.document_id)
             finally:

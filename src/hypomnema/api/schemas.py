@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, field_serializer
 
-from hypomnema.db.models import Document, Edge, Engram
+from hypomnema.db.models import Document, DocumentRevision, Edge, Engram
 
 
 class PaginatedList[T](BaseModel):
@@ -100,6 +100,11 @@ class UrlFetch(BaseModel):
 class DocumentUpdate(BaseModel):
     text: str | None = None
     title: str | None = None
+    annotation: str | None = None
+
+
+class RevisionOut(DocumentRevision):
+    """Revision for API responses — reuses DocumentRevision model fields."""
 
 
 class FeedCreate(BaseModel):

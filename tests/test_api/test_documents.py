@@ -411,8 +411,8 @@ class TestUpdateDocument:
         resp2 = await client.patch(f"/api/documents/{doc_id}", json={"text": "Update 2"})
         assert resp2.json()["revision"] == 3
 
-    async def test_update_clears_associations(self, client: AsyncClient, app):
-        """Verify document_engrams and document_embeddings are cleared on update."""
+    async def test_update_clears_tidy_preserves_associations(self, client: AsyncClient, app):
+        """Verify tidy fields cleared on update; associations preserved for incremental pipeline."""
         create_resp = await client.post("/api/documents/scribbles", json={"text": "Test"})
         doc_id = create_resp.json()["id"]
 
@@ -432,15 +432,17 @@ class TestUpdateDocument:
         )
         await db.commit()
 
-        # Update should clear them
+        # Update should clear tidy fields but preserve associations (incremental pipeline handles diff)
         resp = await client.patch(f"/api/documents/{doc_id}", json={"text": "Updated"})
         assert resp.status_code == 200
         assert resp.json()["tidy_level"] is None
 
+        # Associations preserved — incremental pipeline will diff them
         cursor = await db.execute("SELECT COUNT(*) FROM document_engrams WHERE document_id = ?", (doc_id,))
         row = await cursor.fetchone()
-        assert row[0] == 0
+        assert row[0] == 1
 
+        # Tidy fields cleared
         cursor = await db.execute(
             "SELECT tidy_title, tidy_text, tidy_level FROM documents WHERE id = ?",
             (doc_id,),
@@ -449,3 +451,62 @@ class TestUpdateDocument:
         assert row["tidy_title"] is None
         assert row["tidy_text"] is None
         assert row["tidy_level"] is None
+
+    async def test_update_creates_revision_log(self, client: AsyncClient, app):
+        """Verify revision log entry is created on update."""
+        create_resp = await client.post(
+            "/api/documents/scribbles", json={"text": "Original text", "title": "Original"}
+        )
+        doc_id = create_resp.json()["id"]
+
+        # First update
+        resp = await client.patch(f"/api/documents/{doc_id}", json={"text": "Updated text"})
+        assert resp.status_code == 200
+        assert resp.json()["revision"] == 2
+
+        # Check revision log
+        db = app.state.db
+        cursor = await db.execute(
+            "SELECT * FROM document_revisions WHERE document_id = ? ORDER BY revision",
+            (doc_id,),
+        )
+        rows = await cursor.fetchall()
+        await cursor.close()
+        assert len(rows) == 1
+        assert rows[0]["revision"] == 1
+        assert rows[0]["text"] == "Original text"
+
+    async def test_scribble_rejects_annotation(self, client: AsyncClient):
+        """Scribbles do not support annotation field."""
+        create_resp = await client.post("/api/documents/scribbles", json={"text": "Test"})
+        doc_id = create_resp.json()["id"]
+
+        resp = await client.patch(f"/api/documents/{doc_id}", json={"annotation": "notes"})
+        assert resp.status_code == 400
+
+    async def test_revision_history_endpoints(self, client: AsyncClient, app):
+        """Test GET revisions list and single revision."""
+        create_resp = await client.post("/api/documents/scribbles", json={"text": "v1"})
+        doc_id = create_resp.json()["id"]
+
+        await client.patch(f"/api/documents/{doc_id}", json={"text": "v2"})
+        await client.patch(f"/api/documents/{doc_id}", json={"text": "v3"})
+
+        # List revisions
+        resp = await client.get(f"/api/documents/{doc_id}/revisions")
+        assert resp.status_code == 200
+        revisions = resp.json()
+        assert len(revisions) == 2  # revision 1 and 2 stored
+        assert revisions[0]["revision"] == 2  # newest first
+        assert revisions[0]["text"] == "v2"
+        assert revisions[1]["revision"] == 1
+        assert revisions[1]["text"] == "v1"
+
+        # Get specific revision
+        resp = await client.get(f"/api/documents/{doc_id}/revisions/1")
+        assert resp.status_code == 200
+        assert resp.json()["text"] == "v1"
+
+        # Not found
+        resp = await client.get(f"/api/documents/{doc_id}/revisions/99")
+        assert resp.status_code == 404

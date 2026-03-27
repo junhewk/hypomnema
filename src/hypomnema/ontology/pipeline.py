@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 from hypomnema.db.models import Document, Edge, Engram
 from hypomnema.ontology.engram import get_or_create_engram, link_document_engram
-from hypomnema.ontology.extractor import extract_entities, render_tidy_text
+from hypomnema.ontology.extractor import ExtractedEntity, extract_entities, render_tidy_text
 from hypomnema.ontology.linker import (
     assign_predicates,
     create_edge,
@@ -29,6 +29,7 @@ from hypomnema.tidy import DEFAULT_TIDY_LEVEL, TidyLevel
 
 logger = logging.getLogger(__name__)
 _PDF_DEFAULT_TIDY_LEVEL: TidyLevel = "light_cleanup"
+_INCREMENTAL_FALLBACK_THRESHOLD = 0.5  # Fall back to full rebuild if >50% engrams changed
 
 
 async def _fetch_document(db: aiosqlite.Connection, document_id: str) -> Document:
@@ -61,6 +62,43 @@ def _resolve_document_tidy_level(doc: Document, tidy_level: TidyLevel) -> TidyLe
     if doc.mime_type == "application/pdf" and tidy_level == DEFAULT_TIDY_LEVEL:
         return _PDF_DEFAULT_TIDY_LEVEL
     return tidy_level
+
+
+async def remove_document_associations(db: aiosqlite.Connection, document_id: str) -> None:
+    """Delete engram links, embeddings, and edges tied to a document."""
+    await db.execute("DELETE FROM document_engrams WHERE document_id = ?", (document_id,))
+    await db.execute("DELETE FROM document_embeddings WHERE document_id = ?", (document_id,))
+    await db.execute("DELETE FROM edges WHERE source_document_id = ?", (document_id,))
+
+
+def _build_extraction_text(doc: Document) -> str:
+    """Build text for entity extraction, incorporating annotations for non-scribbles."""
+    if doc.source_type != "scribble" and doc.annotation:
+        return f"{doc.text}\n\n---\nUser notes:\n{doc.annotation}"
+    return doc.text
+
+
+async def _resolve_and_create_engrams(
+    db: aiosqlite.Connection,
+    llm: LLMClient,
+    embeddings: EmbeddingModel,
+    entities: list[ExtractedEntity],
+) -> dict[str, Engram]:
+    """Normalize, resolve synonyms, embed, and create/dedup engrams. Returns {engram_id: Engram}."""
+    normalized_names = [normalize(e.name) for e in entities]
+    canonical_map = await resolve_synonyms(llm, list(set(normalized_names)))
+    canonical_entities: dict[str, str | None] = {}
+    for entity, norm_name in zip(entities, normalized_names, strict=True):
+        canonical = canonical_map.get(norm_name, norm_name)
+        if canonical not in canonical_entities:
+            canonical_entities[canonical] = entity.description
+    canonical_names = list(canonical_entities.keys())
+    vectors = embeddings.embed(canonical_names)
+    result: dict[str, Engram] = {}
+    for i, name in enumerate(canonical_names):
+        engram, _created = await get_or_create_engram(db, name, canonical_entities[name], vectors[i])
+        result[engram.id] = engram
+    return result
 
 
 async def update_processing_metadata(
@@ -120,10 +158,11 @@ async def process_document(
     effective_tidy_level = _resolve_document_tidy_level(doc, tidy_level)
 
     # Extract entities + tidy memo
+    extraction_text = _build_extraction_text(doc)
     summary_only = doc.source_type in ("file", "url")
     result = await extract_entities(
         llm,
-        doc.text,
+        extraction_text,
         tidy_level=effective_tidy_level,
         source_mime_type=doc.mime_type,
         summary_only=summary_only,
@@ -151,34 +190,10 @@ async def process_document(
         await db.commit()
         return []
 
-    # Normalize names
-    normalized_names = [normalize(e.name) for e in extracted]
-
-    # Resolve synonyms (merges within batch)
-    canonical_map = await resolve_synonyms(llm, list(set(normalized_names)))
-
-    # Build unique canonical -> description mapping
-    canonical_entities: dict[str, str | None] = {}
-    for entity, norm_name in zip(extracted, normalized_names, strict=True):
-        canonical = canonical_map.get(norm_name, norm_name)
-        if canonical not in canonical_entities:
-            canonical_entities[canonical] = entity.description
-
-    # Batch embed all canonical names
-    canonical_names = list(canonical_entities.keys())
-    vectors = embeddings.embed(canonical_names)
-
-    # Create engrams and link to document
-    engrams: list[Engram] = []
-    for i, name in enumerate(canonical_names):
-        engram, _created = await get_or_create_engram(
-            db,
-            name,
-            canonical_entities[name],
-            vectors[i],
-        )
+    engram_map = await _resolve_and_create_engrams(db, llm, embeddings, extracted)
+    engrams = list(engram_map.values())
+    for engram in engrams:
         await link_document_engram(db, document_id, engram.id)
-        engrams.append(engram)
 
     # Mark processed
     await db.execute("UPDATE documents SET processed = 1 WHERE id = ?", (document_id,))
@@ -318,6 +333,156 @@ async def link_document(
     await db.execute("UPDATE documents SET processed = 2 WHERE id = ?", (document_id,))
     await db.commit()
     return all_edges
+
+
+async def revise_document(
+    db: aiosqlite.Connection,
+    document_id: str,
+    llm: LLMClient,
+    embeddings: EmbeddingModel,
+    *,
+    expected_revision: int | None = None,
+    tidy_level: TidyLevel = DEFAULT_TIDY_LEVEL,
+    progress_callback: Callable[[dict[str, object]], Awaitable[None] | None] | None = None,
+) -> tuple[list[Engram], list[Edge]]:
+    """Incremental re-extraction after a document revision.
+
+    Re-extracts entities from the current text, diffs the engram set against
+    existing document_engrams, and only adds/removes the delta.  If the churn
+    exceeds 50% of existing engrams, falls back to a full nuke-and-rebuild to
+    maintain edge correctness.
+
+    For unprocessed documents (no existing engrams), delegates to the full
+    process_document → link_document path.
+    """
+    doc = await _fetch_document(db, document_id)
+
+    # Pre-flight revision check
+    if expected_revision is not None and doc.revision != expected_revision:
+        logger.warning("revise_document: stale revision for %s (expected %s)", document_id, expected_revision)
+        return [], []
+
+    # Fetch existing engram IDs for this document
+    cursor = await db.execute(
+        "SELECT engram_id FROM document_engrams WHERE document_id = ?",
+        (document_id,),
+    )
+    existing_ids = {row["engram_id"] for row in await cursor.fetchall()}
+    await cursor.close()
+
+    # No existing engrams — fall through to full extraction
+    if not existing_ids:
+        logger.info("revise_document: no existing engrams for %s, using full pipeline", document_id)
+        await db.execute("UPDATE documents SET processed = 0 WHERE id = ?", (document_id,))
+        await db.commit()
+        engrams = await process_document(
+            db, document_id, llm, embeddings,
+            expected_revision=expected_revision,
+            tidy_level=tidy_level,
+            progress_callback=progress_callback,
+        )
+        edges = await link_document(db, document_id, llm, expected_revision=expected_revision)
+        return engrams, edges
+
+    # Build extraction text (includes annotation for non-scribbles)
+    extraction_text = _build_extraction_text(doc)
+    effective_tidy_level = _resolve_document_tidy_level(doc, tidy_level)
+    summary_only = doc.source_type in ("file", "url")
+
+    result = await extract_entities(
+        llm,
+        extraction_text,
+        tidy_level=effective_tidy_level,
+        source_mime_type=doc.mime_type,
+        summary_only=summary_only,
+        progress_callback=progress_callback,
+    )
+
+    # Post-LLM revision check
+    if not await _check_revision(db, document_id, expected_revision):
+        logger.warning("revise_document: stale revision after LLM for %s", document_id)
+        return [], []
+
+    new_engrams: dict[str, Engram] = {}
+    if result.entities:
+        new_engrams = await _resolve_and_create_engrams(db, llm, embeddings, result.entities)
+
+    new_ids = set(new_engrams.keys())
+
+    # Compute diff
+    added_ids = new_ids - existing_ids
+    removed_ids = existing_ids - new_ids
+    churn = len(added_ids) + len(removed_ids)
+
+    # Fallback check: high churn → full nuke-and-rebuild
+    if churn > _INCREMENTAL_FALLBACK_THRESHOLD * max(len(existing_ids), 1):
+        logger.info(
+            "revise_document: high engram churn (%d/%d) for %s, falling back to full rebuild",
+            churn, len(existing_ids), document_id,
+        )
+        await remove_document_associations(db, document_id)
+        await db.execute("UPDATE documents SET processed = 0 WHERE id = ?", (document_id,))
+        await db.commit()
+        engrams = await process_document(
+            db, document_id, llm, embeddings,
+            expected_revision=expected_revision,
+            tidy_level=tidy_level,
+            progress_callback=progress_callback,
+        )
+        edges = await link_document(db, document_id, llm, expected_revision=expected_revision)
+        return engrams, edges
+
+    # Incremental path: batch-remove stale links and edges, add new links
+    if removed_ids:
+        placeholders = ",".join("?" for _ in removed_ids)
+        removed_list = list(removed_ids)
+        await db.execute(
+            f"DELETE FROM document_engrams WHERE document_id = ? AND engram_id IN ({placeholders})",  # noqa: S608
+            (document_id, *removed_list),
+        )
+        await db.execute(
+            f"DELETE FROM edges WHERE source_document_id = ? "  # noqa: S608
+            f"AND (source_engram_id IN ({placeholders}) OR target_engram_id IN ({placeholders}))",
+            (document_id, *removed_list, *removed_list),
+        )
+    for eid in added_ids:
+        await link_document_engram(db, document_id, eid)
+
+    # Update tidy fields
+    if result.tidy_title or result.tidy_text:
+        await db.execute(
+            "UPDATE documents SET tidy_title = ?, tidy_text = ?, tidy_level = ? WHERE id = ?",
+            (result.tidy_title, result.tidy_text, effective_tidy_level, document_id),
+        )
+
+    # Generate edges only for newly added engrams
+    all_edges: list[Edge] = []
+    for eid in added_ids:
+        engram = new_engrams[eid]
+        try:
+            neighbor_pairs = await find_neighbors(db, engram.id)
+            if not neighbor_pairs:
+                continue
+            neighbors = [n for n, _sim in neighbor_pairs]
+            proposed = await assign_predicates(llm, engram, neighbors, document_text=extraction_text)
+            for p in proposed:
+                p_with_doc = dataclasses.replace(p, source_document_id=document_id)
+                edge = await create_edge(db, p_with_doc)
+                if edge is not None:
+                    all_edges.append(edge)
+        except Exception:
+            logger.exception("revise_document: failed to link engram %s (%s)", engram.id, engram.canonical_name)
+
+    # Final revision check
+    if not await _check_revision(db, document_id, expected_revision):
+        logger.warning("revise_document: stale revision after incremental update for %s", document_id)
+        await db.rollback()
+        return [], []
+
+    # Ensure processed=2 (document stays fully processed after incremental update)
+    await db.execute("UPDATE documents SET processed = 2 WHERE id = ?", (document_id,))
+    await db.commit()
+    return list(new_engrams.values()), all_edges
 
 
 async def link_pending_documents(

@@ -1,8 +1,8 @@
-"""Document detail page."""
+"""Document detail page with inline editing."""
 
 from __future__ import annotations
 
-from nicegui import ui
+from nicegui import app, ui
 
 from hypomnema.ui.layout import page_layout
 from hypomnema.ui.theme import SOURCE_STYLES
@@ -64,6 +64,22 @@ def _render_text_content(doc: dict[str, object]) -> None:
             )
 
 
+def _render_annotation(doc: dict[str, object]) -> None:
+    """Render the user annotation block if present."""
+    annotation = doc.get("annotation")
+    if not annotation:
+        return
+    with ui.element("div").classes("mt-4 pl-3").style(
+        "border-left: 2px solid rgba(126,184,218,0.3)"
+    ):
+        ui.label("Your notes").classes("text-xs tracking-wider uppercase").style(
+            "color: rgba(107,107,107,0.6); font-size: 10px"
+        )
+        ui.label(str(annotation)).classes("mt-1 text-sm leading-relaxed").style(
+            "white-space: pre-wrap; color: rgba(212,212,212,0.8)"
+        )
+
+
 def _render_engrams(engrams: list[dict[str, object]], doc_id: str) -> None:
     """Render the engrams section."""
     if not engrams:
@@ -104,9 +120,45 @@ def _render_related_docs(related: list[dict[str, object]]) -> None:
             ui.element("a").props(f'href="/documents/{rdoc_id}"').classes("absolute inset-0")
 
 
+async def _save_document_edit(
+    doc_id: str,
+    doc: dict[str, object],
+    *,
+    text: str | None = None,
+    title: str | None = None,
+    annotation: str | None = None,
+) -> None:
+    """Save an edit via shared update logic, then enqueue reprocessing."""
+    from hypomnema.api.documents import snapshot_and_update_document
+    from hypomnema.db.models import Document
+
+    db = get_db()
+    if db is None:
+        ui.notify("Database not ready", type="negative")
+        return
+
+    # Fetch fresh document for snapshot_and_update_document
+    cursor = await db.execute("SELECT * FROM documents WHERE id = ?", (doc_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        ui.notify("Document not found", type="negative")
+        return
+
+    updated = await snapshot_and_update_document(
+        db, Document.from_row(row), text=text, title=title, annotation=annotation,
+    )
+    queue = getattr(app.state, "ontology_queue", None)
+    if queue:
+        await queue.enqueue(doc_id, updated.revision, incremental=True)
+
+    ui.notify("Saved", type="positive")
+    ui.navigate.to(f"/documents/{doc_id}")
+
+
 @ui.page("/documents/{doc_id}")
 async def document_detail_page(doc_id: str) -> None:
-    """Document detail view."""
+    """Document detail view with inline edit mode."""
     db = get_db()
 
     with page_layout("Document"):
@@ -158,6 +210,7 @@ async def document_detail_page(doc_id: str) -> None:
         style = SOURCE_STYLES.get(source_type, SOURCE_STYLES["scribble"])
         title = doc.get("tidy_title") or doc.get("title") or "Untitled"
         created_at = str(doc.get("created_at", ""))
+        is_scribble = source_type == "scribble"
 
         with ui.element("article").classes("animate-fade-up pl-4").style(
             f"border-left: 2px solid {style['color']}"
@@ -188,9 +241,86 @@ async def document_detail_page(doc_id: str) -> None:
                 "color: rgba(107,107,107,0.6); font-size: 10px"
             )
 
-            # Content
-            with ui.element("div").classes("mb-8"):
-                _render_text_content(doc)
+            # Content area — swapped between read/edit mode
+            content_container = ui.element("div").classes("mb-8")
+
+            def _render_read_mode() -> None:
+                content_container.clear()
+                with content_container:
+                    _render_text_content(doc)
+                    if not is_scribble:
+                        _render_annotation(doc)
+
+            def _render_edit_mode() -> None:
+                content_container.clear()
+                with content_container:
+                    if is_scribble:
+                        title_input = ui.input(
+                            label="Title",
+                            value=str(doc.get("title") or doc.get("tidy_title") or ""),
+                        ).classes("w-full mb-3").props('outlined dense dark color="grey-7"')
+
+                        text_input = (
+                            ui.textarea(
+                                label="Text",
+                                value=str(doc.get("text") or ""),
+                            )
+                            .classes("w-full")
+                            .props('autogrow outlined dense dark color="grey-7"')
+                        )
+
+                        with ui.row().classes("mt-3 gap-2"):
+                            ui.button(
+                                "Save", icon="save",
+                                on_click=lambda: _save_document_edit(
+                                    doc_id, doc,
+                                    text=text_input.value,
+                                    title=title_input.value,
+                                ),
+                            ).props('flat dense color="green-7" no-caps').classes("text-xs")
+                            ui.button(
+                                "Cancel", icon="close",
+                                on_click=_exit_edit,
+                            ).props('flat dense color="grey-7" no-caps').classes("text-xs")
+                    else:
+                        _render_text_content(doc)
+                        ui.separator().classes("my-4")
+                        ui.label("Your notes").classes(
+                            "text-xs tracking-wider uppercase mb-2"
+                        ).style("color: #6b6b6b")
+
+                        annotation_input = (
+                            ui.textarea(
+                                value=str(doc.get("annotation") or ""),
+                                placeholder="Add your notes about this document...",
+                            )
+                            .classes("w-full")
+                            .props('autogrow outlined dense dark color="grey-7"')
+                        )
+
+                        with ui.row().classes("mt-3 gap-2"):
+                            ui.button(
+                                "Save", icon="save",
+                                on_click=lambda: _save_document_edit(
+                                    doc_id, doc,
+                                    annotation=annotation_input.value,
+                                ),
+                            ).props('flat dense color="green-7" no-caps').classes("text-xs")
+                            ui.button(
+                                "Cancel", icon="close",
+                                on_click=_exit_edit,
+                            ).props('flat dense color="grey-7" no-caps').classes("text-xs")
+
+            def _enter_edit() -> None:
+                _render_edit_mode()
+                edit_btn.set_visibility(False)
+
+            def _exit_edit() -> None:
+                _render_read_mode()
+                edit_btn.set_visibility(True)
+
+            # Initial render
+            _render_read_mode()
 
             # Engrams section
             with ui.element("div").classes("pt-6").style(
@@ -211,10 +341,15 @@ async def document_detail_page(doc_id: str) -> None:
                     ).style("color: #6b6b6b")
                     _render_related_docs(related)
 
-            # Edit button for scribbles
-            if source_type == "scribble":
-                ui.button(
-                    "Edit",
-                    icon="edit",
-                    on_click=lambda: ui.navigate.to("/"),
-                ).props('flat dense color="grey-7"').classes("mt-6 text-xs")
+            # Edit button — dynamic label by source type
+            if is_scribble:
+                edit_label, edit_icon = "Edit", "edit"
+            elif doc.get("annotation"):
+                edit_label, edit_icon = "Edit notes", "edit_note"
+            else:
+                edit_label, edit_icon = "Annotate", "note_add"
+
+            edit_btn = ui.button(
+                edit_label, icon=edit_icon,
+                on_click=_enter_edit,
+            ).props('flat dense color="grey-7"').classes("mt-6 text-xs")

@@ -46,6 +46,7 @@ class Document(BaseModel):
     tidy_title: str | None = None
     tidy_text: str | None = None
     tidy_level: TidyLevel | None = None
+    annotation: str | None = None
     heat_score: float | None = None
     heat_tier: HeatTier | None = None
     created_at: datetime
@@ -74,6 +75,27 @@ class Document(BaseModel):
     @classmethod
     def from_row(cls, row: sqlite3.Row) -> "Document":
         return cast("Document", _from_row(cls, row))
+
+
+class DocumentRevision(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    document_id: str
+    revision: int
+    text: str
+    annotation: str | None = None
+    title: str | None = None
+    created_at: datetime
+
+    @field_validator("created_at", mode="before")
+    @classmethod
+    def parse_datetime(cls, v: Any) -> datetime:
+        return _parse_iso_datetime(v)
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> "DocumentRevision":
+        return cast("DocumentRevision", _from_row(cls, row))
 
 
 class Engram(BaseModel):

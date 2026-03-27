@@ -31,8 +31,9 @@ Hypomnema extracts concepts from your research material, deduplicates them, link
 - **Automatic ontology** — LLM-powered entity extraction, multi-stage deduplication (exact match, alias index, KNN, vector similarity, concept hash), typed edge generation (supports, contradicts, critiques, extends, ...)
 - **Title + TL;DR** — files and URL fetches get an LLM-generated title revision and concise summary; scribbles get full tidy rewriting
 - **3D visualization** — constellation-mode point cloud with PageRank node sizing, cluster color reveal, cinematic auto-orbit (via 3d-force-graph)
-- **Document heat scoring** — graph-derived actionability signal classifies documents as active, reference, or dormant based on temporal recency, concept co-activity, and graph centrality. No manual filing — organization emerges from the knowledge graph.
-- **Full-text + semantic search** — FTS5 for keyword search, sqlite-vec for vector similarity
+- **Document revision** — scribbles are editable in-place; URLs/files/feeds get a user annotation layer. Every edit is revision-logged and re-processed incrementally (engram diff with 50% churn fallback to full rebuild). Feeds into heat scoring.
+- **Document heat scoring** — graph-derived actionability signal classifies documents as active, reference, or dormant based on temporal recency, concept co-activity, revision count, and graph centrality. No manual filing — organization emerges from the knowledge graph.
+- **Full-text + semantic search** — FTS5 for keyword search (including annotations), sqlite-vec for vector similarity
 - **Multi-provider** — Claude, Gemini, OpenAI, Ollama for LLM; OpenAI or Google for embeddings. Hot-swappable at runtime.
 - **Single-file database** — everything in one portable SQLite file. No Postgres, no external services.
 - **Encrypted at rest** — API keys stored with Fernet encryption

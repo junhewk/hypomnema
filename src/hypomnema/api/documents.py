@@ -18,6 +18,7 @@ from hypomnema.api.schemas import (
     DocumentWithEngrams,
     EngramSummary,
     RelatedDocument,
+    RevisionOut,
     ScribbleCreate,
     UrlFetch,
 )
@@ -25,7 +26,13 @@ from hypomnema.db.models import Document, Engram
 from hypomnema.ingestion.file_parser import UnsupportedFormatError, ingest_file
 from hypomnema.ingestion.scribble import create_scribble
 from hypomnema.ingestion.url_fetch import DuplicateUrlError, fetch_url
-from hypomnema.ontology.pipeline import link_document, process_document, update_processing_metadata
+from hypomnema.ontology.pipeline import (
+    link_document,
+    process_document,
+    remove_document_associations,
+    revise_document,
+    update_processing_metadata,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -33,11 +40,48 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 _DRAFT_FILTER = "source_type = 'scribble' AND processed = 0 AND tidy_text IS NULL"
 
 
-async def _remove_document_associations(db: DB, document_id: str) -> None:
-    """Delete engram links, embeddings, and edges tied to a document."""
-    await db.execute("DELETE FROM document_engrams WHERE document_id = ?", (document_id,))
-    await db.execute("DELETE FROM document_embeddings WHERE document_id = ?", (document_id,))
-    await db.execute("DELETE FROM edges WHERE source_document_id = ?", (document_id,))
+async def snapshot_and_update_document(
+    db: DB,
+    doc: Document,
+    *,
+    text: str | None = None,
+    title: str | None = None,
+    annotation: str | None = None,
+) -> Document:
+    """Snapshot current state into revision log, apply updates, return updated doc.
+
+    Clears tidy fields and increments revision. Caller is responsible for
+    source-type validation and queue enqueue.
+    """
+    await db.execute(
+        "INSERT INTO document_revisions (document_id, revision, text, annotation, title) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (doc.id, doc.revision, doc.text, doc.annotation, doc.tidy_title or doc.title),
+    )
+    updates: dict[str, object] = {}
+    if text is not None:
+        updates["text"] = text
+    if title is not None:
+        updates["title"] = title
+    if annotation is not None:
+        updates["annotation"] = annotation if annotation.strip() else None
+    if not updates:
+        return doc
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values())
+    cursor = await db.execute(
+        f"UPDATE documents SET {set_clause}, tidy_title = NULL, tidy_text = NULL, tidy_level = NULL, "  # noqa: S608
+        "revision = revision + 1 WHERE id = ? RETURNING *",
+        (*values, doc.id),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    await db.commit()
+    if row is None:
+        raise ValueError(f"Document {doc.id} not found after update")
+    return Document.from_row(row)
+
+
 
 
 async def _queue_processing_metadata(db: DB, doc: Document) -> Document:
@@ -73,11 +117,25 @@ async def _load_document_metadata(db: DB, document_id: str) -> dict[str, object]
     return dict(raw)
 
 
-async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int | None = None) -> None:
-    """Background task: extract entities, generate edges, and compute projections.
+async def _finalize_pipeline(
+    db: DB, document_id: str, metadata: dict[str, object],
+) -> str:
+    """Shared tail: projections, heat scoring, and final status determination."""
+    from hypomnema.ontology.heat import compute_all_heat
+    from hypomnema.visualization.projection import compute_projections
 
-    Uses the app's shared database connection to avoid SQLite write-lock contention.
-    """
+    await update_processing_metadata(db, document_id, metadata, status="running", stage="project", last_error=None)
+    await compute_projections(db)
+    await compute_all_heat(db)
+
+    processing = metadata.get("processing")
+    processing_dict = processing if isinstance(processing, dict) else {}
+    has_issues = processing_dict.get("fallback_used") or processing_dict.get("chunk_failed")
+    return "partial" if has_issues else "completed"
+
+
+async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int | None = None) -> None:
+    """Background task: extract entities, generate edges, and compute projections."""
     db = app.state.db
     llm = app.state.llm
     embeddings = app.state.embeddings
@@ -88,72 +146,48 @@ async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int |
         await update_processing_metadata(db, document_id, metadata, **payload)
 
     try:
-        await update_processing_metadata(
-            db,
-            document_id,
-            metadata,
-            status="running",
-            stage="extract",
-            last_error=None,
-        )
+        await update_processing_metadata(db, document_id, metadata, status="running", stage="extract", last_error=None)
         await process_document(
-            db,
-            document_id,
-            llm,
-            embeddings,
-            expected_revision=revision,
-            tidy_level=tidy_level,
-            progress_callback=progress_callback,
+            db, document_id, llm, embeddings,
+            expected_revision=revision, tidy_level=tidy_level, progress_callback=progress_callback,
         )
-        await update_processing_metadata(
-            db,
-            document_id,
-            metadata,
-            status="running",
-            stage="link",
-            last_error=None,
-        )
+        await update_processing_metadata(db, document_id, metadata, status="running", stage="link", last_error=None)
         await link_document(db, document_id, llm, expected_revision=revision)
-        await update_processing_metadata(
-            db,
-            document_id,
-            metadata,
-            status="running",
-            stage="project",
-            last_error=None,
-        )
-
-        from hypomnema.visualization.projection import compute_projections
-
-        await compute_projections(db)
-
-        # Graph topology changed — recompute heat scores for all documents
-        from hypomnema.ontology.heat import compute_all_heat
-
-        await compute_all_heat(db)
-
-        processing = metadata.get("processing")
-        processing_dict = processing if isinstance(processing, dict) else {}
-        has_issues = processing_dict.get("fallback_used") or processing_dict.get("chunk_failed")
-        final_status = "partial" if has_issues else "completed"
-        await update_processing_metadata(
-            db,
-            document_id,
-            metadata,
-            status=final_status,
-            stage="done",
-            last_error=None,
-        )
+        final_status = await _finalize_pipeline(db, document_id, metadata)
+        await update_processing_metadata(db, document_id, metadata, status=final_status, stage="done", last_error=None)
     except Exception as exc:
         await update_processing_metadata(
-            db,
-            document_id,
-            metadata,
-            status="failed",
-            stage="failed",
+            db, document_id, metadata, status="failed", stage="failed",
             last_error=f"{type(exc).__name__}: {exc}",
         )
         logger.exception("Ontology pipeline failed for document %s", document_id)
+
+
+async def _run_revision_pipeline(app: FastAPI, document_id: str, revision: int | None = None) -> None:
+    """Background task: incremental re-extraction after a document revision."""
+    db = app.state.db
+    llm = app.state.llm
+    embeddings = app.state.embeddings
+    tidy_level = app.state.settings.tidy_level
+    metadata = await _load_document_metadata(db, document_id)
+
+    async def progress_callback(payload: dict[str, object]) -> None:
+        await update_processing_metadata(db, document_id, metadata, **payload)
+
+    try:
+        await update_processing_metadata(db, document_id, metadata, status="running", stage="revise", last_error=None)
+        await revise_document(
+            db, document_id, llm, embeddings,
+            expected_revision=revision, tidy_level=tidy_level, progress_callback=progress_callback,
+        )
+        final_status = await _finalize_pipeline(db, document_id, metadata)
+        await update_processing_metadata(db, document_id, metadata, status=final_status, stage="done", last_error=None)
+    except Exception as exc:
+        await update_processing_metadata(
+            db, document_id, metadata, status="failed", stage="failed",
+            last_error=f"{type(exc).__name__}: {exc}",
+        )
+        logger.exception("Revision pipeline failed for document %s", document_id)
 
 
 @router.post("/scribbles", response_model=DocumentOut, status_code=201)
@@ -222,44 +256,37 @@ async def update_document(
     request: Request,
     db: DB,
 ) -> DocumentOut:
-    """Update a document's text/title and re-run ontology pipeline."""
+    """Update a document's text/title/annotation and re-run ontology pipeline.
+
+    Source-type rules:
+    - Scribbles: accept text, title (annotation rejected)
+    - Non-scribbles: accept annotation, title (text rejected — original is immutable)
+    """
     cursor = await db.execute("SELECT * FROM documents WHERE id = ?", (document_id,))
     row = await cursor.fetchone()
     await cursor.close()
     if row is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    if body.text is None and body.title is None:
+    doc = Document.from_row(row)
+
+    # Source-type validation
+    if doc.source_type == "scribble" and body.annotation is not None:
+        raise HTTPException(status_code=400, detail="Scribbles do not support annotations")
+    if doc.source_type != "scribble" and body.text is not None:
+        raise HTTPException(status_code=400, detail="Original text is immutable for non-scribble documents")
+    if body.text is None and body.title is None and body.annotation is None:
         raise HTTPException(status_code=400, detail="Nothing to update")
 
-    # Build update
-    updates: dict[str, object] = {}
-    if body.text is not None:
-        updates["text"] = body.text
-    if body.title is not None:
-        updates["title"] = body.title
-
-    set_clause = ", ".join(f"{k} = ?" for k in updates)
-    values = list(updates.values())
-    cursor = await db.execute(
-        f"UPDATE documents SET {set_clause}, processed = 0, tidy_title = NULL, tidy_text = NULL, tidy_level = NULL, "  # noqa: S608
-        "revision = revision + 1, updated_at = datetime('now') WHERE id = ? RETURNING *",
-        (*values, document_id),
-    )
-    updated_row = await cursor.fetchone()
-    await cursor.close()
-
-    await _remove_document_associations(db, document_id)
-    await db.commit()
-
-    if updated_row is None:
-        raise HTTPException(status_code=404, detail="Document not found after update")
-    doc = await _queue_processing_metadata(db, Document.from_row(updated_row))
-
-    revision = updated_row["revision"]
-    await request.app.state.ontology_queue.enqueue(document_id, revision)
-
-    return DocumentOut.model_validate(doc, from_attributes=True)
+    try:
+        updated = await snapshot_and_update_document(
+            db, doc, text=body.text, title=body.title, annotation=body.annotation,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    updated = await _queue_processing_metadata(db, updated)
+    await request.app.state.ontology_queue.enqueue(document_id, updated.revision, incremental=True)
+    return DocumentOut.model_validate(updated, from_attributes=True)
 
 
 @router.delete("/{document_id}", status_code=204)
@@ -271,7 +298,7 @@ async def delete_document(document_id: str, db: DB) -> Response:
     if row is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    await _remove_document_associations(db, document_id)
+    await remove_document_associations(db, document_id)
 
     # FTS cleanup handled by trigger
     await db.execute("DELETE FROM documents WHERE id = ?", (document_id,))
@@ -377,3 +404,29 @@ async def get_related_documents(document_id: str, db: DB) -> list[RelatedDocumen
     rows = await cursor.fetchall()
     await cursor.close()
     return [RelatedDocument(id=r["id"], title=r["tidy_title"] or r["title"]) for r in rows]
+
+
+@router.get("/{document_id}/revisions", response_model=list[RevisionOut])
+async def list_revisions(document_id: str, db: DB) -> list[RevisionOut]:
+    """List past revisions of a document (newest first)."""
+    cursor = await db.execute(
+        "SELECT * FROM document_revisions WHERE document_id = ? ORDER BY revision DESC",
+        (document_id,),
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return [RevisionOut(**dict(r)) for r in rows]
+
+
+@router.get("/{document_id}/revisions/{revision_num}", response_model=RevisionOut)
+async def get_revision(document_id: str, revision_num: int, db: DB) -> RevisionOut:
+    """Get a specific past revision of a document."""
+    cursor = await db.execute(
+        "SELECT * FROM document_revisions WHERE document_id = ? AND revision = ?",
+        (document_id, revision_num),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Revision not found")
+    return RevisionOut(**dict(row))

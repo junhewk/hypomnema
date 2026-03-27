@@ -486,6 +486,7 @@ def _documents_table_sql(table_name: str) -> str:
             tidy_title TEXT,
             tidy_text TEXT,
             tidy_level TEXT,
+            annotation TEXT,
             heat_score REAL,
             heat_tier TEXT,
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
@@ -577,6 +578,7 @@ async def _copy_documents_rows(
         "tidy_title",
         "tidy_text",
         "tidy_level",
+        "annotation",
         "heat_score",
         "heat_tier",
         "created_at",
@@ -658,6 +660,75 @@ async def _migration_002_heat_columns(db: aiosqlite.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Migration 3 — revisions and annotations
+# ---------------------------------------------------------------------------
+
+
+async def _migration_003_revisions_and_annotations(db: aiosqlite.Connection) -> None:
+    """Add annotation column to documents, create document_revisions table, rebuild FTS."""
+    # Add annotation column
+    with suppress(Exception):
+        await db.execute("ALTER TABLE documents ADD COLUMN annotation TEXT")
+
+    # Create document_revisions table
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS document_revisions (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+            revision INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            annotation TEXT,
+            title TEXT,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+    await db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_doc_revisions_lookup
+        ON document_revisions(document_id, revision)
+    """)
+
+    # Rebuild FTS5 table to include annotation column
+    for trigger in ("documents_fts_insert", "documents_fts_update", "documents_fts_delete"):
+        await db.execute(f"DROP TRIGGER IF EXISTS {trigger}")  # noqa: S608
+    await db.execute("DROP TABLE IF EXISTS documents_fts")
+    await db.execute("""
+        CREATE VIRTUAL TABLE documents_fts USING fts5(
+            title, text, annotation,
+            content='documents',
+            content_rowid='rowid'
+        )
+    """)
+    await db.execute("INSERT INTO documents_fts(documents_fts) VALUES ('rebuild')")
+
+    # Recreate triggers with annotation column
+    await db.execute("""
+        CREATE TRIGGER documents_fts_insert
+        AFTER INSERT ON documents BEGIN
+            INSERT INTO documents_fts(rowid, title, text, annotation)
+            VALUES (new.rowid, new.title, new.text, new.annotation);
+        END
+    """)
+    await db.execute("""
+        CREATE TRIGGER documents_fts_update
+        AFTER UPDATE OF title, text, annotation ON documents BEGIN
+            INSERT INTO documents_fts(documents_fts, rowid, title, text, annotation)
+            VALUES ('delete', old.rowid, old.title, old.text, old.annotation);
+            INSERT INTO documents_fts(rowid, title, text, annotation)
+            VALUES (new.rowid, new.title, new.text, new.annotation);
+        END
+    """)
+    await db.execute("""
+        CREATE TRIGGER documents_fts_delete
+        BEFORE DELETE ON documents BEGIN
+            INSERT INTO documents_fts(documents_fts, rowid, title, text, annotation)
+            VALUES ('delete', old.rowid, old.title, old.text, old.annotation);
+        END
+    """)
+
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
 # Migration registry — keep at bottom so all functions are defined
 # ---------------------------------------------------------------------------
 
@@ -666,6 +737,7 @@ def _register_migrations() -> None:
     _MIGRATIONS.clear()
     _MIGRATIONS.append((1, "baseline_schema", _migration_001_baseline))
     _MIGRATIONS.append((2, "heat_columns", _migration_002_heat_columns))
+    _MIGRATIONS.append((3, "revisions_and_annotations", _migration_003_revisions_and_annotations))
 
 
 _register_migrations()
