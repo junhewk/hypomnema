@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
+from hypomnema.ontology.heat import HeatTier
 from hypomnema.tidy import TidyLevel
 
 
@@ -45,6 +46,8 @@ class Document(BaseModel):
     tidy_title: str | None = None
     tidy_text: str | None = None
     tidy_level: TidyLevel | None = None
+    heat_score: float | None = None
+    heat_tier: HeatTier | None = None
     created_at: datetime
     updated_at: datetime
 

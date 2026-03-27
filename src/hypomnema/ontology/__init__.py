@@ -17,6 +17,7 @@ from hypomnema.ontology.extractor import (
     extract_entities,
     render_tidy_text,
 )
+from hypomnema.ontology.heat import ALL_HEAT_TIERS, HeatTier, compute_all_heat
 from hypomnema.ontology.linker import (
     VALID_PREDICATES,
     ProposedEdge,
@@ -39,6 +40,9 @@ __all__ = [
     "ExtractionResult",
     "ProposedEdge",
     "VALID_PREDICATES",
+    "ALL_HEAT_TIERS",
+    "HeatTier",
+    "compute_all_heat",
     "alias_keys_overlap",
     "assign_predicates",
     "compute_concept_hash",

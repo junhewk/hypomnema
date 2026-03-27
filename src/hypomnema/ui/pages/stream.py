@@ -4,21 +4,29 @@ from __future__ import annotations
 
 from nicegui import app, ui
 
+from hypomnema.ontology.heat import ALL_HEAT_TIERS
 from hypomnema.ui.components.document_card import render_document_card
 from hypomnema.ui.layout import page_layout
+from hypomnema.ui.theme import HEAT_TIER_STYLES
 from hypomnema.ui.utils import get_db
 
 
-async def _load_documents() -> list[dict[str, object]]:
-    """Fetch recent documents from the database."""
+async def _load_documents(heat_filter: str | None = None) -> list[dict[str, object]]:
+    """Fetch recent documents from the database, optionally filtered by heat tier."""
     db = get_db()
     if db is None:
         return []
-    cursor = await db.execute(
+    base = (
         "SELECT id, source_type, title, tidy_title, text, tidy_text, "
-        "mime_type, created_at, processed, metadata "
-        "FROM documents ORDER BY created_at DESC LIMIT 100"
+        "mime_type, created_at, processed, metadata, heat_score, heat_tier "
+        "FROM documents"
     )
+    if heat_filter and heat_filter in ALL_HEAT_TIERS:
+        query = f"{base} WHERE heat_tier = ? ORDER BY created_at DESC LIMIT 100"
+        cursor = await db.execute(query, (heat_filter,))
+    else:
+        query = f"{base} ORDER BY created_at DESC LIMIT 100"
+        cursor = await db.execute(query)
     rows = await cursor.fetchall()
     await cursor.close()
     return [dict(row) for row in rows]
@@ -34,33 +42,45 @@ async def stream_page() -> None:
 
     with page_layout("Stream"):
         # Scribble input — entire card is a drop zone
-        with ui.card().classes("w-full mb-6").style(
-            "background: #111; transition: border-color 0.2s; border: 1px dashed transparent"
-        ) as input_card:
-            text_input = ui.textarea(
-                placeholder="Drop a thought, paste a URL, or drag a file..."
-            ).classes("w-full").props('autogrow outlined dense dark color="grey-7"')
+        with (
+            ui.card()
+            .classes("w-full mb-6")
+            .style("background: #111; transition: border-color 0.2s; border: 1px dashed transparent") as input_card
+        ):
+            text_input = (
+                ui.textarea(placeholder="Drop a thought, paste a URL, or drag a file...")
+                .classes("w-full")
+                .props('autogrow outlined dense dark color="grey-7"')
+            )
 
             # Hidden upload element for file handling
-            upload = ui.upload(
-                auto_upload=True,
-                on_upload=lambda e: _handle_file_upload(e),
-            ).props('accept=".pdf,.docx,.md"').classes("hidden")
+            upload = (
+                ui.upload(
+                    auto_upload=True,
+                    on_upload=lambda e: _handle_file_upload(e),
+                )
+                .props('accept=".pdf,.docx,.md"')
+                .classes("hidden")
+            )
 
             with ui.row().classes("justify-end mt-2 gap-2 items-center"):
                 ui.button(
-                    "Upload", icon="attach_file",
+                    "Upload",
+                    icon="attach_file",
                     on_click=lambda: upload.run_method("pickFiles"),
                 ).props('flat dense size="sm" color="grey-6" no-caps').classes("text-xs")
                 ui.button(
-                    "Submit", icon="send",
+                    "Submit",
+                    icon="send",
                     on_click=lambda: _submit_scribble(text_input),
                 ).props('flat dense size="sm" color="grey-6" no-caps').classes("text-xs")
 
         # Wire dropzone on the card via JS (targets this specific card by NiceGUI element id)
         card_id = f"c{input_card.id}"
         upload_id = f"c{upload.id}"
-        ui.timer(0.3, lambda: ui.run_javascript(f"""
+        ui.timer(
+            0.3,
+            lambda: ui.run_javascript(f"""
             var card = document.getElementById('{card_id}');
             var upEl = document.getElementById('{upload_id}');
             if (!card || !upEl) return;
@@ -81,7 +101,43 @@ async def stream_page() -> None:
                 inp.files = dt.files;
                 inp.dispatchEvent(new Event('change', {{bubbles: true}}));
             }});
-        """), once=True)
+        """),
+            once=True,
+        )
+
+        # Heat filter tabs
+        active_filter: dict[str, str | None] = {"value": None}
+
+        _heat_tab_colors: dict[str | None, str] = {
+            None: "#a0a0a0",
+            **{tier: s["color"] for tier, s in HEAT_TIER_STYLES.items()},
+        }
+
+        with ui.row().classes("w-full mb-4 gap-1"):
+            tab_buttons: dict[str | None, ui.button] = {}
+            for label, tier in [("All", None)] + [(s["label"], t) for t, s in HEAT_TIER_STYLES.items()]:
+                color = _heat_tab_colors[tier]
+                btn = (
+                    ui.button(
+                        label,
+                        on_click=lambda _e=None, t=tier: _set_filter(t),
+                    )
+                    .props('flat dense size="sm" no-caps')
+                    .classes("text-xs")
+                    .style(f"color: {color}; opacity: 1.0")
+                )
+                tab_buttons[tier] = btn
+
+        def _update_tab_styles() -> None:
+            for tier, btn in tab_buttons.items():
+                is_active = tier == active_filter["value"]
+                color = _heat_tab_colors[tier]
+                btn.style(
+                    f"color: {color}; opacity: {'1.0' if is_active else '0.5'}; "
+                    f"{'border-bottom: 1px solid ' + color if is_active else 'border-bottom: none'}"
+                )
+
+        _update_tab_styles()
 
         # Document list with auto-refresh when items are processing
         doc_container = ui.column().classes("w-full gap-0")
@@ -94,18 +150,25 @@ async def stream_page() -> None:
             doc_container.clear()
             with doc_container:
                 if not docs:
-                    ui.label("No documents yet. Write something above to get started.").classes(
-                        "text-muted text-xs text-center py-8"
-                    )
+                    tier_label = active_filter["value"] or "any"
+                    ui.label(f"No {tier_label} documents yet.").classes("text-muted text-xs text-center py-8")
                 else:
                     for doc in docs:
                         render_document_card(doc)
                     ui.label(f"{len(docs)} documents").classes("text-muted text-xs text-center mt-4")
 
+        async def _set_filter(tier: str | None) -> None:
+            active_filter["value"] = tier
+            _update_tab_styles()
+            docs = await _load_documents(heat_filter=tier)
+            nonlocal last_snapshot
+            last_snapshot = _build_snapshot(docs)
+            _render_doc_list(docs)
+
         async def _poll_docs() -> None:
             """Re-render only if document state changed."""
             nonlocal last_snapshot
-            docs = await _load_documents()
+            docs = await _load_documents(heat_filter=active_filter["value"])
             snapshot = _build_snapshot(docs)
             if snapshot != last_snapshot:
                 last_snapshot = snapshot

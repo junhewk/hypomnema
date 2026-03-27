@@ -6,7 +6,7 @@ from typing import Any
 
 from nicegui import ui
 
-from hypomnema.ui.theme import SOURCE_STYLES
+from hypomnema.ui.theme import HEAT_TIER_STYLES, SOURCE_STYLES
 from hypomnema.ui.utils import time_ago
 
 
@@ -32,10 +32,14 @@ def render_document_card(
     preview_text = str(doc.get("tidy_text") or doc.get("text") or "")[:280]
     created_at = str(doc.get("created_at", ""))
     doc_id = str(doc.get("id", ""))
+    heat_tier = doc.get("heat_tier")
 
-    with ui.card().classes("w-full mb-3 animate-fade-up cursor-pointer").style(
-        f"border-left: 2px solid {style['color']}"
-    ).on("click", lambda _d=doc_id: ui.navigate.to(f"/documents/{_d}")):
+    with (
+        ui.card()
+        .classes("w-full mb-3 animate-fade-up cursor-pointer")
+        .style(f"border-left: 2px solid {style['color']}")
+        .on("click", lambda _d=doc_id: ui.navigate.to(f"/documents/{_d}"))
+    ):
         with ui.row().classes("items-center gap-2 mb-1"):
             ui.label(style["label"]).classes("source-badge").style(
                 f"color: {style['color']}; background: {style['bg']}"
@@ -46,20 +50,24 @@ def render_document_card(
                     "semantic": "#b87eb8",
                     "keyword": "#b8a07e",
                 }.get(match_type, "#6b6b6b")
-                ui.label(f"{match_type} {score:.3f}").classes(
-                    "source-badge"
-                ).style(f"color: {match_color}; background: rgba(255,255,255,0.04)")
+                ui.label(f"{match_type} {score:.3f}").classes("source-badge").style(
+                    f"color: {match_color}; background: rgba(255,255,255,0.04)"
+                )
             else:
                 if doc.get("processed"):
-                    ui.icon("check_circle").classes("text-xs").style(
-                        "color: #4caf50; font-size: 12px"
-                    )
+                    ui.icon("check_circle").classes("text-xs").style("color: #4caf50; font-size: 12px")
                 else:
-                    ui.icon("pending").classes("text-xs animate-pulse-dot").style(
-                        "color: #ff9800; font-size: 12px"
-                    )
+                    ui.icon("pending").classes("text-xs animate-pulse-dot").style("color: #ff9800; font-size: 12px")
                 if doc.get("mime_type"):
                     ui.label(str(doc["mime_type"])).classes("text-muted text-xs")
+
+            # Heat tier indicator
+            if heat_tier:
+                _heat_style = HEAT_TIER_STYLES.get(str(heat_tier))
+                if _heat_style:
+                    ui.icon(_heat_style["icon"]).classes("text-xs").style(
+                        f"color: {_heat_style['color']}; font-size: 11px; margin-left: auto"
+                    ).tooltip(_heat_style["label"])
 
         ui.label(str(title)).classes("text-sm font-medium mb-1")
 

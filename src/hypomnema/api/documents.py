@@ -123,10 +123,15 @@ async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int |
             last_error=None,
         )
 
-        # Auto-compute projections so viz is immediately available
         from hypomnema.visualization.projection import compute_projections
 
         await compute_projections(db)
+
+        # Graph topology changed — recompute heat scores for all documents
+        from hypomnema.ontology.heat import compute_all_heat
+
+        await compute_all_heat(db)
+
         processing = metadata.get("processing")
         processing_dict = processing if isinstance(processing, dict) else {}
         has_issues = processing_dict.get("fallback_used") or processing_dict.get("chunk_failed")

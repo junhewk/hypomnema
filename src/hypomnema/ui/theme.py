@@ -23,6 +23,13 @@ SOURCE_STYLES: dict[str, dict[str, str]] = {
     "feed": {"label": "feed", "color": "#8fb87e", "bg": "rgba(143,184,126,0.08)"},
 }
 
+# Heat tier styles for document actionability indicators
+HEAT_TIER_STYLES: dict[str, dict[str, str]] = {
+    "active": {"icon": "local_fire_department", "color": "#4caf50", "label": "Active"},
+    "reference": {"icon": "menu_book", "color": "#7eb8da", "label": "Reference"},
+    "dormant": {"icon": "bedtime", "color": "#6b6b6b", "label": "Dormant"},
+}
+
 # Custom CSS injected into every page
 CUSTOM_CSS = """
 <style>

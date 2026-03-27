@@ -220,6 +220,8 @@ async def _migrate_add_columns(db: aiosqlite.Connection) -> None:
         "tidy_text": "TEXT",
         "tidy_level": "TEXT",
         "revision": "INTEGER NOT NULL DEFAULT 1",
+        "heat_score": "REAL",
+        "heat_tier": "TEXT",
     }
     for col, definition in columns.items():
         with suppress(Exception):
@@ -431,6 +433,7 @@ async def _ensure_core_indexes(db: aiosqlite.Connection) -> None:
     await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_engram ON document_engrams(engram_id)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_document_engrams_document ON document_engrams(document_id)")
     await db.execute("CREATE INDEX IF NOT EXISTS idx_engram_aliases_key ON engram_aliases(alias_key)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_documents_heat_tier ON documents(heat_tier)")
 
 
 async def _ensure_documents_triggers(db: aiosqlite.Connection) -> None:
@@ -483,6 +486,8 @@ def _documents_table_sql(table_name: str) -> str:
             tidy_title TEXT,
             tidy_text TEXT,
             tidy_level TEXT,
+            heat_score REAL,
+            heat_tier TEXT,
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
             updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
         )
@@ -572,6 +577,8 @@ async def _copy_documents_rows(
         "tidy_title",
         "tidy_text",
         "tidy_level",
+        "heat_score",
+        "heat_tier",
         "created_at",
         "updated_at",
     ]
@@ -638,6 +645,19 @@ async def _rebuild_edges_table(db: aiosqlite.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Migration 2 — add document heat columns
+# ---------------------------------------------------------------------------
+
+
+async def _migration_002_heat_columns(db: aiosqlite.Connection) -> None:
+    """Add heat_score and heat_tier columns to documents table."""
+    for col, definition in (("heat_score", "REAL"), ("heat_tier", "TEXT")):
+        with suppress(Exception):
+            await db.execute(f"ALTER TABLE documents ADD COLUMN {col} {definition}")  # noqa: S608
+    await db.commit()
+
+
+# ---------------------------------------------------------------------------
 # Migration registry — keep at bottom so all functions are defined
 # ---------------------------------------------------------------------------
 
@@ -645,6 +665,7 @@ async def _rebuild_edges_table(db: aiosqlite.Connection) -> None:
 def _register_migrations() -> None:
     _MIGRATIONS.clear()
     _MIGRATIONS.append((1, "baseline_schema", _migration_001_baseline))
+    _MIGRATIONS.append((2, "heat_columns", _migration_002_heat_columns))
 
 
 _register_migrations()
