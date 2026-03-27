@@ -24,7 +24,8 @@ This is **not** a PKM/note-taking tool. It is an active knowledge network with n
 2. **Triage ("The Bouncer")** — cheap LLM/embedding filter gates automated feeds to protect API budget
 3. **Ontology Engine** — capable LLM extracts entities, normalizes to canonical strings, generates embeddings, then deduplicates engrams in this order: exact canonical name, direct alias-index lookup, lexical alias overlap on KNN candidates, vector similarity, and concept-hash fallback. Targeted LLM call assigns typed predicates (contradicts, provides methodology for, etc.). For files/URLs, also generates a title revision and TL;DR summary (not a full rewrite). Scribbles get full tidy rewriting with configurable tidy levels (internal only, not exposed in UI).
 4. **Storage** — raw text stored in central `text` column; structure lives entirely in Engram nodes and edges
-5. **Visualization** — UMAP/t-SNE projection, spatial clustering, gap highlighting
+5. **Heat scoring** — after pipeline completes, `compute_all_heat()` scores every document from graph signals (temporal recency, concept co-activity, revision count, edge centrality) and classifies as `active` / `reference` / `dormant`. Stream page has filter tabs for each tier.
+6. **Visualization** — UMAP/t-SNE projection, spatial clustering, gap highlighting
 
 ### Deployment Modes
 
@@ -90,7 +91,8 @@ LLM provider and API keys can also be configured at runtime via the Settings UI 
 ## Key Design Constraints
 
 - Single `.db` file, no PostgreSQL — optional Docker for deployment
-- Flat database: no file/folder hierarchy, all structure is dynamic from graph edges
+- Flat database: no file/folder hierarchy, all structure is dynamic from graph edges and heat scoring
+- Document actionability is auto-derived from graph topology, not manual categories — `HeatTier` Literal type in `ontology/heat.py`, styles in `ui/theme.py`
 - UI is server-rendered Python (NiceGUI) — no separate frontend build or Node.js dependency
 - Entity deduplication is multi-stage: exact name, persisted alias index, KNN alias overlap, vector similarity, then concept-hash fallback
 - Edge generation uses Top-K retrieval to bound LLM API costs
