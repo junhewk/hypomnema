@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.4] - 2026-03-30
+
+### Added
+- **Serialized SQLite write transactions** — `immediate_transaction()` context manager with per-database write gate serializes concurrent writers via `BEGIN IMMEDIATE`, replacing manual `db.commit()`/`db.rollback()` across all modules
+- **Pipeline transaction safety** — LLM/embedding work runs outside transactions; DB writes batched inside `immediate_transaction` blocks
+- **Document delete cleanup** — orphan engram garbage collection now removes from all related tables (aliases, projections, embeddings, engrams)
+- **URL fetch race-condition fix** — duplicate check moved inside write transaction to prevent concurrent inserts of the same URL
+- **Transaction test suite** — covers cross-connection serialization, nested reentrant transactions, and mixed-connection rejection
+
+### Changed
+- SQLite busy timeout centralised as `SQLITE_BUSY_TIMEOUT_MS` constant (raised to 15s)
+- `_resolve_and_create_engrams` split into `_prepare_engrams` (LLM work) and `_materialize_engrams` (DB writes) for cleaner transaction boundaries
+- Edge proposal collection extracted into `_collect_edge_proposals` to gather LLM results before opening write transactions
+
 ## [0.2.3] - 2026-03-30
 
 ### Added
