@@ -20,20 +20,20 @@ def _render_text_content(doc: dict[str, object]) -> None:
     if tidy_text and len(str(tidy_text)) < SUMMARY_MAX_LENGTH:
         # Short tidy_text: show as TL;DR block above original
         with ui.element("div").classes("mb-4 pl-3").style(
-            "border-left: 2px solid rgba(126,184,218,0.3)"
+            "border-left: 2px solid color-mix(in srgb, var(--accent) 30%, transparent)"
         ):
             ui.label("TL;DR").classes("text-xs tracking-wider uppercase").style(
-                "color: rgba(107,107,107,0.6); font-size: 10px"
+                "color: rgba(99,105,120,0.6); font-size: 10px"
             )
             ui.label(str(tidy_text)).classes("mt-1 text-xs leading-relaxed").style(
-                "color: rgba(212,212,212,0.8)"
+                "color: rgba(200,204,214,0.8)"
             )
         # Show original text below
         if mime_type == "text/markdown":
             ui.markdown(raw_text).classes("text-sm")
         else:
             ui.label(raw_text).classes("text-sm leading-relaxed").style(
-                "white-space: pre-wrap; color: #d4d4d4"
+                "white-space: pre-wrap; color: var(--fg)"
             )
 
     elif tidy_text:
@@ -41,17 +41,17 @@ def _render_text_content(doc: dict[str, object]) -> None:
         ui.markdown(str(tidy_text)).classes("text-sm leading-relaxed")
 
         with ui.expansion("Original text").classes("mt-6 pt-4").style(
-            "border-top: 1px solid rgba(30,30,30,0.5)"
+            "border-top: 1px solid var(--border)"
         ).props('dense header-class="text-xs uppercase tracking-wider"').style(
-            "color: rgba(107,107,107,0.6)"
+            "color: rgba(99,105,120,0.6)"
         ):
             if mime_type == "text/markdown":
                 ui.markdown(raw_text).classes("text-xs mt-3").style(
-                    "color: rgba(107,107,107,0.6)"
+                    "color: rgba(99,105,120,0.6)"
                 )
             else:
                 ui.label(raw_text).classes("text-xs leading-relaxed mt-3").style(
-                    "white-space: pre-wrap; color: rgba(107,107,107,0.6)"
+                    "white-space: pre-wrap; color: rgba(99,105,120,0.6)"
                 )
 
     else:
@@ -60,7 +60,7 @@ def _render_text_content(doc: dict[str, object]) -> None:
             ui.markdown(raw_text).classes("text-sm")
         else:
             ui.label(raw_text).classes("text-sm leading-relaxed").style(
-                "white-space: pre-wrap; color: #d4d4d4"
+                "white-space: pre-wrap; color: var(--fg)"
             )
 
 
@@ -70,13 +70,13 @@ def _render_annotation(doc: dict[str, object]) -> None:
     if not annotation:
         return
     with ui.element("div").classes("mt-4 pl-3").style(
-        "border-left: 2px solid rgba(126,184,218,0.3)"
+        "border-left: 2px solid color-mix(in srgb, var(--accent) 30%, transparent)"
     ):
         ui.label("Your notes").classes("text-xs tracking-wider uppercase").style(
-            "color: rgba(107,107,107,0.6); font-size: 10px"
+            "color: rgba(99,105,120,0.6); font-size: 10px"
         )
         ui.label(str(annotation)).classes("mt-1 text-sm leading-relaxed").style(
-            "white-space: pre-wrap; color: rgba(212,212,212,0.8)"
+            "white-space: pre-wrap; color: rgba(200,204,214,0.8)"
         )
 
 
@@ -91,9 +91,9 @@ def _render_engrams(engrams: list[dict[str, object]], doc_id: str) -> None:
             engram_id = str(engram["id"])
             name = str(engram["canonical_name"])
             ui.link(name, f"/engrams/{engram_id}").classes(
-                "source-badge no-underline cursor-pointer"
+                "source-badge engram-link no-underline cursor-pointer"
             ).style(
-                "color: #7eb8da; background: rgba(126,184,218,0.08); "
+                "color: var(--accent); background: var(--accent-soft); "
                 "text-decoration: none; font-size: 11px"
             )
 
@@ -110,14 +110,17 @@ def _render_related_docs(related: list[dict[str, object]]) -> None:
         with ui.element("a").classes(
             "block px-3 py-2 rounded no-underline cursor-pointer mb-1"
         ).style(
-            "color: #d4d4d4; transition: background 0.15s"
+            "color: var(--fg); transition: background 0.15s"
         ).on(
-            "mouseenter", lambda e: e.sender.style("background: rgba(255,255,255,0.03)")
+            "mouseenter",
+            lambda e: e.sender.style("background: var(--accent-soft)"),
         ).on(
             "mouseleave", lambda e: e.sender.style("background: transparent")
         ):
-            ui.label(rdoc_title).classes("text-xs truncate")
-            ui.element("a").props(f'href="/documents/{rdoc_id}"').classes("absolute inset-0")
+            ui.label(rdoc_title).classes("text-xs truncate font-display")
+            ui.element("a").props(f'href="/documents/{rdoc_id}"').classes(
+                "absolute inset-0"
+            )
 
 
 async def _save_document_edit(
@@ -146,7 +149,11 @@ async def _save_document_edit(
         return
 
     updated = await snapshot_and_update_document(
-        db, Document.from_row(row), text=text, title=title, annotation=annotation,
+        db,
+        Document.from_row(row),
+        text=text,
+        title=title,
+        annotation=annotation,
     )
     queue = getattr(app.state, "ontology_queue", None)
     if queue:
@@ -179,7 +186,9 @@ async def document_detail_page(doc_id: str) -> None:
         await cursor.close()
 
         if row is None:
-            ui.label("Document not found.").classes("text-sm").style("color: #ef5350")
+            ui.label("Document not found.").classes("text-sm").style(
+                "color: #e06c75"
+            )
             return
 
         doc = dict(row)
@@ -223,22 +232,22 @@ async def document_detail_page(doc_id: str) -> None:
 
                 if doc.get("processed"):
                     ui.icon("check_circle").classes("text-xs").style(
-                        "color: #4caf50; font-size: 12px"
+                        "color: #56c9a0; font-size: 12px"
                     )
                 else:
-                    ui.icon("pending").classes("text-xs animate-pulse-dot").style(
-                        "color: #ff9800; font-size: 12px"
-                    )
+                    ui.icon("pending").classes(
+                        "text-xs animate-pulse-dot"
+                    ).style("color: #d4b06a; font-size: 12px")
 
                 if doc.get("mime_type"):
                     ui.label(str(doc["mime_type"])).classes("text-muted text-xs")
 
             # Title
-            ui.label(str(title)).classes("text-lg font-medium mb-1")
+            ui.label(str(title)).classes("text-display-lg mb-1")
 
             # Timestamp
             ui.label(time_ago(created_at)).classes("text-xs mb-4").style(
-                "color: rgba(107,107,107,0.6); font-size: 10px"
+                "color: rgba(99,105,120,0.6); font-size: 10px"
             )
 
             # Content area — swapped between read/edit mode
@@ -257,8 +266,12 @@ async def document_detail_page(doc_id: str) -> None:
                     if is_scribble:
                         title_input = ui.input(
                             label="Title",
-                            value=str(doc.get("title") or doc.get("tidy_title") or ""),
-                        ).classes("w-full mb-3").props('outlined dense dark color="grey-7"')
+                            value=str(
+                                doc.get("title") or doc.get("tidy_title") or ""
+                            ),
+                        ).classes("w-full mb-3").props(
+                            'outlined dense dark color="grey-7"'
+                        )
 
                         text_input = (
                             ui.textarea(
@@ -271,23 +284,30 @@ async def document_detail_page(doc_id: str) -> None:
 
                         with ui.row().classes("mt-3 gap-2"):
                             ui.button(
-                                "Save", icon="save",
+                                "Save",
+                                icon="save",
                                 on_click=lambda: _save_document_edit(
-                                    doc_id, doc,
+                                    doc_id,
+                                    doc,
                                     text=text_input.value,
                                     title=title_input.value,
                                 ),
-                            ).props('flat dense color="green-7" no-caps').classes("text-xs")
+                            ).props(
+                                'flat dense color="green-7" no-caps'
+                            ).classes("text-xs")
                             ui.button(
-                                "Cancel", icon="close",
+                                "Cancel",
+                                icon="close",
                                 on_click=_exit_edit,
-                            ).props('flat dense color="grey-7" no-caps').classes("text-xs")
+                            ).props(
+                                'flat dense color="grey-7" no-caps'
+                            ).classes("text-xs")
                     else:
                         _render_text_content(doc)
                         ui.separator().classes("my-4")
                         ui.label("Your notes").classes(
-                            "text-xs tracking-wider uppercase mb-2"
-                        ).style("color: #6b6b6b")
+                            "section-label mb-2"
+                        )
 
                         annotation_input = (
                             ui.textarea(
@@ -300,16 +320,23 @@ async def document_detail_page(doc_id: str) -> None:
 
                         with ui.row().classes("mt-3 gap-2"):
                             ui.button(
-                                "Save", icon="save",
+                                "Save",
+                                icon="save",
                                 on_click=lambda: _save_document_edit(
-                                    doc_id, doc,
+                                    doc_id,
+                                    doc,
                                     annotation=annotation_input.value,
                                 ),
-                            ).props('flat dense color="green-7" no-caps').classes("text-xs")
+                            ).props(
+                                'flat dense color="green-7" no-caps'
+                            ).classes("text-xs")
                             ui.button(
-                                "Cancel", icon="close",
+                                "Cancel",
+                                icon="close",
                                 on_click=_exit_edit,
-                            ).props('flat dense color="grey-7" no-caps').classes("text-xs")
+                            ).props(
+                                'flat dense color="grey-7" no-caps'
+                            ).classes("text-xs")
 
             def _enter_edit() -> None:
                 _render_edit_mode()
@@ -324,21 +351,17 @@ async def document_detail_page(doc_id: str) -> None:
 
             # Engrams section
             with ui.element("div").classes("pt-6").style(
-                "border-top: 1px solid #1e1e1e"
+                "border-top: 1px solid var(--border)"
             ):
-                ui.label("Engrams").classes(
-                    "text-xs tracking-wider uppercase mb-3"
-                ).style("color: #6b6b6b")
+                ui.label("Engrams").classes("section-label mb-3")
                 _render_engrams(engrams, doc_id)
 
             # Related documents section
             if related:
                 with ui.element("div").classes("pt-6 mt-6").style(
-                    "border-top: 1px solid #1e1e1e"
+                    "border-top: 1px solid var(--border)"
                 ):
-                    ui.label("Related Documents").classes(
-                        "text-xs tracking-wider uppercase mb-3"
-                    ).style("color: #6b6b6b")
+                    ui.label("Related Documents").classes("section-label mb-3")
                     _render_related_docs(related)
 
             # Edit button — dynamic label by source type
@@ -350,6 +373,7 @@ async def document_detail_page(doc_id: str) -> None:
                 edit_label, edit_icon = "Annotate", "note_add"
 
             edit_btn = ui.button(
-                edit_label, icon=edit_icon,
+                edit_label,
+                icon=edit_icon,
                 on_click=_enter_edit,
             ).props('flat dense color="grey-7"').classes("mt-6 text-xs")

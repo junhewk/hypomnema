@@ -36,6 +36,7 @@ Hypomnema extracts concepts from your research material, deduplicates them, link
 - **Full-text + semantic search** — FTS5 for keyword search (including annotations), sqlite-vec for vector similarity
 - **Multi-provider** — Claude, Gemini, OpenAI, Ollama for LLM; OpenAI or Google for embeddings. Hot-swappable at runtime.
 - **Single-file database** — everything in one portable SQLite file. No Postgres, no external services.
+- **Themeable UI** — switchable colour themes (Midnight, Graphite, Phantom) with serif/sans typography via Cormorant Garamond + DM Sans
 - **Encrypted at rest** — API keys stored with Fernet encryption
 - **Desktop app** — native window via pywebview, built with PyInstaller for macOS/Windows/Linux
 

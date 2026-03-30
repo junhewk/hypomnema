@@ -19,6 +19,7 @@ _DB_OVERRIDABLE = {
     "embedding_model",
     "embedding_dim",
     "tidy_level",
+    "ui_theme",
 }
 
 
@@ -67,6 +68,9 @@ class Settings(BaseSettings):
 
     # Static file serving (desktop mode)
     static_dir: Path | None = None
+
+    # UI
+    ui_theme: str = "midnight"
 
     # Logging
     json_logs: bool = False

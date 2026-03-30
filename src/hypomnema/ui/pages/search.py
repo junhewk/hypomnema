@@ -41,34 +41,37 @@ def _render_doc_result(scored: ScoredDocument) -> None:
 
 def _render_engram_card(row: dict[str, Any]) -> None:
     """Render a single engram result card."""
-    with ui.card().classes("w-full mb-3 animate-fade-up").style(
-        "border-left: 2px solid #7eb8da"
-    ):
-        ui.label(str(row["canonical_name"])).classes("text-sm font-medium mb-1")
+    engram_id = str(row.get("id", ""))
+    with ui.card().classes("w-full mb-3 animate-fade-up doc-card cursor-pointer").style(
+        "border-left: 2px solid var(--accent)"
+    ).on("click", lambda _eid=engram_id: ui.navigate.to(f"/engrams/{_eid}")):
+        ui.label(str(row["canonical_name"])).classes("text-display-sm mb-1")
         if row.get("description"):
-            ui.label(str(row["description"])[:200]).classes("text-xs leading-relaxed").style(
-                "color: #6b6b6b"
+            ui.label(str(row["description"])[:200]).classes(
+                "text-xs leading-relaxed text-muted"
             )
 
 
 def _render_edge_card(row: dict[str, Any]) -> None:
     """Render a single edge result card."""
     confidence = row.get("confidence", 0.0)
-    conf_color = "#4caf50" if confidence >= 0.7 else "#ff9800" if confidence >= 0.4 else "#ef5350"
+    conf_color = (
+        "#56c9a0" if confidence >= 0.7 else "#d4b06a" if confidence >= 0.4 else "#e06c75"
+    )
 
     with ui.card().classes("w-full mb-2 animate-fade-up").style(
-        "border-left: 2px solid #4a4a4a"
+        "border-left: 2px solid var(--fg-dim)"
     ):
         with ui.row().classes("items-center gap-2 flex-wrap"):
-            ui.label(str(row.get("source_name", "?"))).classes("text-xs font-medium").style(
-                "color: #d4d4d4"
-            )
+            ui.label(str(row.get("source_name", "?"))).classes(
+                "text-xs font-medium"
+            ).style("color: var(--fg)")
             ui.label(str(row.get("predicate", ""))).classes("source-badge").style(
-                "color: #7eb8da; background: rgba(126,184,218,0.1)"
+                "color: var(--accent); background: var(--accent-soft)"
             )
-            ui.label(str(row.get("target_name", "?"))).classes("text-xs font-medium").style(
-                "color: #d4d4d4"
-            )
+            ui.label(str(row.get("target_name", "?"))).classes(
+                "text-xs font-medium"
+            ).style("color: var(--fg)")
         with ui.row().classes("items-center gap-2 mt-1"):
             ui.label(f"confidence: {confidence:.2f}").classes("text-xs").style(
                 f"color: {conf_color}"
@@ -87,7 +90,7 @@ async def search_page() -> None:
     current_mode: dict[str, str] = {"value": "Documents"}
 
     with page_layout("Search"):
-        ui.label("Search").classes("text-lg font-medium mb-4")
+        ui.label("Search").classes("text-display-lg mb-4")
 
         # Search input
         search_input = ui.input(
@@ -120,7 +123,9 @@ async def search_page() -> None:
 
             if db is None:
                 with results_container:
-                    ui.label("Database not ready.").classes("text-muted text-xs py-4")
+                    ui.label("Database not ready.").classes(
+                        "text-muted text-xs py-4"
+                    )
                 return
 
             if mode == "Documents":
@@ -150,7 +155,9 @@ async def search_page() -> None:
                         db, query, embeddings, limit=20
                     )
                 except Exception:
-                    logger.debug("Semantic search unavailable, falling back to keyword-only")
+                    logger.debug(
+                        "Semantic search unavailable, falling back to keyword-only"
+                    )
 
             if keyword_results and semantic_results:
                 merged = _reciprocal_rank_fusion(keyword_results, semantic_results)
@@ -223,16 +230,12 @@ async def search_page() -> None:
                     )
                 else:
                     if engram_rows:
-                        ui.label("Engrams").classes(
-                            "text-xs tracking-wider uppercase mb-2"
-                        ).style("color: #7eb8da; letter-spacing: 0.1em")
+                        ui.label("Engrams").classes("section-label mb-2")
                         for row in engram_rows:
                             _render_engram_card(row)
 
                     if edge_rows:
-                        ui.label("Edges").classes(
-                            "text-xs tracking-wider uppercase mb-2 mt-4"
-                        ).style("color: #7eb8da; letter-spacing: 0.1em")
+                        ui.label("Edges").classes("section-label mb-2 mt-4")
                         for row in edge_rows:
                             _render_edge_card(row)
 
@@ -240,7 +243,9 @@ async def search_page() -> None:
             edge_count = len(edge_rows)
             parts = []
             if engram_count:
-                parts.append(f"{engram_count} engram{'s' if engram_count != 1 else ''}")
+                parts.append(
+                    f"{engram_count} engram{'s' if engram_count != 1 else ''}"
+                )
             if edge_count:
                 parts.append(f"{edge_count} edge{'s' if edge_count != 1 else ''}")
             status.set_text(", ".join(parts) if parts else "")

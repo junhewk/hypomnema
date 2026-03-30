@@ -46,14 +46,87 @@ async def settings_page() -> None:
     )
 
     with page_layout("Settings"):
-        ui.label("Settings").classes("text-lg font-medium mb-6")
+        ui.label("Settings").classes("text-display-lg mb-6")
+
+        # ── Theme Section ───────────────────────────────────────
+        ui.label("Theme").classes("section-label mb-3")
+
+        with ui.card().classes("w-full mb-6"):
+            from hypomnema.ui.theme import DEFAULT_THEME, THEMES, get_theme_names
+
+            current_theme = (
+                masked_settings.get("ui_theme")
+                or (settings.ui_theme if settings else DEFAULT_THEME)
+            )
+            theme_options = get_theme_names()
+
+            with ui.row().classes("gap-3 w-full flex-wrap"):
+                for tid, theme_def in THEMES.items():
+                    accent = theme_def["css_vars"]["accent"]
+                    bg_surface = theme_def["css_vars"]["bg-surface"]
+                    fg = theme_def["css_vars"]["fg"]
+                    border_col = theme_def["css_vars"]["border-light"]
+                    is_active = tid == current_theme
+
+                    with ui.element("div").classes(
+                        "rounded cursor-pointer px-4 py-3"
+                    ).style(
+                        f"background: {bg_surface}; "
+                        f"border: 2px solid {accent if is_active else border_col}; "
+                        f"min-width: 120px; transition: border-color 0.2s"
+                    ).on(
+                        "click",
+                        lambda _, t=tid: asyncio.ensure_future(_apply_theme(t)),
+                    ):
+                        # Theme name
+                        ui.label(theme_def["label"]).classes(
+                            "text-xs font-medium mb-2"
+                        ).style(f"color: {fg}")
+                        # Colour swatch row
+                        with ui.row().classes("gap-1"):
+                            for swatch in [
+                                bg_surface,
+                                accent,
+                                fg,
+                                theme_def["css_vars"]["fg-muted"],
+                            ]:
+                                ui.element("div").style(
+                                    f"width: 14px; height: 14px; border-radius: 3px; "
+                                    f"background: {swatch}; "
+                                    f"border: 1px solid {border_col}"
+                                )
+                        if is_active:
+                            ui.label("active").classes("text-2xs mt-1").style(
+                                f"color: {accent}; font-size: 9px"
+                            )
+            async def _apply_theme(theme_name: str) -> None:
+                """Save theme preference and reload."""
+                if db is None or fernet_key is None:
+                    ui.notify("Database not ready", type="negative")
+                    return
+                from hypomnema.config import Settings
+                from hypomnema.db.settings_store import get_all_settings, set_setting
+
+                await set_setting(
+                    db,
+                    "ui_theme",
+                    theme_name,
+                    fernet_key=fernet_key,
+                    encrypt_value=False,
+                )
+                # Reload settings into app.state
+                db_settings = await get_all_settings(db, fernet_key=fernet_key)
+                new_settings = Settings.with_db_overrides(
+                    app.state.settings, db_settings
+                )
+                app.state.settings = new_settings
+                ui.notify(f"Theme: {theme_options[theme_name]}", type="positive")
+                ui.navigate.to("/settings")
 
         # ── LLM Provider Section ────────────────────────────────
-        ui.label("LLM Provider").classes(
-            "text-xs tracking-wider uppercase mb-3"
-        ).style("color: #7eb8da; letter-spacing: 0.1em")
+        ui.label("LLM Provider").classes("section-label mb-3")
 
-        with ui.card().classes("w-full mb-6").style("background: #111"):
+        with ui.card().classes("w-full mb-6").style("background: var(--bg-surface)"):
             # Provider selector
             provider_select = ui.select(
                 options=LLM_PROVIDERS,
@@ -105,7 +178,7 @@ async def settings_page() -> None:
             openai_url_input.set_visibility(current_provider == "openai")
 
             # Status line
-            llm_status = ui.label("").classes("text-xs mb-3").style("color: #6b6b6b")
+            llm_status = ui.label("").classes("text-xs mb-3").style("color: #636978")
 
             def _on_provider_change(e: object) -> None:
                 """Update model options when provider changes."""
@@ -134,7 +207,7 @@ async def settings_page() -> None:
                     """Test the selected LLM provider connection."""
                     provider = provider_select.value
 
-                    llm_status.style("color: #6b6b6b")
+                    llm_status.style("color: #636978")
                     llm_status.set_text("Testing connection...")
 
                     model = (
@@ -176,12 +249,12 @@ async def settings_page() -> None:
                             "Reply with exactly wired.",
                             system="You are a connectivity probe. Reply with exactly wired.",
                         )
-                        llm_status.style("color: #4caf50")
+                        llm_status.style("color: #56c9a0")
                         llm_status.set_text(
                             f"Connected: {model or DEFAULT_LLM_MODELS.get(provider, provider)} is reachable."
                         )
                     except Exception as exc:
-                        llm_status.style("color: #ef5350")
+                        llm_status.style("color: #e06c75")
                         llm_status.set_text(f"Connection failed: {exc}")
 
                 ui.button(
@@ -259,7 +332,7 @@ async def settings_page() -> None:
                         app.state.llm = new_llm
 
                     ui.notify("LLM settings saved", type="positive")
-                    llm_status.style("color: #4caf50")
+                    llm_status.style("color: #56c9a0")
                     llm_status.set_text(f"Saved: {provider} / {model}")
 
                 ui.button(
@@ -268,11 +341,9 @@ async def settings_page() -> None:
                 ).props('flat dense color="grey-5"').classes("text-xs")
 
         # ── Embedding Provider Section ──────────────────────────
-        ui.label("Embedding Provider").classes(
-            "text-xs tracking-wider uppercase mb-3"
-        ).style("color: #7eb8da; letter-spacing: 0.1em")
+        ui.label("Embedding Provider").classes("section-label mb-3")
 
-        with ui.card().classes("w-full mb-6").style("background: #111"):
+        with ui.card().classes("w-full mb-6").style("background: var(--bg-surface)"):
             emb_provider = masked_settings.get(
                 "embedding_provider",
                 settings.embedding_provider if settings else "google",
@@ -287,13 +358,13 @@ async def settings_page() -> None:
             )
 
             with ui.row().classes("items-center gap-4 mb-2"):
-                ui.label("Provider:").classes("text-xs").style("color: #6b6b6b")
+                ui.label("Provider:").classes("text-xs").style("color: #636978")
                 ui.label(emb_provider).classes("text-xs font-medium")
             with ui.row().classes("items-center gap-4 mb-2"):
-                ui.label("Model:").classes("text-xs").style("color: #6b6b6b")
+                ui.label("Model:").classes("text-xs").style("color: #636978")
                 ui.label(emb_model).classes("text-xs font-medium")
             with ui.row().classes("items-center gap-4 mb-2"):
-                ui.label("Dimension:").classes("text-xs").style("color: #6b6b6b")
+                ui.label("Dimension:").classes("text-xs").style("color: #636978")
                 ui.label(str(emb_dim)).classes("text-xs font-medium")
 
             # Embedding change status with auto-refresh
@@ -307,18 +378,18 @@ async def settings_page() -> None:
                         ui.spinner(size="sm").props('color="grey-5"')
                         ui.label(
                             f"Rebuilding... {status.processed}/{status.total}"
-                        ).classes("text-xs").style("color: #ff9800")
+                        ).classes("text-xs").style("color: #d4b06a")
                 elif status and status.status == "failed":
                     with emb_status_container:
                         ui.label(
                             f"Rebuild failed: {status.error or 'unknown'}"
-                        ).classes("text-xs").style("color: #ef5350")
+                        ).classes("text-xs").style("color: #e06c75")
                     emb_poll_timer.deactivate()
                 elif status and status.status == "complete" and status.total > 0:
                     with emb_status_container:
                         ui.label(
                             f"Rebuild complete ({status.processed} documents)"
-                        ).classes("text-xs").style("color: #4caf50")
+                        ).classes("text-xs").style("color: #56c9a0")
                     emb_poll_timer.deactivate()
                 else:
                     emb_poll_timer.deactivate()
@@ -339,7 +410,7 @@ async def settings_page() -> None:
                         "This will delete all engrams, edges, and projections, "
                         "then reprocess every document through the ontology pipeline. "
                         "This can take a long time."
-                    ).classes("text-xs mb-4").style("color: #ff9800")
+                    ).classes("text-xs mb-4").style("color: #d4b06a")
 
                     from hypomnema.embeddings.factory import EMBEDDING_DEFAULTS
 
@@ -462,9 +533,7 @@ async def settings_page() -> None:
             ).props('flat dense color="orange"').classes("text-xs mt-2")
 
         # ── Feeds Section ───────────────────────────────────────
-        ui.label("Feeds").classes(
-            "text-xs tracking-wider uppercase mb-3"
-        ).style("color: #7eb8da; letter-spacing: 0.1em")
+        ui.label("Feeds").classes("section-label mb-3")
 
         feeds_container = ui.column().classes("w-full gap-0 mb-4")
 
@@ -500,20 +569,20 @@ async def settings_page() -> None:
             is_active = bool(feed.get("active", 1))
 
             with ui.card().classes("w-full mb-2").style(
-                f"background: #111; border-left: 2px solid {'#4caf50' if is_active else '#ef5350'}"
+                f"background: var(--bg-surface); border-left: 2px solid {'#56c9a0' if is_active else '#e06c75'}"
             ), ui.row().classes("items-center justify-between w-full"):
                 with ui.column().classes("gap-0"):
                     ui.label(str(feed["name"])).classes("text-xs font-medium")
                     with ui.row().classes("items-center gap-2"):
                         ui.label(str(feed["feed_type"])).classes("source-badge").style(
-                            "color: #8fb87e; background: rgba(143,184,126,0.08)"
+                            "color: #56c9a0; background: rgba(86,201,160,0.07)"
                         )
                         ui.label(str(feed["url"])).classes("text-xs").style(
-                            "color: #6b6b6b; max-width: 300px; overflow: hidden; "
+                            "color: #636978; max-width: 300px; overflow: hidden; "
                             "text-overflow: ellipsis; white-space: nowrap"
                         )
                     ui.label(f"schedule: {feed['schedule']}").classes("text-xs").style(
-                        "color: #4a4a4a"
+                        "color: #3d4252"
                     )
 
                 with ui.row().classes("items-center gap-2"):
@@ -549,11 +618,9 @@ async def settings_page() -> None:
         await _render_feeds()
 
         # Add Feed form
-        ui.label("Add Feed").classes(
-            "text-xs tracking-wider uppercase mb-3 mt-4"
-        ).style("color: #7eb8da; letter-spacing: 0.1em")
+        ui.label("Add Feed").classes("section-label mb-3 mt-4")
 
-        with ui.card().classes("w-full mb-6").style("background: #111"):
+        with ui.card().classes("w-full mb-6").style("background: var(--bg-surface)"):
             feed_name_input = ui.input(
                 label="Name",
                 placeholder="My RSS Feed",

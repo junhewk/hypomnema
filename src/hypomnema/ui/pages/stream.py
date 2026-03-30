@@ -45,10 +45,15 @@ async def stream_page() -> None:
         with (
             ui.card()
             .classes("w-full mb-6")
-            .style("background: #111; transition: border-color 0.2s; border: 1px dashed transparent") as input_card
+            .style(
+                "background: var(--bg-surface); transition: border-color 0.2s; "
+                "border: 1px dashed var(--border)"
+            ) as input_card
         ):
             text_input = (
-                ui.textarea(placeholder="Drop a thought, paste a URL, or drag a file...")
+                ui.textarea(
+                    placeholder="Drop a thought, paste a URL, or drag a file..."
+                )
                 .classes("w-full")
                 .props('autogrow outlined dense dark color="grey-7"')
             )
@@ -68,12 +73,16 @@ async def stream_page() -> None:
                     "Upload",
                     icon="attach_file",
                     on_click=lambda: upload.run_method("pickFiles"),
-                ).props('flat dense size="sm" color="grey-6" no-caps').classes("text-xs")
+                ).props('flat dense size="sm" color="grey-6" no-caps').classes(
+                    "text-xs"
+                )
                 ui.button(
                     "Submit",
                     icon="send",
                     on_click=lambda: _submit_scribble(text_input),
-                ).props('flat dense size="sm" color="grey-6" no-caps').classes("text-xs")
+                ).props('flat dense size="sm" color="grey-6" no-caps').classes(
+                    "text-xs"
+                )
 
         # Wire dropzone on the card via JS (targets this specific card by NiceGUI element id)
         card_id = f"c{input_card.id}"
@@ -87,14 +96,14 @@ async def stream_page() -> None:
             var inp = upEl.querySelector('input[type=file]');
             card.addEventListener('dragover', function(e) {{
                 e.preventDefault();
-                card.style.borderColor = '#7eb8da';
+                card.style.borderColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
             }});
             card.addEventListener('dragleave', function(e) {{
-                card.style.borderColor = 'transparent';
+                card.style.borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
             }});
             card.addEventListener('drop', function(e) {{
                 e.preventDefault();
-                card.style.borderColor = 'transparent';
+                card.style.borderColor = getComputedStyle(document.documentElement).getPropertyValue('--border').trim();
                 if (!e.dataTransfer || !e.dataTransfer.files.length || !inp) return;
                 var dt = new DataTransfer();
                 for (var i = 0; i < e.dataTransfer.files.length; i++) dt.items.add(e.dataTransfer.files[i]);
@@ -109,13 +118,15 @@ async def stream_page() -> None:
         active_filter: dict[str, str | None] = {"value": None}
 
         _heat_tab_colors: dict[str | None, str] = {
-            None: "#a0a0a0",
+            None: "#9498a5",
             **{tier: s["color"] for tier, s in HEAT_TIER_STYLES.items()},
         }
 
         with ui.row().classes("w-full mb-4 gap-1"):
             tab_buttons: dict[str | None, ui.button] = {}
-            for label, tier in [("All", None)] + [(s["label"], t) for t, s in HEAT_TIER_STYLES.items()]:
+            for label, tier in [("All", None)] + [
+                (s["label"], t) for t, s in HEAT_TIER_STYLES.items()
+            ]:
                 color = _heat_tab_colors[tier]
                 btn = (
                     ui.button(
@@ -151,11 +162,15 @@ async def stream_page() -> None:
             with doc_container:
                 if not docs:
                     tier_label = active_filter["value"] or "any"
-                    ui.label(f"No {tier_label} documents yet.").classes("text-muted text-xs text-center py-8")
+                    ui.label(f"No {tier_label} documents yet.").classes(
+                        "text-muted text-xs text-center py-8"
+                    )
                 else:
                     for doc in docs:
                         render_document_card(doc)
-                    ui.label(f"{len(docs)} documents").classes("text-muted text-xs text-center mt-4")
+                    ui.label(f"{len(docs)} documents").classes(
+                        "text-muted text-xs text-center mt-4"
+                    ).style("font-size: 10px")
 
         async def _set_filter(tier: str | None) -> None:
             active_filter["value"] = tier

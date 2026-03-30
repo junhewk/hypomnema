@@ -36,7 +36,7 @@ def render_document_card(
 
     with (
         ui.card()
-        .classes("w-full mb-3 animate-fade-up cursor-pointer")
+        .classes("w-full mb-3 animate-fade-up doc-card cursor-pointer")
         .style(f"border-left: 2px solid {style['color']}")
         .on("click", lambda _d=doc_id: ui.navigate.to(f"/documents/{_d}"))
     ):
@@ -46,18 +46,22 @@ def render_document_card(
             )
             if show_score and score is not None and match_type is not None:
                 match_color = {
-                    "hybrid": "#7eb8da",
-                    "semantic": "#b87eb8",
-                    "keyword": "#b8a07e",
-                }.get(match_type, "#6b6b6b")
+                    "hybrid": "#5e9eff",
+                    "semantic": "#9b8afb",
+                    "keyword": "#3ecfcf",
+                }.get(match_type, "#636978")
                 ui.label(f"{match_type} {score:.3f}").classes("source-badge").style(
-                    f"color: {match_color}; background: rgba(255,255,255,0.04)"
+                    f"color: {match_color}; background: rgba(255,255,255,0.03)"
                 )
             else:
                 if doc.get("processed"):
-                    ui.icon("check_circle").classes("text-xs").style("color: #4caf50; font-size: 12px")
+                    ui.icon("check_circle").classes("text-xs").style(
+                        "color: #56c9a0; font-size: 12px"
+                    )
                 else:
-                    ui.icon("pending").classes("text-xs animate-pulse-dot").style("color: #ff9800; font-size: 12px")
+                    ui.icon("pending").classes(
+                        "text-xs animate-pulse-dot"
+                    ).style("color: #d4b06a; font-size: 12px")
                 if doc.get("mime_type"):
                     ui.label(str(doc["mime_type"])).classes("text-muted text-xs")
 
@@ -66,15 +70,18 @@ def render_document_card(
                 _heat_style = HEAT_TIER_STYLES.get(str(heat_tier))
                 if _heat_style:
                     ui.icon(_heat_style["icon"]).classes("text-xs").style(
-                        f"color: {_heat_style['color']}; font-size: 11px; margin-left: auto"
+                        f"color: {_heat_style['color']}; font-size: 11px; "
+                        "margin-left: auto"
                     ).tooltip(_heat_style["label"])
 
-        ui.label(str(title)).classes("text-sm font-medium mb-1")
+        ui.label(str(title)).classes("text-display-sm mb-1")
 
         if preview_text:
-            ui.label(preview_text).classes("text-xs leading-relaxed").style(
-                "color: #6b6b6b; display: -webkit-box; -webkit-line-clamp: 3; "
+            ui.label(preview_text).classes("text-xs leading-relaxed text-muted").style(
+                "display: -webkit-box; -webkit-line-clamp: 3; "
                 "-webkit-box-orient: vertical; overflow: hidden"
             )
 
-        ui.label(time_ago(created_at)).classes("text-muted text-xs mt-2")
+        ui.label(time_ago(created_at)).classes("text-muted text-xs mt-2").style(
+            "font-size: 10px"
+        )

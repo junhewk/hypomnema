@@ -58,11 +58,11 @@ async def setup_page() -> None:
 
     with page_layout("Setup"):
         ui.label("hypomnema").classes(
-            "text-lg font-bold tracking-wider uppercase text-center w-full mb-1"
-        ).style("color: #d4d4d4; letter-spacing: 0.15em")
+            "text-display-lg tracking-wider uppercase text-center w-full mb-1"
+        ).style("letter-spacing: 0.15em")
         ui.label("first-run setup").classes(
             "text-xs text-center w-full mb-6"
-        ).style("color: #4a4a4a; letter-spacing: 0.1em")
+        ).style("color: #3d4252; letter-spacing: 0.1em")
 
         with ui.stepper().props('dark vertical header-nav').classes("w-full") as stepper:
 
@@ -71,7 +71,7 @@ async def setup_page() -> None:
                 ui.label(
                     "Choose how document and engram embeddings are computed. "
                     "An API key is required."
-                ).classes("text-xs mb-4").style("color: #6b6b6b")
+                ).classes("text-xs mb-4").style("color: #636978")
 
                 emb_provider_radio = ui.radio(
                     options=_EMBEDDING_PROVIDERS,
@@ -87,7 +87,7 @@ async def setup_page() -> None:
                 ).props('outlined dense dark color="grey-7"').classes("w-full mb-3")
                 emb_key_input.set_visibility(True)
 
-                emb_status = ui.label("").classes("text-xs mb-3").style("color: #6b6b6b")
+                emb_status = ui.label("").classes("text-xs mb-3").style("color: #636978")
 
                 def _on_emb_provider_change(e: object) -> None:
                     provider = emb_provider_radio.value
@@ -103,12 +103,12 @@ async def setup_page() -> None:
 
                     api_key = emb_key_input.value or ""
                     if not api_key:
-                        emb_status.style("color: #ef5350")
+                        emb_status.style("color: #e06c75")
                         emb_status.set_text("API key is required for cloud providers.")
                         return
 
                     wizard_state["emb_api_key"] = api_key
-                    emb_status.style("color: #6b6b6b")
+                    emb_status.style("color: #636978")
                     emb_status.set_text("Validating...")
 
                     try:
@@ -126,7 +126,7 @@ async def setup_page() -> None:
 
                             emb_model = GoogleEmbeddingModel(api_key=api_key, model=default_model)
                         else:
-                            emb_status.style("color: #ef5350")
+                            emb_status.style("color: #e06c75")
                             emb_status.set_text(f"Unknown provider: {provider}")
                             return
 
@@ -134,11 +134,11 @@ async def setup_page() -> None:
                         await asyncio.to_thread(emb_model.embed, ["wired"])
 
                         wizard_state["emb_validated"] = True
-                        emb_status.style("color: #4caf50")
+                        emb_status.style("color: #56c9a0")
                         emb_status.set_text(f"{default_model} is reachable.")
                     except Exception as exc:
                         wizard_state["emb_validated"] = False
-                        emb_status.style("color: #ef5350")
+                        emb_status.style("color: #e06c75")
                         emb_status.set_text(f"Validation failed: {exc}")
 
                 ui.button(
@@ -149,7 +149,7 @@ async def setup_page() -> None:
                 with ui.stepper_navigation():
                     async def _next_step_1() -> None:
                         if not wizard_state["emb_validated"]:
-                            emb_status.style("color: #ef5350")
+                            emb_status.style("color: #e06c75")
                             emb_status.set_text(
                                 "Please validate your embedding provider before continuing."
                             )
@@ -157,7 +157,7 @@ async def setup_page() -> None:
 
                         wizard_state["emb_api_key"] = emb_key_input.value or ""
                         if not wizard_state["emb_api_key"]:
-                            emb_status.style("color: #ef5350")
+                            emb_status.style("color: #e06c75")
                             emb_status.set_text("API key is required.")
                             return
 
@@ -172,7 +172,7 @@ async def setup_page() -> None:
                 ui.label(
                     "Choose the LLM that powers ontology extraction, "
                     "entity normalization, and edge generation."
-                ).classes("text-xs mb-4").style("color: #6b6b6b")
+                ).classes("text-xs mb-4").style("color: #636978")
 
                 llm_provider_select = ui.select(
                     options=LLM_PROVIDERS,
@@ -212,7 +212,7 @@ async def setup_page() -> None:
                 ).props('outlined dense dark color="grey-7"').classes("w-full mb-3")
                 llm_openai_url.set_visibility(False)
 
-                llm_status = ui.label("").classes("text-xs mb-3").style("color: #6b6b6b")
+                llm_status = ui.label("").classes("text-xs mb-3").style("color: #636978")
 
                 def _on_llm_provider_change(e: object) -> None:
                     provider = llm_provider_select.value
@@ -253,11 +253,11 @@ async def setup_page() -> None:
                     api_key = llm_key_input.value or ""
 
                     if provider in API_KEY_FIELD and not api_key:
-                        llm_status.style("color: #ef5350")
+                        llm_status.style("color: #e06c75")
                         llm_status.set_text("API key is required.")
                         return
 
-                    llm_status.style("color: #6b6b6b")
+                    llm_status.style("color: #636978")
                     llm_status.set_text("Testing connection...")
 
                     try:
@@ -289,11 +289,11 @@ async def setup_page() -> None:
                         )
                         wizard_state["openai_base_url"] = llm_openai_url.value or ""
 
-                        llm_status.style("color: #4caf50")
+                        llm_status.style("color: #56c9a0")
                         llm_status.set_text(f"Connected: {model} is reachable.")
                     except Exception as exc:
                         wizard_state["llm_tested"] = False
-                        llm_status.style("color: #ef5350")
+                        llm_status.style("color: #e06c75")
                         llm_status.set_text(f"Connection failed: {exc}")
 
                 ui.button(
@@ -327,20 +327,20 @@ async def setup_page() -> None:
                         openai_base_url = llm_openai_url.value or ""
 
                         if provider in API_KEY_FIELD and not api_key:
-                            llm_status.style("color: #ef5350")
+                            llm_status.style("color: #e06c75")
                             llm_status.set_text(
                                 "Please enter an API key and test the connection first."
                             )
                             return
 
                         if not wizard_state["llm_tested"]:
-                            llm_status.style("color: #ff9800")
+                            llm_status.style("color: #d4b06a")
                             llm_status.set_text(
                                 "Please test the connection before completing setup."
                             )
                             return
 
-                        llm_status.style("color: #6b6b6b")
+                        llm_status.style("color: #636978")
                         llm_status.set_text("Completing setup...")
 
                         try:
@@ -475,7 +475,7 @@ async def setup_page() -> None:
 
                         except Exception as exc:
                             logger.exception("Setup failed")
-                            llm_status.style("color: #ef5350")
+                            llm_status.style("color: #e06c75")
                             llm_status.set_text(f"Setup failed: {exc}")
                             ui.notify(f"Setup failed: {exc}", type="negative")
 

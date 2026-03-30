@@ -26,16 +26,16 @@ def _render_edge_row(edge: dict[str, Any], engram_id: str, direction: str) -> No
 
     with ui.row().classes("items-center gap-2 py-1"):
         ui.link(linked_name, f"/engrams/{linked_id}").classes(
-            "source-badge no-underline cursor-pointer"
+            "source-badge engram-link no-underline cursor-pointer"
         ).style(
-            "color: #7eb8da; background: rgba(126,184,218,0.08); "
+            "color: var(--accent); background: var(--accent-soft); "
             "text-decoration: none; font-size: 11px"
         )
         ui.label(predicate).classes("text-xs").style(
-            "color: #6b6b6b; font-style: italic"
+            "color: var(--fg-muted); font-style: italic"
         )
         ui.label(confidence_pct).classes("text-xs").style(
-            "color: rgba(107,107,107,0.5); font-size: 10px"
+            "color: rgba(99,105,120,0.5); font-size: 10px"
         )
 
 
@@ -50,14 +50,14 @@ def _render_edges(edges: list[dict[str, Any]], engram_id: str) -> None:
 
     if outgoing:
         ui.label("Outgoing").classes("text-xs tracking-wider uppercase mt-2 mb-1").style(
-            "color: rgba(107,107,107,0.5); font-size: 10px"
+            "color: rgba(99,105,120,0.5); font-size: 10px"
         )
         for edge in outgoing:
             _render_edge_row(edge, engram_id, "outgoing")
 
     if incoming:
         ui.label("Incoming").classes("text-xs tracking-wider uppercase mt-4 mb-1").style(
-            "color: rgba(107,107,107,0.5); font-size: 10px"
+            "color: rgba(99,105,120,0.5); font-size: 10px"
         )
         for edge in incoming:
             _render_edge_row(edge, engram_id, "incoming")
@@ -76,17 +76,17 @@ def _render_source_docs(docs: list[dict[str, Any]]) -> None:
         title = str(doc.get("tidy_title") or doc.get("title") or "Untitled")
         preview = str(doc.get("tidy_text") or doc.get("text") or "")[:200]
 
-        with ui.card().classes("w-full mb-2 cursor-pointer").style(
-            f"border-left: 2px solid {style['color']}; background: #111"
+        with ui.card().classes("w-full mb-2 doc-card cursor-pointer").style(
+            f"border-left: 2px solid {style['color']}"
         ).on("click", lambda _d=doc_id: ui.navigate.to(f"/documents/{_d}")):
             with ui.row().classes("items-center gap-2 mb-1"):
                 ui.label(style["label"]).classes("source-badge").style(
                     f"color: {style['color']}; background: {style['bg']}"
                 )
-            ui.label(title).classes("text-sm font-medium mb-1")
+            ui.label(title).classes("text-display-sm mb-1")
             if preview:
-                ui.label(preview).classes("text-xs leading-relaxed").style(
-                    "color: #6b6b6b; display: -webkit-box; -webkit-line-clamp: 2; "
+                ui.label(preview).classes("text-xs leading-relaxed text-muted").style(
+                    "display: -webkit-box; -webkit-line-clamp: 2; "
                     "-webkit-box-orient: vertical; overflow: hidden"
                 )
 
@@ -114,7 +114,9 @@ async def engram_detail_page(engram_id: str) -> None:
         await cursor.close()
 
         if row is None:
-            ui.label("Engram not found.").classes("text-sm").style("color: #ef5350")
+            ui.label("Engram not found.").classes("text-sm").style(
+                "color: #e06c75"
+            )
             return
 
         engram = dict(row)
@@ -145,29 +147,25 @@ async def engram_detail_page(engram_id: str) -> None:
 
         # Heading
         canonical_name = str(engram.get("canonical_name", ""))
-        ui.label(canonical_name).classes("text-lg font-medium mb-1")
+        ui.label(canonical_name).classes("text-display-lg mb-1")
 
         # Description (if present)
         description = engram.get("description")
         if description:
-            ui.label(str(description)).classes("text-xs leading-relaxed mb-4").style(
-                "color: #6b6b6b"
+            ui.label(str(description)).classes(
+                "text-xs leading-relaxed mb-4 text-muted"
             )
 
         # Edges section
         with ui.element("div").classes("pt-4 mb-6").style(
-            "border-top: 1px solid #1e1e1e"
+            "border-top: 1px solid var(--border)"
         ):
-            ui.label("Edges").classes(
-                "text-xs tracking-wider uppercase mb-3"
-            ).style("color: #6b6b6b")
+            ui.label("Edges").classes("section-label mb-3")
             _render_edges(edges, engram_id)
 
         # Source documents section
         with ui.element("div").classes("pt-6").style(
-            "border-top: 1px solid #1e1e1e"
+            "border-top: 1px solid var(--border)"
         ):
-            ui.label("Source Documents").classes(
-                "text-xs tracking-wider uppercase mb-3"
-            ).style("color: #6b6b6b")
+            ui.label("Source Documents").classes("section-label mb-3")
             _render_source_docs(docs)
