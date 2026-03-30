@@ -23,6 +23,7 @@ from hypomnema.api.schemas import (
     UrlFetch,
 )
 from hypomnema.db.models import Document, Engram
+from hypomnema.db.transactions import immediate_transaction
 from hypomnema.ingestion.file_parser import UnsupportedFormatError, ingest_file
 from hypomnema.ingestion.scribble import create_scribble
 from hypomnema.ingestion.url_fetch import DuplicateUrlError, fetch_url
@@ -53,11 +54,6 @@ async def snapshot_and_update_document(
     Clears tidy fields and increments revision. Caller is responsible for
     source-type validation and queue enqueue.
     """
-    await db.execute(
-        "INSERT INTO document_revisions (document_id, revision, text, annotation, title) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (doc.id, doc.revision, doc.text, doc.annotation, doc.tidy_title or doc.title),
-    )
     updates: dict[str, object] = {}
     if text is not None:
         updates["text"] = text
@@ -69,14 +65,19 @@ async def snapshot_and_update_document(
         return doc
     set_clause = ", ".join(f"{k} = ?" for k in updates)
     values = list(updates.values())
-    cursor = await db.execute(
-        f"UPDATE documents SET {set_clause}, tidy_title = NULL, tidy_text = NULL, tidy_level = NULL, "  # noqa: S608
-        "revision = revision + 1 WHERE id = ? RETURNING *",
-        (*values, doc.id),
-    )
-    row = await cursor.fetchone()
-    await cursor.close()
-    await db.commit()
+    async with immediate_transaction(db):
+        await db.execute(
+            "INSERT INTO document_revisions (document_id, revision, text, annotation, title) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (doc.id, doc.revision, doc.text, doc.annotation, doc.tidy_title or doc.title),
+        )
+        cursor = await db.execute(
+            f"UPDATE documents SET {set_clause}, tidy_title = NULL, tidy_text = NULL, tidy_level = NULL, "  # noqa: S608
+            "revision = revision + 1 WHERE id = ? RETURNING *",
+            (*values, doc.id),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
     if row is None:
         raise ValueError(f"Document {doc.id} not found after update")
     return Document.from_row(row)
@@ -298,25 +299,26 @@ async def delete_document(document_id: str, db: DB) -> Response:
     if row is None:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    await remove_document_associations(db, document_id)
+    async with immediate_transaction(db):
+        await remove_document_associations(db, document_id)
 
-    # FTS cleanup handled by trigger
-    await db.execute("DELETE FROM documents WHERE id = ?", (document_id,))
+        # FTS cleanup handled by trigger
+        await db.execute("DELETE FROM documents WHERE id = ?", (document_id,))
 
-    # Garbage-collect orphaned engrams: materialize IDs once, delete from all tables
-    await db.execute("DROP TABLE IF EXISTS _orphan_engrams")
-    await db.execute("""
-        CREATE TEMP TABLE _orphan_engrams AS
-        SELECT e.id FROM engrams e
-        LEFT JOIN document_engrams de ON e.id = de.engram_id
-        LEFT JOIN edges src ON e.id = src.source_engram_id
-        LEFT JOIN edges tgt ON e.id = tgt.target_engram_id
-        WHERE de.document_id IS NULL AND src.id IS NULL AND tgt.id IS NULL
-    """)
-    for table in ("engram_aliases", "projections", "engram_embeddings", "engrams"):
-        await db.execute(f"DELETE FROM {table} WHERE engram_id IN (SELECT id FROM _orphan_engrams)")  # noqa: S608
-    await db.execute("DROP TABLE IF EXISTS _orphan_engrams")
-    await db.commit()
+        # Garbage-collect orphaned engrams: materialize IDs once, delete from all tables
+        await db.execute("DROP TABLE IF EXISTS _orphan_engrams")
+        await db.execute("""
+            CREATE TEMP TABLE _orphan_engrams AS
+            SELECT e.id FROM engrams e
+            LEFT JOIN document_engrams de ON e.id = de.engram_id
+            LEFT JOIN edges src ON e.id = src.source_engram_id
+            LEFT JOIN edges tgt ON e.id = tgt.target_engram_id
+            WHERE de.document_id IS NULL AND src.id IS NULL AND tgt.id IS NULL
+        """)
+        for table in ("engram_aliases", "projections", "engram_embeddings"):
+            await db.execute(f"DELETE FROM {table} WHERE engram_id IN (SELECT id FROM _orphan_engrams)")  # noqa: S608
+        await db.execute("DELETE FROM engrams WHERE id IN (SELECT id FROM _orphan_engrams)")
+        await db.execute("DROP TABLE IF EXISTS _orphan_engrams")
 
     return Response(status_code=204)
 

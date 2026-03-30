@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 from hypomnema.api.schemas import Cluster, GapRegion, ProjectionPoint, VizEdge
+from hypomnema.db.transactions import immediate_transaction
 from hypomnema.ontology.engram import bytes_to_embedding
 
 logger = logging.getLogger(__name__)
@@ -191,11 +192,11 @@ async def compute_projections(
 
 async def _store_projections(db: aiosqlite.Connection, points: list[ProjectionPoint]) -> None:
     """INSERT OR REPLACE projections into the DB."""
-    await db.executemany(
-        "INSERT OR REPLACE INTO projections (engram_id, x, y, z, cluster_id) VALUES (?, ?, ?, ?, ?)",
-        [(p.engram_id, p.x, p.y, p.z, p.cluster_id) for p in points],
-    )
-    await db.commit()
+    async with immediate_transaction(db):
+        await db.executemany(
+            "INSERT OR REPLACE INTO projections (engram_id, x, y, z, cluster_id) VALUES (?, ?, ?, ?, ?)",
+            [(p.engram_id, p.x, p.y, p.z, p.cluster_id) for p in points],
+        )
 
 
 async def load_projections(db: aiosqlite.Connection) -> list[ProjectionPoint]:

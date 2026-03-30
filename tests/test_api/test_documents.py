@@ -6,11 +6,13 @@ import io
 import json
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
 import pytest
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 import hypomnema.ontology.linker as linker_mod
+from hypomnema.ontology.engram import embedding_to_bytes
 from hypomnema.ontology.extractor import DEFAULT_PROMPT_VARIANT, get_prompt_variant
 
 if TYPE_CHECKING:
@@ -276,6 +278,66 @@ class TestFetchUrl:
             system.startswith(get_prompt_variant(DEFAULT_PROMPT_VARIANT).reduce_system)
             for _, system in app.state.llm.calls
         )
+
+
+@pytest.mark.asyncio
+class TestDeleteDocument:
+    async def test_delete_removes_orphaned_engram_records(self, client: AsyncClient, app: Any) -> None:
+        create_resp = await client.post(
+            "/api/documents/scribbles",
+            json={"text": "Delete cleanup target", "draft": True},
+        )
+        assert create_resp.status_code == 201
+        doc_id = create_resp.json()["id"]
+
+        db = app.state.db
+        cursor = await db.execute(
+            "INSERT INTO engrams (canonical_name, concept_hash, description) VALUES (?, ?, ?) RETURNING id",
+            ("Delete Cleanup Concept", "delete-cleanup-concept", "Temporary engram for delete cleanup"),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
+        assert row is not None
+        engram_id = str(row["id"])
+
+        embedding = np.zeros(384, dtype=np.float32)
+        embedding[0] = 1.0
+
+        await db.execute(
+            "INSERT INTO document_engrams (document_id, engram_id) VALUES (?, ?)",
+            (doc_id, engram_id),
+        )
+        await db.execute(
+            "INSERT INTO engram_aliases (engram_id, alias_key, alias_kind) VALUES (?, ?, ?)",
+            (engram_id, "delete cleanup concept", "canonical"),
+        )
+        await db.execute(
+            "INSERT INTO projections (engram_id, x, y, z, cluster_id) VALUES (?, ?, ?, ?, ?)",
+            (engram_id, 1.0, 2.0, 3.0, 0),
+        )
+        await db.execute(
+            "INSERT INTO engram_embeddings (engram_id, embedding) VALUES (?, ?)",
+            (engram_id, embedding_to_bytes(embedding)),
+        )
+        await db.commit()
+
+        resp = await client.delete(f"/api/documents/{doc_id}")
+        assert resp.status_code == 204
+
+        checks = {
+            "documents": ("SELECT COUNT(*) FROM documents WHERE id = ?", (doc_id,)),
+            "engram_links": ("SELECT COUNT(*) FROM document_engrams WHERE document_id = ?", (doc_id,)),
+            "engrams": ("SELECT COUNT(*) FROM engrams WHERE id = ?", (engram_id,)),
+            "engram_aliases": ("SELECT COUNT(*) FROM engram_aliases WHERE engram_id = ?", (engram_id,)),
+            "projections": ("SELECT COUNT(*) FROM projections WHERE engram_id = ?", (engram_id,)),
+            "engram_embeddings": ("SELECT COUNT(*) FROM engram_embeddings WHERE engram_id = ?", (engram_id,)),
+        }
+        for sql, params in checks.values():
+            cursor = await db.execute(sql, params)
+            row = await cursor.fetchone()
+            await cursor.close()
+            assert row is not None
+            assert row[0] == 0
 
 
 @pytest.mark.asyncio

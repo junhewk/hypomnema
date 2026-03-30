@@ -16,6 +16,7 @@ from docx import Document as DocxDocument
 from pypdf import PdfReader
 
 from hypomnema.db.models import Document
+from hypomnema.db.transactions import immediate_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -283,12 +284,13 @@ def parse_file(path: Path) -> ParsedFile:
 
 async def ingest_file(db: aiosqlite.Connection, path: Path) -> Document:
     parsed = parse_file(path)
-    cursor = await db.execute(
-        "INSERT INTO documents (source_type, title, text, mime_type, source_uri) "
-        "VALUES ('file', ?, ?, ?, ?) RETURNING *",
-        (parsed.title, parsed.text, parsed.mime_type, str(path)),
-    )
-    row = await cursor.fetchone()
-    await db.commit()
+    async with immediate_transaction(db):
+        cursor = await db.execute(
+            "INSERT INTO documents (source_type, title, text, mime_type, source_uri) "
+            "VALUES ('file', ?, ?, ?, ?) RETURNING *",
+            (parsed.title, parsed.text, parsed.mime_type, str(path)),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
     assert row is not None
     return Document.from_row(row)

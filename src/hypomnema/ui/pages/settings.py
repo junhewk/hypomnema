@@ -7,6 +7,7 @@ import logging
 
 from nicegui import app, ui
 
+from hypomnema.db.transactions import immediate_transaction
 from hypomnema.ui.layout import page_layout
 from hypomnema.ui.utils import (
     API_KEY_FIELD,
@@ -588,11 +589,11 @@ async def settings_page() -> None:
                 with ui.row().classes("items-center gap-2"):
                     async def _toggle_active(fid: str = feed_id, active: bool = is_active) -> None:
                         new_val = 0 if active else 1
-                        await db.execute(
-                            "UPDATE feed_sources SET active = ? WHERE id = ?",
-                            (new_val, fid),
-                        )
-                        await db.commit()
+                        async with immediate_transaction(db):
+                            await db.execute(
+                                "UPDATE feed_sources SET active = ? WHERE id = ?",
+                                (new_val, fid),
+                            )
                         await _render_feeds()
 
                     ui.switch(
@@ -603,8 +604,8 @@ async def settings_page() -> None:
                     ).props('dense color="green"')
 
                     async def _delete_feed(fid: str = feed_id) -> None:
-                        await db.execute("DELETE FROM feed_sources WHERE id = ?", (fid,))
-                        await db.commit()
+                        async with immediate_transaction(db):
+                            await db.execute("DELETE FROM feed_sources WHERE id = ?", (fid,))
                         ui.notify("Feed deleted", type="info")
                         await _render_feeds()
 
@@ -660,12 +661,12 @@ async def settings_page() -> None:
                     ui.notify("Database not ready", type="negative")
                     return
 
-                await db.execute(
-                    "INSERT INTO feed_sources (name, feed_type, url, schedule, active) "
-                    "VALUES (?, ?, ?, ?, 1)",
-                    (name, feed_type, url, schedule),
-                )
-                await db.commit()
+                async with immediate_transaction(db):
+                    await db.execute(
+                        "INSERT INTO feed_sources (name, feed_type, url, schedule, active) "
+                        "VALUES (?, ?, ?, ?, 1)",
+                        (name, feed_type, url, schedule),
+                    )
 
                 # Register with scheduler if available
                 scheduler = getattr(app.state, "scheduler", None)

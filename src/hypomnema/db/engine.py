@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 import aiosqlite
 import sqlite_vec
 
+from hypomnema.db.transactions import SQLITE_BUSY_TIMEOUT_MS
+
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator
 
@@ -38,8 +40,9 @@ async def get_connection(db_path: Path | str, sqlite_vec_ext_path: str = "") -> 
     # PRAGMAs (per-connection)
     await db.execute("PRAGMA journal_mode=WAL")
     await db.execute("PRAGMA foreign_keys=ON")
-    await db.execute("PRAGMA busy_timeout=5000")
+    await db.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
     await db.execute("PRAGMA cache_size=-64000")
+    db._hypomnema_db_key = str(path.resolve())  # type: ignore[attr-defined]
 
     return db
 

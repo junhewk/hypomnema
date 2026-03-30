@@ -108,6 +108,17 @@ Single Python stack, single codebase:
 | Docker | `docker compose up` | Self-hosted server, single container |
 | Desktop | `uv run hypomnema desktop` | Native window via pywebview |
 
+### SQLite service model
+
+Hypomnema is designed around SQLite as the primary persistence layer, not as a temporary stand-in for Postgres.
+
+- **Intended scope** — single user, including inter-device access over LAN/Tailscale
+- **Write model** — WAL mode, `BEGIN IMMEDIATE`, and an app-level per-database write gate serialize mutating transactions
+- **Operational rule** — keep writes short and let the ontology queue handle long-running extraction/linking work outside the transaction itself
+- **What to avoid** — editing the live database from external tools while the app is running; use backups or copied `.db` files for inspection and maintenance
+
+This means "server" mode is for reaching your own data from multiple devices, not for multi-member concurrent use.
+
 ## Contributing
 
 ```bash

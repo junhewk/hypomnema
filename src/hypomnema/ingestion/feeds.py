@@ -18,6 +18,7 @@ import httpx
 from youtube_transcript_api import YouTubeTranscriptApi
 
 from hypomnema.db.models import Document, FeedSource
+from hypomnema.db.transactions import immediate_transaction
 
 logger = logging.getLogger(__name__)
 
@@ -173,34 +174,33 @@ async def ingest_feed_items(
     if not items:
         return []
 
-    # Batch duplicate check: single query for all source_uris
-    uris = [item.source_uri for item in items]
-    placeholders = ", ".join("?" for _ in uris)
-    cursor = await db.execute(
-        f"SELECT source_uri FROM documents WHERE source_uri IN ({placeholders})",
-        uris,
-    )
-    existing_uris = {row["source_uri"] for row in await cursor.fetchall()}
-    await cursor.close()
-
     created: list[Document] = []
-    for item in items:
-        if item.source_uri in existing_uris:
-            continue
-
-        metadata_json = json.dumps(item.metadata) if item.metadata else None
+    async with immediate_transaction(db):
+        uris = [item.source_uri for item in items]
+        placeholders = ", ".join("?" for _ in uris)
         cursor = await db.execute(
-            "INSERT INTO documents (source_type, title, text, source_uri, metadata) "
-            "VALUES ('feed', ?, ?, ?, ?) RETURNING *",
-            (item.title, item.text, item.source_uri, metadata_json),
+            f"SELECT source_uri FROM documents WHERE source_uri IN ({placeholders})",
+            uris,
         )
-        row = await cursor.fetchone()
+        existing_uris = {row["source_uri"] for row in await cursor.fetchall()}
         await cursor.close()
-        assert row is not None
-        created.append(Document.from_row(row))
 
-    if created:
-        await db.commit()
+        for item in items:
+            if item.source_uri in existing_uris:
+                continue
+
+            metadata_json = json.dumps(item.metadata) if item.metadata else None
+            cursor = await db.execute(
+                "INSERT INTO documents (source_type, title, text, source_uri, metadata) "
+                "VALUES ('feed', ?, ?, ?, ?) RETURNING *",
+                (item.title, item.text, item.source_uri, metadata_json),
+            )
+            row = await cursor.fetchone()
+            await cursor.close()
+            assert row is not None
+            created.append(Document.from_row(row))
+            existing_uris.add(item.source_uri)
+
     return created
 
 
@@ -222,11 +222,11 @@ async def poll_feed(
     items = await asyncio.to_thread(fetcher, feed_source.url, timeout=timeout)
     docs = await ingest_feed_items(db, items)
 
-    await db.execute(
-        "UPDATE feed_sources SET last_fetched = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
-        (feed_source.id,),
-    )
-    await db.commit()
+    async with immediate_transaction(db):
+        await db.execute(
+            "UPDATE feed_sources SET last_fetched = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = ?",
+            (feed_source.id,),
+        )
     return docs
 
 
@@ -248,12 +248,13 @@ async def create_feed_source(
     if feed_type not in ("rss", "scrape", "youtube"):
         raise ValueError(f"Invalid feed_type: {feed_type}")
 
-    cursor = await db.execute(
-        "INSERT INTO feed_sources (name, feed_type, url, schedule) VALUES (?, ?, ?, ?) RETURNING *",
-        (name, feed_type, url, schedule),
-    )
-    row = await cursor.fetchone()
-    await db.commit()
+    async with immediate_transaction(db):
+        cursor = await db.execute(
+            "INSERT INTO feed_sources (name, feed_type, url, schedule) VALUES (?, ?, ?, ?) RETURNING *",
+            (name, feed_type, url, schedule),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
     assert row is not None
     return FeedSource.from_row(row)
 
@@ -307,13 +308,13 @@ async def update_feed_source(
         raise ValueError("No fields to update")
 
     params.append(feed_id)
-    cursor = await db.execute(
-        f"UPDATE feed_sources SET {', '.join(updates)} WHERE id = ? RETURNING *",
-        params,
-    )
-    row = await cursor.fetchone()
-    await cursor.close()
-    await db.commit()
+    async with immediate_transaction(db):
+        cursor = await db.execute(
+            f"UPDATE feed_sources SET {', '.join(updates)} WHERE id = ? RETURNING *",
+            params,
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
     if row is None:
         raise ValueError(f"Feed source {feed_id} not found")
     return FeedSource.from_row(row)
@@ -324,8 +325,8 @@ async def delete_feed_source(
     feed_id: str,
 ) -> bool:
     """Delete a feed source. Returns True if deleted, False if not found."""
-    cursor = await db.execute("DELETE FROM feed_sources WHERE id = ? RETURNING id", (feed_id,))
-    row = await cursor.fetchone()
-    await cursor.close()
-    await db.commit()
+    async with immediate_transaction(db):
+        cursor = await db.execute("DELETE FROM feed_sources WHERE id = ? RETURNING id", (feed_id,))
+        row = await cursor.fetchone()
+        await cursor.close()
     return row is not None

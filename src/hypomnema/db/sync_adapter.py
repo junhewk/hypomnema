@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 
 import sqlite_vec
 
+from hypomnema.db.transactions import SQLITE_BUSY_TIMEOUT_MS
+
 if TYPE_CHECKING:
     from pathlib import Path
 
@@ -36,13 +38,14 @@ class SyncConnection:
 
     def __init__(self, db_path: Path) -> None:
         self._connection = sqlite3.connect(db_path)
+        self._hypomnema_db_key = str(db_path.resolve())
         self._connection.row_factory = sqlite3.Row
         self._connection.enable_load_extension(True)
         self._connection.load_extension(sqlite_vec.loadable_path())
         self._connection.enable_load_extension(False)
         self._connection.execute("PRAGMA journal_mode=WAL")
         self._connection.execute("PRAGMA foreign_keys=ON")
-        self._connection.execute("PRAGMA busy_timeout=5000")
+        self._connection.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
         self._connection.execute("PRAGMA cache_size=-64000")
 
     async def execute(

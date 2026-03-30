@@ -6,6 +6,7 @@ import aiosqlite
 import pytest
 
 from hypomnema.db.engine import connect, get_connection
+from hypomnema.db.transactions import SQLITE_BUSY_TIMEOUT_MS
 
 
 class TestGetConnection:
@@ -52,7 +53,7 @@ class TestGetConnection:
             cursor = await db.execute("PRAGMA busy_timeout")
             row = await cursor.fetchone()
             assert row is not None
-            assert row[0] == 5000
+            assert row[0] == SQLITE_BUSY_TIMEOUT_MS
         finally:
             await db.close()
 

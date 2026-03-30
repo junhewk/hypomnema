@@ -9,6 +9,7 @@ if TYPE_CHECKING:
 
     from hypomnema.embeddings.base import EmbeddingModel
 
+from hypomnema.db.transactions import immediate_transaction
 from hypomnema.ontology.engram import embedding_to_bytes, l2_to_cosine
 
 
@@ -74,18 +75,15 @@ async def triage_document(
 
     # Update triaged flag
     triaged_value = 1 if accepted else -1
-    await db.execute(
-        "UPDATE documents SET triaged = ? WHERE id = ?",
-        (triaged_value, document_id),
-    )
-
-    # Store document embedding
-    await db.execute(
-        "INSERT OR IGNORE INTO document_embeddings (document_id, embedding) VALUES (?, ?)",
-        (document_id, emb_bytes),
-    )
-
-    await db.commit()
+    async with immediate_transaction(db):
+        await db.execute(
+            "UPDATE documents SET triaged = ? WHERE id = ?",
+            (triaged_value, document_id),
+        )
+        await db.execute(
+            "INSERT OR IGNORE INTO document_embeddings (document_id, embedding) VALUES (?, ?)",
+            (document_id, emb_bytes),
+        )
     return accepted
 
 

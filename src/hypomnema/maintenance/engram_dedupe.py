@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 import sqlite_vec
 
+from hypomnema.db.transactions import SQLITE_BUSY_TIMEOUT_MS
 from hypomnema.ontology.engram import (
     _HANGUL_RE,
     _HONORIFIC_SUFFIXES,
@@ -124,7 +125,7 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     connection.load_extension(sqlite_vec.loadable_path())
     connection.enable_load_extension(False)
     connection.execute("PRAGMA foreign_keys=ON")
-    connection.execute("PRAGMA busy_timeout=5000")
+    connection.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
     return connection
 
 

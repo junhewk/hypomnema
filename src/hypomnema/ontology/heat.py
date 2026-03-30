@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     import aiosqlite
 
+from hypomnema.db.transactions import immediate_transaction
+
 logger = logging.getLogger(__name__)
 
 HeatTier = Literal["active", "reference", "dormant"]
@@ -113,11 +115,11 @@ async def compute_all_heat(db: aiosqlite.Connection) -> int:
         tier = classify_tier(score)
         updates.append((score, tier, doc_id))
 
-    await db.executemany(
-        "UPDATE documents SET heat_score = ?, heat_tier = ? WHERE id = ?",
-        updates,
-    )
-    await db.commit()
+    async with immediate_transaction(db):
+        await db.executemany(
+            "UPDATE documents SET heat_score = ?, heat_tier = ? WHERE id = ?",
+            updates,
+        )
 
     logger.info("Heat scores updated for %d documents", len(updates))
     return len(updates)

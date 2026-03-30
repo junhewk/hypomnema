@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from hypomnema.crypto import decrypt, encrypt, mask_key
+from hypomnema.db.transactions import immediate_transaction
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -32,14 +33,14 @@ async def set_setting(
 ) -> None:
     """Upsert a setting, optionally encrypting the value."""
     stored = encrypt(value, fernet_key) if encrypt_value else value
-    await db.execute(
-        "INSERT INTO settings (key, value, encrypted) VALUES (?, ?, ?) "
-        "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
-        "encrypted = excluded.encrypted, "
-        "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
-        (key, stored, int(encrypt_value)),
-    )
-    await db.commit()
+    async with immediate_transaction(db):
+        await db.execute(
+            "INSERT INTO settings (key, value, encrypted) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, "
+            "encrypted = excluded.encrypted, "
+            "updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')",
+            (key, stored, int(encrypt_value)),
+        )
 
 
 async def get_all_settings(db: aiosqlite.Connection, *, fernet_key: bytes) -> dict[str, str]:

@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     import aiosqlite
 
 from hypomnema.db.models import Document
+from hypomnema.db.transactions import immediate_transaction
 
 
 async def create_scribble(
@@ -24,11 +25,12 @@ async def create_scribble(
     if not stripped:
         raise ValueError("Scribble text must not be empty")
 
-    cursor = await db.execute(
-        "INSERT INTO documents (source_type, title, text) VALUES ('scribble', ?, ?) RETURNING *",
-        (title, stripped),
-    )
-    row = await cursor.fetchone()
-    await db.commit()
+    async with immediate_transaction(db):
+        cursor = await db.execute(
+            "INSERT INTO documents (source_type, title, text) VALUES ('scribble', ?, ?) RETURNING *",
+            (title, stripped),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
     assert row is not None
     return Document.from_row(row)

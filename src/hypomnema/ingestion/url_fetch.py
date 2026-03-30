@@ -16,6 +16,7 @@ import httpx
 import trafilatura
 
 from hypomnema.db.models import Document
+from hypomnema.db.transactions import immediate_transaction
 from hypomnema.ingestion.feeds import _fetch_transcript, extract_video_id
 from hypomnema.ingestion.file_parser import inspect_pdf
 
@@ -203,14 +204,20 @@ async def fetch_url(db: aiosqlite.Connection, url: str) -> Document:
         mime_type = fetched.mime_type
 
     metadata_json = json.dumps(metadata) if metadata else None
-    cursor = await db.execute(
-        "INSERT INTO documents (source_type, title, text, mime_type, source_uri, metadata) "
-        "VALUES ('url', ?, ?, ?, ?, ?) RETURNING *",
-        (title, text, mime_type, url, metadata_json),
-    )
-    row = await cursor.fetchone()
-    await cursor.close()
+    async with immediate_transaction(db):
+        cursor = await db.execute("SELECT id FROM documents WHERE source_uri = ?", (url,))
+        row = await cursor.fetchone()
+        await cursor.close()
+        if row is not None:
+            raise DuplicateUrlError(row["id"])
+
+        cursor = await db.execute(
+            "INSERT INTO documents (source_type, title, text, mime_type, source_uri, metadata) "
+            "VALUES ('url', ?, ?, ?, ?, ?) RETURNING *",
+            (title, text, mime_type, url, metadata_json),
+        )
+        row = await cursor.fetchone()
+        await cursor.close()
     if row is None:
         raise RuntimeError("INSERT RETURNING produced no row")
-    await db.commit()
     return Document.from_row(row)
