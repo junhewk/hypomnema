@@ -125,6 +125,7 @@ _GRAPH_INIT_JS = """
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
   controls.dampingFactor = 0.1;
+  controls.minDistance = 0.5;
 
   // Lights — bright ambient so nodes are clearly visible
   scene.add(new THREE.AmbientLight(0xffffff, 1.5));
@@ -451,22 +452,41 @@ _GRAPH_INIT_JS = """
     renderer.setSize(w, h);
   });
 
-  // Spread: Alt+scroll scales node positions from centroid
+  // Spread: Alt+scroll scales node positions from per-cluster centroids
   var spreadFactor = 1.0;
-  // Compute centroid
-  var _cx = 0, _cy = 0, _cz = 0;
-  data.nodes.forEach(function(n) { _cx += n.fx; _cy += n.fy; _cz += n.fz; });
-  _cx /= data.nodes.length; _cy /= data.nodes.length; _cz /= data.nodes.length;
-  // Store offsets from centroid
+  // Compute per-cluster centroids
+  var clusterCentroids = {};
+  var clusterCounts = {};
   data.nodes.forEach(function(n) {
-    n._dx = n.fx - _cx; n._dy = n.fy - _cy; n._dz = n.fz - _cz;
+    var cid = n.cluster_id != null ? n.cluster_id : '__noise__';
+    if (!clusterCentroids[cid]) {
+      clusterCentroids[cid] = {x: 0, y: 0, z: 0};
+      clusterCounts[cid] = 0;
+    }
+    clusterCentroids[cid].x += n.fx;
+    clusterCentroids[cid].y += n.fy;
+    clusterCentroids[cid].z += n.fz;
+    clusterCounts[cid]++;
+  });
+  Object.keys(clusterCentroids).forEach(function(cid) {
+    clusterCentroids[cid].x /= clusterCounts[cid];
+    clusterCentroids[cid].y /= clusterCounts[cid];
+    clusterCentroids[cid].z /= clusterCounts[cid];
+  });
+  // Store offsets from each node's cluster centroid
+  data.nodes.forEach(function(n) {
+    var cid = n.cluster_id != null ? n.cluster_id : '__noise__';
+    var cc = clusterCentroids[cid];
+    n._dx = n.fx - cc.x; n._dy = n.fy - cc.y; n._dz = n.fz - cc.z;
+    n._clusterCentroid = cc;
   });
 
   function applySpread() {
     data.nodes.forEach(function(n) {
-      n.fx = _cx + n._dx * spreadFactor;
-      n.fy = _cy + n._dy * spreadFactor;
-      n.fz = _cz + n._dz * spreadFactor;
+      var cc = n._clusterCentroid;
+      n.fx = cc.x + n._dx * spreadFactor;
+      n.fy = cc.y + n._dy * spreadFactor;
+      n.fz = cc.z + n._dz * spreadFactor;
       n.x = n.fx; n.y = n.fy; n.z = n.fz;
     });
     graph.graphData(graph.graphData());

@@ -30,7 +30,7 @@ Hypomnema extracts concepts from your research material, deduplicates them, link
 - **Smart PDF extraction** — layout-aware parsing via [opendataloader-pdf](https://github.com/opendataloader-project/opendataloader-pdf) with column detection and structure preservation; pypdf fallback
 - **Automatic ontology** — LLM-powered entity extraction, multi-stage deduplication (exact match, alias index, KNN, vector similarity, concept hash), typed edge generation (supports, contradicts, critiques, extends, ...)
 - **Title + TL;DR** — files and URL fetches get an LLM-generated title revision and concise summary; scribbles get full tidy rewriting
-- **3D visualization** — constellation-mode point cloud with PageRank node sizing, cluster color reveal, cinematic auto-orbit (via 3d-force-graph)
+- **3D visualization** — constellation-mode point cloud with PageRank node sizing, cluster color reveal, cinematic auto-orbit, per-cluster spread control (via 3d-force-graph)
 - **Document revision** — scribbles are editable in-place; URLs/files/feeds get a user annotation layer. Every edit is revision-logged and re-processed incrementally (engram diff with 50% churn fallback to full rebuild). Feeds into heat scoring.
 - **Document heat scoring** — graph-derived actionability signal classifies documents as active, reference, or dormant based on temporal recency, concept co-activity, revision count, and graph centrality. No manual filing — organization emerges from the knowledge graph.
 - **Full-text + semantic search** — FTS5 for keyword search (including annotations), sqlite-vec for vector similarity
