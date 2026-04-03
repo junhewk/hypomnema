@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>hypomnema</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/theme.css">
+    <script type="module" src="/js/app.js"></script>
+</head>
+<body>
+    <aside id="sidebar">
+        <div class="sidebar-header">
+            <span class="logo-icon">&#x2B22;</span>
+            <div class="sidebar-title">
+                <span class="logo-text">hypomnema</span>
+                <span class="logo-sub">ontological synthesizer</span>
+            </div>
+        </div>
+        <nav>
+            <a href="/" class="nav-item active" data-route="/">
+                <span class="nav-icon">&#x25C9;</span>
+                <span class="nav-label">Stream</span>
+            </a>
+            <a href="/search" class="nav-item" data-route="/search">
+                <span class="nav-icon">&#x2315;</span>
+                <span class="nav-label">Search</span>
+            </a>
+            <a href="/settings" class="nav-item" data-route="/settings">
+                <span class="nav-icon">&#x2699;</span>
+                <span class="nav-label">Settings</span>
+            </a>
+        </nav>
+        <div id="minimap"></div>
+        <a href="/viz" class="nav-item" data-route="/viz">
+            <span class="nav-icon">&#x2B1F;</span>
+            <span class="nav-label">Visualization</span>
+        </a>
+    </aside>
+    <main id="app">
+        <div id="page-content"></div>
+    </main>
+</body>
+</html>
