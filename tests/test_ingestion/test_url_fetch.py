@@ -54,7 +54,7 @@ class _FakeClient:
     def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
         return None
 
-    def get(self, url: str) -> _FakeResponse:
+    def get(self, url: str, **kwargs: object) -> _FakeResponse:
         return self._response
 
 
