@@ -103,6 +103,7 @@ SOURCE_STYLES: dict[str, dict[str, str]] = {
     "file": {"label": "file", "color": "#5e9eff", "bg": "rgba(94,158,255,0.07)"},
     "url": {"label": "url", "color": "#3ecfcf", "bg": "rgba(62,207,207,0.08)"},
     "feed": {"label": "feed", "color": "#56c9a0", "bg": "rgba(86,201,160,0.07)"},
+    "synthesis": {"label": "synthesis", "color": "#d4b06a", "bg": "rgba(212,176,106,0.07)"},
 }
 
 HEAT_TIER_STYLES: dict[str, dict[str, str]] = {

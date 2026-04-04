@@ -120,14 +120,42 @@ async def _load_document_metadata(db: DB, document_id: str) -> dict[str, object]
 
 async def _finalize_pipeline(
     db: DB, document_id: str, metadata: dict[str, object],
+    llm: object | None = None,
 ) -> str:
-    """Shared tail: projections, heat scoring, and final status determination."""
+    """Shared tail: projections, heat scoring, article synthesis, and final status."""
     from hypomnema.ontology.heat import compute_all_heat
     from hypomnema.visualization.projection import compute_projections
 
     await update_processing_metadata(db, document_id, metadata, status="running", stage="project", last_error=None)
     await compute_projections(db)
     await compute_all_heat(db)
+
+    # Synthesize articles and cluster overviews
+    if llm is not None:
+        try:
+            from hypomnema.ontology.synthesizer import synthesize_stale_articles
+
+            await update_processing_metadata(
+                db, document_id, metadata, status="running", stage="synthesize", last_error=None,
+            )
+            await synthesize_stale_articles(db, llm, limit=5)
+        except Exception:
+            logger.exception("Article synthesis failed (non-fatal)")
+
+        try:
+            from hypomnema.visualization.cluster_synthesis import synthesize_cluster_overviews
+
+            await synthesize_cluster_overviews(db, llm)
+        except Exception:
+            logger.exception("Cluster synthesis failed (non-fatal)")
+
+    # Run knowledge graph lint checks
+    try:
+        from hypomnema.ontology.lint import run_lint
+
+        await run_lint(db)
+    except Exception:
+        logger.exception("Lint checks failed (non-fatal)")
 
     processing = metadata.get("processing")
     processing_dict = processing if isinstance(processing, dict) else {}
@@ -154,7 +182,7 @@ async def _run_ontology_pipeline(app: FastAPI, document_id: str, revision: int |
         )
         await update_processing_metadata(db, document_id, metadata, status="running", stage="link", last_error=None)
         await link_document(db, document_id, llm, expected_revision=revision)
-        final_status = await _finalize_pipeline(db, document_id, metadata)
+        final_status = await _finalize_pipeline(db, document_id, metadata, llm=llm)
         await update_processing_metadata(db, document_id, metadata, status=final_status, stage="done", last_error=None)
     except Exception as exc:
         await update_processing_metadata(
@@ -181,7 +209,7 @@ async def _run_revision_pipeline(app: FastAPI, document_id: str, revision: int |
             db, document_id, llm, embeddings,
             expected_revision=revision, tidy_level=tidy_level, progress_callback=progress_callback,
         )
-        final_status = await _finalize_pipeline(db, document_id, metadata)
+        final_status = await _finalize_pipeline(db, document_id, metadata, llm=llm)
         await update_processing_metadata(db, document_id, metadata, status=final_status, stage="done", last_error=None)
     except Exception as exc:
         await update_processing_metadata(

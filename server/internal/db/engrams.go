@@ -3,11 +3,13 @@ package db
 import "database/sql"
 
 type Engram struct {
-	ID            string  `json:"id"`
-	CanonicalName string  `json:"canonical_name"`
-	ConceptHash   *string `json:"concept_hash"`
-	Description   *string `json:"description"`
-	CreatedAt     string  `json:"created_at"`
+	ID               string  `json:"id"`
+	CanonicalName    string  `json:"canonical_name"`
+	ConceptHash      *string `json:"concept_hash"`
+	Description      *string `json:"description"`
+	Article          *string `json:"article,omitempty"`
+	ArticleUpdatedAt *string `json:"article_updated_at,omitempty"`
+	CreatedAt        string  `json:"created_at"`
 }
 
 type Edge struct {
@@ -40,7 +42,7 @@ func (db *DB) ListEngrams(offset, limit int) ([]Engram, int, error) {
 	}
 
 	rows, err := db.Query(`
-		SELECT id, canonical_name, concept_hash, description, created_at
+		SELECT id, canonical_name, concept_hash, description, article, article_updated_at, created_at
 		FROM engrams ORDER BY canonical_name LIMIT ? OFFSET ?`, limit, offset)
 	if err != nil {
 		return nil, 0, err
@@ -50,7 +52,7 @@ func (db *DB) ListEngrams(offset, limit int) ([]Engram, int, error) {
 	var out []Engram
 	for rows.Next() {
 		var e Engram
-		if err := rows.Scan(&e.ID, &e.CanonicalName, &e.ConceptHash, &e.Description, &e.CreatedAt); err != nil {
+		if err := rows.Scan(&e.ID, &e.CanonicalName, &e.ConceptHash, &e.Description, &e.Article, &e.ArticleUpdatedAt, &e.CreatedAt); err != nil {
 			return nil, 0, err
 		}
 		out = append(out, e)
@@ -61,9 +63,9 @@ func (db *DB) ListEngrams(offset, limit int) ([]Engram, int, error) {
 // GetEngram fetches a single engram by ID.
 func (db *DB) GetEngram(id string) (*Engram, error) {
 	var e Engram
-	err := db.QueryRow(`SELECT id, canonical_name, concept_hash, description, created_at
+	err := db.QueryRow(`SELECT id, canonical_name, concept_hash, description, article, article_updated_at, created_at
 		FROM engrams WHERE id = ?`, id).
-		Scan(&e.ID, &e.CanonicalName, &e.ConceptHash, &e.Description, &e.CreatedAt)
+		Scan(&e.ID, &e.CanonicalName, &e.ConceptHash, &e.Description, &e.Article, &e.ArticleUpdatedAt, &e.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -124,8 +126,8 @@ func (db *DB) InsertEngram(e *Engram) error {
 	if e.CreatedAt == "" {
 		e.CreatedAt = Now()
 	}
-	_, err := db.Exec(`INSERT INTO engrams (id, canonical_name, concept_hash, description, created_at)
-		VALUES (?, ?, ?, ?, ?)`, e.ID, e.CanonicalName, e.ConceptHash, e.Description, e.CreatedAt)
+	_, err := db.Exec(`INSERT INTO engrams (id, canonical_name, concept_hash, description, article, article_updated_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`, e.ID, e.CanonicalName, e.ConceptHash, e.Description, e.Article, e.ArticleUpdatedAt, e.CreatedAt)
 	return err
 }
 
@@ -157,9 +159,9 @@ func (db *DB) UpsertEdge(e *Edge) error {
 // FindEngramByName looks up an engram by exact canonical name.
 func (db *DB) FindEngramByName(name string) (*Engram, error) {
 	var e Engram
-	err := db.QueryRow(`SELECT id, canonical_name, concept_hash, description, created_at
+	err := db.QueryRow(`SELECT id, canonical_name, concept_hash, description, article, article_updated_at, created_at
 		FROM engrams WHERE canonical_name = ?`, name).
-		Scan(&e.ID, &e.CanonicalName, &e.ConceptHash, &e.Description, &e.CreatedAt)
+		Scan(&e.ID, &e.CanonicalName, &e.ConceptHash, &e.Description, &e.Article, &e.ArticleUpdatedAt, &e.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -170,16 +172,23 @@ func (db *DB) FindEngramByName(name string) (*Engram, error) {
 func (db *DB) FindEngramByAlias(aliasKey string) (*Engram, error) {
 	var e Engram
 	err := db.QueryRow(`
-		SELECT e.id, e.canonical_name, e.concept_hash, e.description, e.created_at
+		SELECT e.id, e.canonical_name, e.concept_hash, e.description, e.article, e.article_updated_at, e.created_at
 		FROM engrams e
 		JOIN engram_aliases a ON a.engram_id = e.id
 		WHERE a.alias_key = ?
 		LIMIT 1`, aliasKey).
-		Scan(&e.ID, &e.CanonicalName, &e.ConceptHash, &e.Description, &e.CreatedAt)
+		Scan(&e.ID, &e.CanonicalName, &e.ConceptHash, &e.Description, &e.Article, &e.ArticleUpdatedAt, &e.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
 	return &e, err
+}
+
+// UpdateEngramArticle stores a synthesized article for an engram.
+func (db *DB) UpdateEngramArticle(engramID, article string) error {
+	_, err := db.Exec(`UPDATE engrams SET article = ?, article_updated_at = ? WHERE id = ?`,
+		article, Now(), engramID)
+	return err
 }
 
 // InsertAlias adds an alias key for an engram.

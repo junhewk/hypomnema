@@ -35,6 +35,7 @@ def configure(settings: Settings | None = None) -> None:
     from hypomnema.api.health import router as health_router
     from hypomnema.api.search import router as search_router
     from hypomnema.api.settings import router as settings_router
+    from hypomnema.api.lint import router as lint_router
     from hypomnema.api.viz import router as viz_router
 
     # Routers already define their own /api/... prefixes
@@ -43,6 +44,7 @@ def configure(settings: Settings | None = None) -> None:
     app.include_router(documents_router)
     app.include_router(engrams_router)
     app.include_router(feeds_router)
+    app.include_router(lint_router)
     app.include_router(search_router)
     app.include_router(settings_router)
     app.include_router(viz_router)
@@ -73,6 +75,7 @@ def configure(settings: Settings | None = None) -> None:
     # Import UI pages (registers @ui.page routes)
     import hypomnema.ui.pages.document  # noqa: F401
     import hypomnema.ui.pages.engram  # noqa: F401
+    import hypomnema.ui.pages.lint  # noqa: F401
     import hypomnema.ui.pages.search  # noqa: F401
     import hypomnema.ui.pages.settings  # noqa: F401
     import hypomnema.ui.pages.setup  # noqa: F401

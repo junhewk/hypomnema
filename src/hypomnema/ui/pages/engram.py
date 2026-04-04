@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from nicegui import ui
+from nicegui import app, ui
 
 from hypomnema.ui.layout import page_layout
 from hypomnema.ui.theme import SOURCE_STYLES
@@ -155,6 +155,39 @@ async def engram_detail_page(engram_id: str) -> None:
             ui.label(str(description)).classes(
                 "text-xs leading-relaxed mb-4 text-muted"
             )
+
+        # Synthesized article
+        article = engram.get("article")
+        if article:
+            with ui.element("div").classes("pt-4 mb-6").style(
+                "border-top: 1px solid var(--border)"
+            ):
+                ui.label("Article").classes("section-label mb-3")
+                ui.markdown(str(article)).classes("text-sm leading-relaxed")
+
+                async def _regenerate_article() -> None:
+                    if db is None:
+                        ui.notify("Database not ready", type="negative")
+                        return
+                    llm = getattr(app.state, "llm", None)
+                    if llm is None:
+                        ui.notify("LLM not configured", type="negative")
+                        return
+                    from hypomnema.ontology.synthesizer import synthesize_engram_article
+
+                    ui.notify("Regenerating article...", type="info")
+                    result = await synthesize_engram_article(db, llm, engram_id)
+                    if result:
+                        ui.notify("Article regenerated", type="positive")
+                        ui.navigate.to(f"/engrams/{engram_id}")
+                    else:
+                        ui.notify("Not enough sources for article", type="warning")
+
+                ui.button(
+                    "Regenerate",
+                    icon="refresh",
+                    on_click=_regenerate_article,
+                ).props('flat dense color="grey-7"').classes("text-xs mt-2")
 
         # Edges section
         with ui.element("div").classes("pt-4 mb-6").style(

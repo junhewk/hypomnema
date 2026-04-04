@@ -182,6 +182,35 @@ async def search_page() -> None:
                     for scored in results:
                         _render_doc_result(scored)
 
+                    # Synthesize button
+                    result_doc_ids = [str(s.document.id) for s in results[:10]]
+
+                    async def _synthesize(
+                        q: str = query, doc_ids: list[str] = result_doc_ids,
+                    ) -> None:
+                        llm = getattr(app.state, "llm", None)
+                        if llm is None or db is None:
+                            ui.notify("LLM not configured", type="negative")
+                            return
+                        ui.notify("Synthesizing...", type="info")
+                        try:
+                            from hypomnema.api.search import _synthesize_from_docs
+
+                            doc_id = await _synthesize_from_docs(db, llm, q, doc_ids)
+                            queue = getattr(app.state, "ontology_queue", None)
+                            if queue:
+                                await queue.enqueue(doc_id)
+                            ui.notify("Synthesis created", type="positive")
+                            ui.navigate.to(f"/documents/{doc_id}")
+                        except Exception as exc:
+                            ui.notify(f"Synthesis failed: {exc}", type="negative")
+
+                    ui.button(
+                        "Synthesize results",
+                        icon="auto_awesome",
+                        on_click=_synthesize,
+                    ).props('flat dense color="grey-5" no-caps').classes("text-xs mt-4")
+
             count = len(results)
             mode_note = f" ({search_type})" if search_type != "none" else ""
             status.set_text(

@@ -55,6 +55,13 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
+		// Skip auth if no passphrase configured (covers fresh installs and setup)
+		hasPass, _ := s.DB.GetSetting("auth_passphrase_hash")
+		if hasPass == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		cookie, err := r.Cookie("hypomnema_session")
 		if err != nil || !crypto.VerifySession(cookie.Value, s.DB.CryptoKey, 30*24*time.Hour) {
 			writeJSON(w, 401, map[string]string{"error": "authentication required"})
@@ -102,10 +109,18 @@ func NewRouter(s *Server, staticFS fs.FS) http.Handler {
 		r.Get("/engrams", s.listEngrams)
 		r.Get("/engrams/{id}", s.getEngram)
 		r.Get("/engrams/{id}/cluster", s.getEngramCluster)
+		r.Post("/engrams/{id}/article/regenerate", s.regenerateArticle)
 
 		// Search
 		r.Get("/search/documents", s.searchDocuments)
 		r.Get("/search/knowledge", s.searchKnowledge)
+		r.Post("/search/synthesize", s.synthesizeSearch)
+
+		// Lint
+		r.Get("/lint/issues", s.listLintIssues)
+		r.Get("/lint/count", s.lintIssueCount)
+		r.Post("/lint/issues/{id}/resolve", s.resolveLintIssue)
+		r.Post("/lint/run", s.triggerLint)
 
 		// Feeds
 		r.Get("/feeds", s.listFeeds)
@@ -133,10 +148,9 @@ func NewRouter(s *Server, staticFS fs.FS) http.Handler {
 		r.Get("/backup", s.downloadBackup)
 	})
 
-	// Serve static frontend files
+	// Serve static frontend files with SPA fallback
 	if staticFS != nil {
-		fileServer := http.FileServer(http.FS(staticFS))
-		r.Handle("/*", fileServer)
+		r.Handle("/*", spaHandler(staticFS))
 	}
 
 	return r
@@ -159,4 +173,27 @@ func readJSON(r *http.Request, v any) error {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// spaHandler serves static files, falling back to index.html for SPA routes.
+func spaHandler(staticFS fs.FS) http.HandlerFunc {
+	fileServer := http.FileServer(http.FS(staticFS))
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Try to serve the actual file first
+		path := r.URL.Path
+		if path == "/" {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		// Check if the file exists in the static FS
+		f, err := staticFS.Open(strings.TrimPrefix(path, "/"))
+		if err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		// File doesn't exist — serve index.html for SPA routing
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
+	}
 }

@@ -4,7 +4,7 @@ package db
 const schema = `
 CREATE TABLE IF NOT EXISTS documents (
     id          TEXT PRIMARY KEY,
-    source_type TEXT NOT NULL CHECK (source_type IN ('scribble','file','feed','url')),
+    source_type TEXT NOT NULL CHECK (source_type IN ('scribble','file','feed','url','synthesis')),
     title       TEXT,
     text        TEXT NOT NULL,
     mime_type   TEXT,
@@ -61,11 +61,13 @@ CREATE TRIGGER IF NOT EXISTS documents_fts_delete AFTER DELETE ON documents BEGI
 END;
 
 CREATE TABLE IF NOT EXISTS engrams (
-    id             TEXT PRIMARY KEY,
-    canonical_name TEXT UNIQUE NOT NULL,
-    concept_hash   TEXT UNIQUE,
-    description    TEXT,
-    created_at     TEXT NOT NULL
+    id                 TEXT PRIMARY KEY,
+    canonical_name     TEXT UNIQUE NOT NULL,
+    concept_hash       TEXT UNIQUE,
+    description        TEXT,
+    article            TEXT,
+    article_updated_at TEXT,
+    created_at         TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS engram_aliases (
@@ -132,4 +134,24 @@ CREATE TABLE IF NOT EXISTS settings (
     encrypted  INTEGER DEFAULT 0,
     updated_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS cluster_overviews (
+    cluster_id   INTEGER PRIMARY KEY,
+    label        TEXT NOT NULL,
+    summary      TEXT NOT NULL,
+    engram_count INTEGER NOT NULL,
+    updated_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS lint_issues (
+    id          TEXT PRIMARY KEY,
+    issue_type  TEXT NOT NULL,
+    engram_ids  TEXT NOT NULL,
+    description TEXT NOT NULL,
+    severity    TEXT NOT NULL DEFAULT 'warning',
+    resolved    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_lint_issues_type ON lint_issues(issue_type);
+CREATE INDEX IF NOT EXISTS idx_lint_issues_resolved ON lint_issues(resolved);
 `

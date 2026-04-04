@@ -153,11 +153,41 @@ def _extract_pdf(response: httpx.Response) -> WebFetchResult:
     )
 
 
+_CHALLENGE_MARKERS = (
+    "cf-browser-verification",
+    "cf_chl_opt",
+    "cf-challenge-running",
+    "checking your browser",
+    "just a moment",
+    "enable javascript and cookies to continue",
+    "hcaptcha.com",
+    "challenges.cloudflare.com",
+    "attention required! | cloudflare",
+    "please turn javascript on",
+    "ddos-guard",
+)
+
+
+def _is_challenge_page(html: str) -> bool:
+    """Detect Cloudflare, hCaptcha, and similar anti-bot challenge pages."""
+    lower = html.lower()
+    return any(marker in lower for marker in _CHALLENGE_MARKERS)
+
+
 def _fetch_web_content(url: str) -> WebFetchResult:
     """Fetch a URL and extract either PDF or article content."""
     with httpx.Client(timeout=30, follow_redirects=True) as client:
-        response = client.get(url)
+        response = client.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; Hypomnema/1.0)"},
+        )
         response.raise_for_status()
+
+    if _is_challenge_page(response.text):
+        raise ValueError(
+            "Page is protected by anti-bot challenge (Cloudflare/etc.) and cannot be fetched. "
+            "Try pasting the content as a scribble instead."
+        )
 
     if _is_pdf_response(url, response):
         return _extract_pdf(response)

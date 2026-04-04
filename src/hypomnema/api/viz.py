@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from hypomnema.api.deps import DB
-from hypomnema.api.schemas import Cluster, GapRegion, ProjectionPoint, VizEdge
+from hypomnema.api.schemas import GapRegion, ProjectionPoint, VizEdge
 from hypomnema.visualization.projection import (
     compute_projections,
     load_clusters,
@@ -22,9 +22,23 @@ async def get_projections(db: DB) -> list[ProjectionPoint]:
     return await load_projections(db)
 
 
-@router.get("/clusters", response_model=list[Cluster])
-async def get_clusters(db: DB) -> list[Cluster]:
-    return await load_clusters(db)
+@router.get("/clusters")
+async def get_clusters(db: DB) -> list[dict]:
+    from hypomnema.visualization.cluster_synthesis import get_cluster_overviews
+
+    clusters = await load_clusters(db)
+    overviews = await get_cluster_overviews(db)
+    overview_map = {o["cluster_id"]: o for o in overviews}
+
+    out = []
+    for c in clusters:
+        d = c.model_dump() if hasattr(c, "model_dump") else dict(c)
+        ov = overview_map.get(d.get("cluster_id"))
+        if ov:
+            d["label"] = ov["label"]
+            d["summary"] = ov["summary"]
+        out.append(d)
+    return out
 
 
 @router.get("/gaps", response_model=list[GapRegion])

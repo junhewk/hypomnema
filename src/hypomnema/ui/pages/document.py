@@ -372,8 +372,50 @@ async def document_detail_page(doc_id: str) -> None:
             else:
                 edit_label, edit_icon = "Annotate", "note_add"
 
-            edit_btn = ui.button(
-                edit_label,
-                icon=edit_icon,
-                on_click=_enter_edit,
-            ).props('flat dense color="grey-7"').classes("mt-6 text-xs")
+            with ui.row().classes("mt-6 gap-2"):
+                edit_btn = ui.button(
+                    edit_label,
+                    icon=edit_icon,
+                    on_click=_enter_edit,
+                ).props('flat dense color="grey-7"').classes("text-xs")
+
+                async def _delete_document() -> None:
+                    """Delete document after confirmation."""
+                    with ui.dialog() as confirm_dialog, ui.card().style(
+                        "background: var(--bg-raised); min-width: 300px"
+                    ):
+                        ui.label("Delete this document and its engram links?").classes(
+                            "text-xs mb-4"
+                        ).style("color: var(--fg-muted)")
+                        with ui.row().classes("gap-2 justify-end"):
+                            ui.button(
+                                "Cancel", on_click=confirm_dialog.close
+                            ).props('flat dense color="grey-7"').classes("text-xs")
+
+                            async def _confirm_delete() -> None:
+                                confirm_dialog.close()
+                                if db is None:
+                                    ui.notify("Database not ready", type="negative")
+                                    return
+                                from hypomnema.db.transactions import immediate_transaction
+                                from hypomnema.ontology.pipeline import remove_document_associations
+
+                                async with immediate_transaction(db):
+                                    await remove_document_associations(db, doc_id)
+                                    await db.execute(
+                                        "DELETE FROM documents WHERE id = ?", (doc_id,)
+                                    )
+                                ui.notify("Document deleted", type="info")
+                                ui.navigate.to("/")
+
+                            ui.button(
+                                "Delete", on_click=_confirm_delete
+                            ).props('flat dense color="red-4"').classes("text-xs")
+
+                    confirm_dialog.open()
+
+                ui.button(
+                    "Delete",
+                    icon="delete",
+                    on_click=_delete_document,
+                ).props('flat dense color="red-4"').classes("text-xs")

@@ -49,15 +49,15 @@ func ParseFile(filename string, data []byte) (*ParsedFile, error) {
 }
 
 // FetchURL downloads a URL and extracts readable text.
-func FetchURL(ctx context.Context, url string) (string, string, error) {
+func FetchURL(ctx context.Context, rawURL string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
 		return "", "", err
 	}
-	req.Header.Set("User-Agent", "Hypomnema/1.0")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Hypomnema/1.0)")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -65,17 +65,58 @@ func FetchURL(ctx context.Context, url string) (string, string, error) {
 	}
 	defer resp.Body.Close()
 
+	// Check HTTP status
+	if resp.StatusCode >= 400 {
+		return "", "", fmt.Errorf("HTTP %d fetching %s", resp.StatusCode, rawURL)
+	}
+
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10MB limit
 	if err != nil {
 		return "", "", err
 	}
 
+	html := string(body)
+
+	// Detect anti-bot / challenge pages
+	if isChallengePage(html) {
+		return "", "", fmt.Errorf("page is protected by anti-bot challenge (Cloudflare/etc.) and cannot be fetched")
+	}
+
 	// Extract title from <title> tag
-	title := extractHTMLTitle(string(body))
+	title := extractHTMLTitle(html)
 	// Extract readable text (basic: strip HTML tags)
-	text := stripHTML(string(body))
+	text := strings.TrimSpace(stripHTML(html))
+
+	if len(text) < 50 {
+		return "", "", fmt.Errorf("no meaningful content extracted from %s", rawURL)
+	}
 
 	return text, title, nil
+}
+
+// isChallengePage detects Cloudflare, hCaptcha, and similar anti-bot challenge pages.
+func isChallengePage(html string) bool {
+	lower := strings.ToLower(html)
+	markers := []string{
+		"cf-browser-verification",
+		"cf_chl_opt",
+		"cf-challenge-running",
+		"checking your browser",
+		"just a moment",
+		"enable javascript and cookies to continue",
+		"hcaptcha.com",
+		"challenges.cloudflare.com",
+		"ray id:",
+		"attention required! | cloudflare",
+		"please turn javascript on",
+		"ddos-guard",
+	}
+	for _, m := range markers {
+		if strings.Contains(lower, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // CheckDuplicateURL returns true if a document with this source_uri already exists.

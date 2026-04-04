@@ -67,6 +67,27 @@ async def get_engram(engram_id: str, db: DB) -> EngramDetail:
     return EngramDetail.model_validate(engram_data)
 
 
+@router.post("/{engram_id}/article/regenerate")
+async def regenerate_article(engram_id: str, db: DB) -> dict[str, object]:
+    """Force-regenerate the synthesized article for an engram."""
+    from nicegui import app
+
+    cursor = await db.execute("SELECT id FROM engrams WHERE id = ?", (engram_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Engram not found")
+
+    llm = getattr(app.state, "llm", None)
+    if llm is None:
+        raise HTTPException(status_code=503, detail="LLM not configured")
+
+    from hypomnema.ontology.synthesizer import synthesize_engram_article
+
+    article = await synthesize_engram_article(db, llm, engram_id)
+    return {"status": "ok", "article": article}
+
+
 @router.get("/{engram_id}/cluster", response_model=list[DocumentOut])
 async def get_engram_cluster(engram_id: str, db: DB) -> list[DocumentOut]:
     # Verify engram exists

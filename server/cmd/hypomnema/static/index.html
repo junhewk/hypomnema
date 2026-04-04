@@ -2,44 +2,78 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>hypomnema</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <link rel="stylesheet" href="/css/theme.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://esm.sh/three@0.175",
+            "three/addons/": "https://esm.sh/three@0.175/addons/"
+        }
+    }
+    </script>
     <script type="module" src="/js/app.js"></script>
 </head>
 <body>
+    <!-- Mobile header (hidden on desktop) -->
+    <header id="mobile-header">
+        <button class="icon-btn" onclick="toggleSidebar()">
+            <span class="material-icons">menu</span>
+        </button>
+        <span class="mobile-logo font-display">hypomnema</span>
+    </header>
+
     <aside id="sidebar">
         <div class="sidebar-header">
-            <span class="logo-icon">&#x2B22;</span>
+            <img src="/icon.png" class="logo-icon" alt="">
             <div class="sidebar-title">
                 <span class="logo-text">hypomnema</span>
                 <span class="logo-sub">ontological synthesizer</span>
             </div>
         </div>
+        <div class="sidebar-sep"></div>
         <nav>
-            <a href="/" class="nav-item active" data-route="/">
-                <span class="nav-icon">&#x25C9;</span>
+            <a href="/" class="nav-item" data-route="/">
+                <span class="material-icons nav-icon">rss_feed</span>
                 <span class="nav-label">Stream</span>
             </a>
             <a href="/search" class="nav-item" data-route="/search">
-                <span class="nav-icon">&#x2315;</span>
+                <span class="material-icons nav-icon">search</span>
                 <span class="nav-label">Search</span>
             </a>
+            <a href="/lint" class="nav-item" data-route="/lint">
+                <span class="material-icons nav-icon">health_and_safety</span>
+                <span class="nav-label">Health</span>
+            </a>
             <a href="/settings" class="nav-item" data-route="/settings">
-                <span class="nav-icon">&#x2699;</span>
+                <span class="material-icons nav-icon">settings</span>
                 <span class="nav-label">Settings</span>
             </a>
         </nav>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-sep"></div>
         <div id="minimap"></div>
         <a href="/viz" class="nav-item" data-route="/viz">
-            <span class="nav-icon">&#x2B1F;</span>
+            <span class="material-icons nav-icon">hub</span>
             <span class="nav-label">Visualization</span>
         </a>
+        <div class="sidebar-sep"></div>
+        <div class="nav-item" id="collapse-btn">
+            <span class="material-icons nav-icon" id="collapse-icon">chevron_left</span>
+            <span class="nav-label" id="collapse-label">Collapse</span>
+        </div>
     </aside>
+
     <main id="app">
         <div id="page-content"></div>
     </main>
+
+    <!-- Toast notification container -->
+    <div id="toast-container"></div>
 </body>
 </html>

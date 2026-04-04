@@ -38,9 +38,9 @@ func GetOrCreateEngram(ctx context.Context, database *db.DB, embedder embeddings
 	// Stage 3: concept hash
 	hash := conceptHash(embedding)
 	var existing db.Engram
-	err := database.QueryRow(`SELECT id, canonical_name, concept_hash, description, created_at
+	err := database.QueryRow(`SELECT id, canonical_name, concept_hash, description, article, article_updated_at, created_at
 		FROM engrams WHERE concept_hash = ?`, hash).
-		Scan(&existing.ID, &existing.CanonicalName, &existing.ConceptHash, &existing.Description, &existing.CreatedAt)
+		Scan(&existing.ID, &existing.CanonicalName, &existing.ConceptHash, &existing.Description, &existing.Article, &existing.ArticleUpdatedAt, &existing.CreatedAt)
 	if err == nil {
 		return &existing, nil
 	}

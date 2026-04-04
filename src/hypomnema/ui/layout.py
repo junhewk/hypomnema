@@ -10,6 +10,7 @@ from nicegui import app, ui
 _NAV_ITEMS = [
     {"label": "Stream", "icon": "rss_feed", "path": "/"},
     {"label": "Search", "icon": "search", "path": "/search"},
+    {"label": "Health", "icon": "health_and_safety", "path": "/lint"},
     {"label": "Settings", "icon": "settings", "path": "/settings"},
 ]
 

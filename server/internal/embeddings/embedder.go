@@ -116,9 +116,12 @@ type googleEmbedder struct {
 
 func newGoogleEmbedder(model, apiKey string) *googleEmbedder {
 	if model == "" {
-		model = "text-embedding-004"
+		model = "gemini-embedding-001"
 	}
-	dim := 768
+	dim := 3072
+	if model == "text-embedding-004" {
+		dim = 768
+	}
 	return &googleEmbedder{model: model, apiKey: apiKey, dim: dim}
 }
 
@@ -126,6 +129,62 @@ func (e *googleEmbedder) Provider() string { return "google" }
 func (e *googleEmbedder) Dimension() int   { return e.dim }
 
 func (e *googleEmbedder) Embed(ctx context.Context, texts []string) ([][]float32, error) {
+	// Use batchEmbedContents for multiple texts, embedContent for single
+	if len(texts) == 1 {
+		return e.embedSingle(ctx, texts[0])
+	}
+	return e.embedBatch(ctx, texts)
+}
+
+func (e *googleEmbedder) embedSingle(ctx context.Context, text string) ([][]float32, error) {
+	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:embedContent?key=%s",
+		e.model, e.apiKey)
+
+	body := map[string]any{
+		"model":   "models/" + e.model,
+		"content": map[string]any{"parts": []map[string]any{{"text": text}}},
+	}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("google embedding HTTP %d: %s", resp.StatusCode, truncateError(respBody))
+	}
+
+	var result struct {
+		Embedding struct {
+			Values []float32 `json:"values"`
+		} `json:"embedding"`
+	}
+	if err := json.Unmarshal(respBody, &result); err != nil {
+		return nil, err
+	}
+
+	return [][]float32{result.Embedding.Values}, nil
+}
+
+func (e *googleEmbedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:batchEmbedContents?key=%s",
 		e.model, e.apiKey)
 
@@ -133,7 +192,7 @@ func (e *googleEmbedder) Embed(ctx context.Context, texts []string) ([][]float32
 	for i, t := range texts {
 		requests[i] = map[string]any{
 			"model":   "models/" + e.model,
-			"content": map[string]any{"parts": []map[string]string{{"text": t}}},
+			"content": map[string]any{"parts": []map[string]any{{"text": t}}},
 		}
 	}
 
@@ -163,7 +222,7 @@ func (e *googleEmbedder) Embed(ctx context.Context, texts []string) ([][]float32
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("google embedding HTTP %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("google embedding HTTP %d: %s", resp.StatusCode, truncateError(respBody))
 	}
 
 	var result struct {
@@ -180,4 +239,12 @@ func (e *googleEmbedder) Embed(ctx context.Context, texts []string) ([][]float32
 		out[i] = emb.Values
 	}
 	return out, nil
+}
+
+// truncateError returns the first 200 bytes of an error response for logging.
+func truncateError(b []byte) string {
+	if len(b) > 200 {
+		return string(b[:200]) + "..."
+	}
+	return string(b)
 }

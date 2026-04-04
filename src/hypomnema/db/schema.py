@@ -96,7 +96,7 @@ async def _create_core_tables_impl(db: aiosqlite.Connection) -> None:
     await db.execute("""
         CREATE TABLE IF NOT EXISTS documents (
             id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed', 'url')),
+            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed', 'url', 'synthesis')),
             title TEXT,
             text TEXT NOT NULL,
             mime_type TEXT,
@@ -474,7 +474,7 @@ def _documents_table_sql(table_name: str) -> str:
     return f"""
         CREATE TABLE {table_name} (
             id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed', 'url')),
+            source_type TEXT NOT NULL CHECK (source_type IN ('scribble', 'file', 'feed', 'url', 'synthesis')),
             title TEXT,
             text TEXT NOT NULL,
             mime_type TEXT,
@@ -728,6 +728,126 @@ async def _migration_003_revisions_and_annotations(db: aiosqlite.Connection) -> 
     await db.commit()
 
 
+async def _migration_004_engram_articles(db: aiosqlite.Connection) -> None:
+    """Add article and article_updated_at columns to engrams for synthesized wiki articles."""
+    with suppress(Exception):
+        await db.execute("ALTER TABLE engrams ADD COLUMN article TEXT")
+    with suppress(Exception):
+        await db.execute("ALTER TABLE engrams ADD COLUMN article_updated_at TEXT")
+    await db.commit()
+
+
+async def _migration_005_lint_issues(db: aiosqlite.Connection) -> None:
+    """Create lint_issues table for knowledge graph health checks."""
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS lint_issues (
+            id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+            issue_type TEXT NOT NULL,
+            engram_ids TEXT NOT NULL,
+            description TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'warning',
+            resolved INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+    await db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lint_issues_type ON lint_issues(issue_type)
+    """)
+    await db.execute("""
+        CREATE INDEX IF NOT EXISTS idx_lint_issues_resolved ON lint_issues(resolved)
+    """)
+    await db.commit()
+
+
+async def _migration_006_synthesis_source_type(db: aiosqlite.Connection) -> None:
+    """Add 'synthesis' to documents.source_type CHECK constraint.
+
+    SQLite can't ALTER CHECK constraints, so rebuild the table.
+    Only runs if the current DDL lacks 'synthesis'.
+    """
+    cursor = await db.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'documents'"
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        return
+    ddl = str(row["sql"]) if row["sql"] else ""
+    if "'synthesis'" in ddl:
+        return  # already has it
+
+    await db.execute("PRAGMA foreign_keys=OFF")
+    try:
+        source_table = await _move_table_aside(
+            db, table_name="documents", temp_base="_documents_synth_migration",
+        )
+        await _drop_documents_objects(db)
+        await db.execute(_documents_table_sql("documents"))
+        if source_table is not None:
+            await _copy_documents_rows(db, source_table, "documents")
+            await db.execute(f"DROP TABLE IF EXISTS {source_table}")  # noqa: S608
+
+        # Rebuild indexes
+        for col in ("source_type", "processed", "created_at", "triaged", "source_uri", "heat_tier"):
+            await db.execute(
+                f"CREATE INDEX IF NOT EXISTS idx_documents_{col} ON documents({col})"  # noqa: S608
+            )
+
+        # Rebuild FTS and triggers (from migration 003)
+        await db.execute("DROP TABLE IF EXISTS documents_fts")
+        await db.execute("""
+            CREATE VIRTUAL TABLE documents_fts USING fts5(
+                title, text, annotation, content='documents', content_rowid='rowid'
+            )
+        """)
+        await db.execute("INSERT INTO documents_fts(documents_fts) VALUES ('rebuild')")
+        await db.execute("""
+            CREATE TRIGGER documents_fts_insert AFTER INSERT ON documents BEGIN
+                INSERT INTO documents_fts(rowid, title, text, annotation)
+                VALUES (new.rowid, new.title, new.text, new.annotation);
+            END
+        """)
+        await db.execute("""
+            CREATE TRIGGER documents_fts_update
+            AFTER UPDATE OF title, text, annotation ON documents BEGIN
+                INSERT INTO documents_fts(documents_fts, rowid, title, text, annotation)
+                VALUES ('delete', old.rowid, old.title, old.text, old.annotation);
+                INSERT INTO documents_fts(rowid, title, text, annotation)
+                VALUES (new.rowid, new.title, new.text, new.annotation);
+            END
+        """)
+        await db.execute("""
+            CREATE TRIGGER documents_fts_delete BEFORE DELETE ON documents BEGIN
+                INSERT INTO documents_fts(documents_fts, rowid, title, text, annotation)
+                VALUES ('delete', old.rowid, old.title, old.text, old.annotation);
+            END
+        """)
+        await db.execute("""
+            CREATE TRIGGER IF NOT EXISTS documents_updated_at
+            AFTER UPDATE ON documents BEGIN
+                UPDATE documents SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')
+                WHERE id = new.id;
+            END
+        """)
+    finally:
+        await db.execute("PRAGMA foreign_keys=ON")
+    await db.commit()
+
+
+async def _migration_007_cluster_overviews(db: aiosqlite.Connection) -> None:
+    """Create cluster_overviews table for auto-generated cluster labels and summaries."""
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS cluster_overviews (
+            cluster_id INTEGER PRIMARY KEY,
+            label TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            engram_count INTEGER NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        )
+    """)
+    await db.commit()
+
+
 # ---------------------------------------------------------------------------
 # Migration registry — keep at bottom so all functions are defined
 # ---------------------------------------------------------------------------
@@ -738,6 +858,10 @@ def _register_migrations() -> None:
     _MIGRATIONS.append((1, "baseline_schema", _migration_001_baseline))
     _MIGRATIONS.append((2, "heat_columns", _migration_002_heat_columns))
     _MIGRATIONS.append((3, "revisions_and_annotations", _migration_003_revisions_and_annotations))
+    _MIGRATIONS.append((4, "engram_articles", _migration_004_engram_articles))
+    _MIGRATIONS.append((5, "lint_issues", _migration_005_lint_issues))
+    _MIGRATIONS.append((6, "synthesis_source_type", _migration_006_synthesis_source_type))
+    _MIGRATIONS.append((7, "cluster_overviews", _migration_007_cluster_overviews))
 
 
 _register_migrations()

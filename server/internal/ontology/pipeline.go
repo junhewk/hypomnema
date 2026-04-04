@@ -106,6 +106,18 @@ func ProcessDocument(ctx context.Context, database *db.DB, llmClient llm.Client,
 		log.Printf("[ontology] heat scoring error: %v", err)
 	}
 
+	// 7. Synthesize stale engram articles
+	if n, err := SynthesizeStaleArticles(ctx, database, llmClient, 5); err != nil {
+		log.Printf("[ontology] article synthesis error: %v", err)
+	} else if n > 0 {
+		log.Printf("[ontology] synthesized %d engram articles", n)
+	}
+
+	// 8. Run lint checks
+	if _, err := RunLint(database); err != nil {
+		log.Printf("[ontology] lint error: %v", err)
+	}
+
 	return nil
 }
 
@@ -268,6 +280,18 @@ func ReviseDocument(ctx context.Context, database *db.DB, llmClient llm.Client, 
 	// Update heat scores
 	if err := ComputeAllHeat(database); err != nil {
 		log.Printf("[ontology] heat scoring error: %v", err)
+	}
+
+	// Synthesize stale engram articles
+	if n, err := SynthesizeStaleArticles(ctx, database, llmClient, 5); err != nil {
+		log.Printf("[ontology] article synthesis error: %v", err)
+	} else if n > 0 {
+		log.Printf("[ontology] synthesized %d engram articles", n)
+	}
+
+	// Run lint checks
+	if _, err := RunLint(database); err != nil {
+		log.Printf("[ontology] lint error: %v", err)
 	}
 
 	return nil

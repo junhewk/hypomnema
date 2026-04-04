@@ -105,11 +105,20 @@ class Engram(BaseModel):
     canonical_name: str
     concept_hash: str
     description: str | None = None
+    article: str | None = None
+    article_updated_at: datetime | None = None
     created_at: datetime
 
     @field_validator("created_at", mode="before")
     @classmethod
     def parse_datetime(cls, v: Any) -> datetime:
+        return _parse_iso_datetime(v)
+
+    @field_validator("article_updated_at", mode="before")
+    @classmethod
+    def parse_optional_datetime(cls, v: Any) -> datetime | None:
+        if v is None:
+            return None
         return _parse_iso_datetime(v)
 
     @classmethod

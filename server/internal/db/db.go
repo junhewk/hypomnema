@@ -85,3 +85,11 @@ func NilIfEmpty(s string) *string {
 	}
 	return &s
 }
+
+// Deref returns the value of a string pointer, or the fallback if nil.
+func Deref(s *string, fallback string) string {
+	if s != nil {
+		return *s
+	}
+	return fallback
+}

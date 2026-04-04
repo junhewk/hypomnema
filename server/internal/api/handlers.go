@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -434,6 +435,64 @@ func (s *Server) getEngramCluster(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, docs)
 }
 
+func (s *Server) regenerateArticle(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	s.mu.RLock()
+	llmClient := s.LLM
+	s.mu.RUnlock()
+	if llmClient == nil {
+		writeError(w, 503, "LLM not configured")
+		return
+	}
+	article, err := ontology.SynthesizeArticle(r.Context(), s.DB, llmClient, id)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"status": "ok", "article": article})
+}
+
+// --- Lint ---
+
+func (s *Server) listLintIssues(w http.ResponseWriter, r *http.Request) {
+	issues, err := ontology.GetLintIssues(s.DB, false, 100)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	if issues == nil {
+		issues = []ontology.LintIssue{}
+	}
+	writeJSON(w, 200, issues)
+}
+
+func (s *Server) lintIssueCount(w http.ResponseWriter, r *http.Request) {
+	count, err := ontology.GetUnresolvedCount(s.DB)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]int{"count": count})
+}
+
+func (s *Server) resolveLintIssue(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if err := ontology.ResolveLintIssue(s.DB, id); err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "resolved"})
+}
+
+func (s *Server) triggerLint(w http.ResponseWriter, r *http.Request) {
+	issues, err := ontology.RunLint(s.DB)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"new_issues": len(issues)})
+}
+
 // --- Search ---
 
 func (s *Server) searchDocuments(w http.ResponseWriter, r *http.Request) {
@@ -549,6 +608,104 @@ func rrfFuse(fts, vec []db.ScoredDocument) []db.ScoredDocument {
 	return out
 }
 
+func (s *Server) synthesizeSearch(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Query       string   `json:"query"`
+		DocumentIDs []string `json:"document_ids"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, 400, "invalid JSON")
+		return
+	}
+	if body.Query == "" || len(body.DocumentIDs) == 0 {
+		writeError(w, 400, "query and document_ids required")
+		return
+	}
+
+	s.mu.RLock()
+	llmClient := s.LLM
+	s.mu.RUnlock()
+	if llmClient == nil {
+		writeError(w, 503, "LLM not configured")
+		return
+	}
+
+	// Fetch source documents
+	ph := make([]string, len(body.DocumentIDs))
+	args := make([]any, len(body.DocumentIDs))
+	for i, id := range body.DocumentIDs {
+		ph[i] = "?"
+		args[i] = id
+	}
+	placeholders := strings.Join(ph, ",")
+	rows, err := s.DB.Query(
+		`SELECT id, title, tidy_title, text, tidy_text FROM documents WHERE id IN (`+placeholders+`)`, args...)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	defer rows.Close()
+
+	type srcDoc struct {
+		title, text string
+	}
+	var docs []srcDoc
+	for rows.Next() {
+		var id string
+		var title, tidyTitle, text, tidyText *string
+		if err := rows.Scan(&id, &title, &tidyTitle, &text, &tidyText); err != nil {
+			continue
+		}
+		t := db.Deref(tidyTitle, db.Deref(title, "Untitled"))
+		tx := db.Deref(tidyText, db.Deref(text, ""))
+		if len(tx) > 2000 {
+			tx = tx[:2000]
+		}
+		docs = append(docs, srcDoc{title: t, text: tx})
+	}
+
+	if len(docs) == 0 {
+		writeError(w, 404, "no documents found")
+		return
+	}
+
+	// Build prompt
+	prompt := fmt.Sprintf("Query: \"%s\"\n\n", body.Query)
+	for i, doc := range docs {
+		prompt += fmt.Sprintf("### Source %d: %s\n%s\n\n", i+1, doc.title, doc.text)
+	}
+	prompt += "Synthesize a comprehensive answer to the query based on these sources.\n"
+
+	system := "You are a research synthesis engine. Given a query and excerpts from multiple documents, write a clear synthesis in markdown that addresses the query, cites sources by title, notes tensions, and identifies gaps. 200-600 words."
+
+	synthesis, err := llmClient.Complete(r.Context(), prompt, system)
+	if err != nil {
+		writeError(w, 500, fmt.Sprintf("LLM error: %v", err))
+		return
+	}
+
+	// Store as new document
+	docTitle := "Synthesis: " + body.Query
+	if len(docTitle) > 200 {
+		docTitle = docTitle[:200]
+	}
+	newDoc := &db.Document{
+		SourceType: "synthesis",
+		Title:      &docTitle,
+		Text:       synthesis,
+	}
+	if err := s.DB.InsertDocument(newDoc); err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+
+	if s.Queue != nil {
+		s.Queue.Enqueue(ontology.PipelineJob{DocumentID: newDoc.ID})
+	}
+
+	writeJSON(w, 201, map[string]any{"status": "ok", "document_id": newDoc.ID})
+}
+
 // --- Feeds ---
 
 func (s *Server) listFeeds(w http.ResponseWriter, r *http.Request) {
@@ -654,8 +811,8 @@ func (s *Server) listProviders(w http.ResponseWriter, r *http.Request) {
 			{"id": "ollama", "name": "Ollama (local)", "models": []string{}, "default": ""},
 		},
 		"embedding_providers": []map[string]any{
-			{"id": "openai", "name": "OpenAI", "models": []string{"text-embedding-3-large", "text-embedding-3-small"}, "default": "text-embedding-3-large"},
-			{"id": "google", "name": "Google", "models": []string{"text-embedding-004"}, "default": "text-embedding-004"},
+			{"id": "openai", "name": "OpenAI", "models": []string{"text-embedding-3-small", "text-embedding-3-large"}, "default": "text-embedding-3-small", "dimension": 1536},
+			{"id": "google", "name": "Google", "models": []string{"gemini-embedding-001", "text-embedding-004"}, "default": "gemini-embedding-001", "dimension": 3072},
 		},
 	})
 }
@@ -936,6 +1093,9 @@ func (s *Server) setupComplete(w http.ResponseWriter, r *http.Request) {
 	// Mark setup complete
 	s.DB.SetSetting("setup_complete", "1", false)
 
+	// Set session cookie so the user is authenticated immediately after setup
+	setSessionCookie(w, s.DB.CryptoKey)
+
 	writeJSON(w, 200, map[string]any{
 		"status":        "ok",
 		"embedding_dim": dim,
@@ -1152,7 +1312,28 @@ func (s *Server) getClusters(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, 200, clusters)
+	// Enrich with overviews
+	overviews, _ := projection.GetClusterOverviews(s.DB)
+	overviewMap := make(map[int]projection.ClusterOverview)
+	for _, o := range overviews {
+		overviewMap[o.ClusterID] = o
+	}
+
+	type enrichedCluster struct {
+		db.Cluster
+		Label   string `json:"label,omitempty"`
+		Summary string `json:"summary,omitempty"`
+	}
+	out := make([]enrichedCluster, len(clusters))
+	for i, c := range clusters {
+		ec := enrichedCluster{Cluster: c}
+		if o, ok := overviewMap[c.ClusterID]; ok {
+			ec.Label = o.Label
+			ec.Summary = o.Summary
+		}
+		out[i] = ec
+	}
+	writeJSON(w, 200, out)
 }
 
 func (s *Server) getGaps(w http.ResponseWriter, r *http.Request) {
@@ -1182,6 +1363,19 @@ func (s *Server) recomputeProjections(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error())
 		return
 	}
+
+	// Synthesize cluster overviews if LLM available
+	s.mu.RLock()
+	llmClient := s.LLM
+	s.mu.RUnlock()
+	if llmClient != nil {
+		if n, err := projection.SynthesizeClusterOverviews(r.Context(), s.DB, llmClient); err != nil {
+			log.Printf("[viz] cluster synthesis error: %v", err)
+		} else if n > 0 {
+			log.Printf("[viz] synthesized %d cluster overviews", n)
+		}
+	}
+
 	writeJSON(w, 200, points)
 }
 
