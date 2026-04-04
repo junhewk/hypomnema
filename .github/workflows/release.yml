@@ -36,11 +36,6 @@ jobs:
             cc: aarch64-linux-gnu-gcc
             suffix: linux-arm64
             pkg: gcc-aarch64-linux-gnu
-          - goarch: arm
-            cc: arm-linux-gnueabihf-gcc
-            goarm: "7"
-            suffix: linux-armv7
-            pkg: gcc-arm-linux-gnueabihf
     steps:
       - uses: actions/checkout@v4
 

@@ -33,9 +33,9 @@ def configure(settings: Settings | None = None) -> None:
     from hypomnema.api.engrams import router as engrams_router
     from hypomnema.api.feeds import router as feeds_router
     from hypomnema.api.health import router as health_router
+    from hypomnema.api.lint import router as lint_router
     from hypomnema.api.search import router as search_router
     from hypomnema.api.settings import router as settings_router
-    from hypomnema.api.lint import router as lint_router
     from hypomnema.api.viz import router as viz_router
 
     # Routers already define their own /api/... prefixes
