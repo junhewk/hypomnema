@@ -784,7 +784,7 @@ async def _migration_006_synthesis_source_type(db: aiosqlite.Connection) -> None
         await _drop_documents_objects(db)
         await db.execute(_documents_table_sql("documents"))
         if source_table is not None:
-            await _copy_documents_rows(db, source_table, "documents")
+            await _copy_documents_rows(db, source_table=source_table, destination_table="documents", or_ignore=False)
             await db.execute(f"DROP TABLE IF EXISTS {source_table}")  # noqa: S608
 
         # Rebuild indexes

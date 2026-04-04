@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 from nicegui import ui
 
@@ -54,7 +55,7 @@ async def lint_page() -> None:
                     ).style("color: #56c9a0")
                 else:
                     # Group by type
-                    grouped: dict[str, list[dict]] = {}
+                    grouped: dict[str, list[dict[str, Any]]] = {}
                     for issue in issues:
                         t = str(issue.get("issue_type", "unknown"))
                         grouped.setdefault(t, []).append(issue)
@@ -70,7 +71,7 @@ async def lint_page() -> None:
                         "text-muted text-xs text-center mt-4"
                     ).style("font-size: 10px")
 
-        def _render_issue(issue: dict) -> None:
+        def _render_issue(issue: dict[str, Any]) -> None:
             issue_id = str(issue.get("id", ""))
             severity = str(issue.get("severity", "warning"))
             style = _SEVERITY_STYLES.get(severity, _SEVERITY_STYLES["warning"])

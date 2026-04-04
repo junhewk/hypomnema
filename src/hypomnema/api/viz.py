@@ -23,7 +23,7 @@ async def get_projections(db: DB) -> list[ProjectionPoint]:
 
 
 @router.get("/clusters")
-async def get_clusters(db: DB) -> list[dict]:
+async def get_clusters(db: DB) -> list[dict[str, object]]:
     from hypomnema.visualization.cluster_synthesis import get_cluster_overviews
 
     clusters = await load_clusters(db)

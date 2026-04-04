@@ -6,6 +6,10 @@ import json
 import logging
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from hypomnema.llm.base import LLMClient
 
 import httpx
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Response, UploadFile
@@ -120,7 +124,7 @@ async def _load_document_metadata(db: DB, document_id: str) -> dict[str, object]
 
 async def _finalize_pipeline(
     db: DB, document_id: str, metadata: dict[str, object],
-    llm: object | None = None,
+    llm: LLMClient | None = None,
 ) -> str:
     """Shared tail: projections, heat scoring, article synthesis, and final status."""
     from hypomnema.ontology.heat import compute_all_heat
