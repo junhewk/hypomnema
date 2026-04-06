@@ -69,8 +69,21 @@ func (q *Queue) Stop() {
 }
 
 func (q *Queue) processJob(ctx context.Context, job PipelineJob) error {
+	mode := "full"
 	if job.Incremental {
-		return ReviseDocument(ctx, q.db, q.llm, q.emb, job.DocumentID)
+		mode = "incremental"
 	}
-	return ProcessDocument(ctx, q.db, q.llm, q.emb, job.DocumentID)
+	log.Printf("[ontology] processing %s (%s)", job.DocumentID, mode)
+	var err error
+	if job.Incremental {
+		err = ReviseDocument(ctx, q.db, q.llm, q.emb, job.DocumentID)
+	} else {
+		err = ProcessDocument(ctx, q.db, q.llm, q.emb, job.DocumentID)
+	}
+	if err != nil {
+		log.Printf("[ontology] failed %s: %v", job.DocumentID, err)
+	} else {
+		log.Printf("[ontology] completed %s", job.DocumentID)
+	}
+	return err
 }

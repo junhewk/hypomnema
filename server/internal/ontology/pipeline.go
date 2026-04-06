@@ -27,6 +27,8 @@ func ProcessDocument(ctx context.Context, database *db.DB, llmClient llm.Client,
 		return nil // already processed
 	}
 
+	log.Printf("[ontology] %s: extracting entities (%d chars)", docID, len(doc.Text))
+
 	// 1. Extract entities via LLM
 	text := doc.Text
 	if doc.Annotation != nil && *doc.Annotation != "" {
@@ -37,6 +39,7 @@ func ProcessDocument(ctx context.Context, database *db.DB, llmClient llm.Client,
 	if err != nil {
 		return fmt.Errorf("extract entities: %w", err)
 	}
+	log.Printf("[ontology] %s: extracted %d entities", docID, len(entities))
 
 	// Store tidy results
 	if tidyTitle != "" || tidyText != "" {
@@ -60,6 +63,7 @@ func ProcessDocument(ctx context.Context, database *db.DB, llmClient llm.Client,
 
 	// 3. Embed canonical names
 	canonicalNames := uniqueValues(synonymMap)
+	log.Printf("[ontology] %s: %d canonical names after synonym resolution", docID, len(canonicalNames))
 	if len(canonicalNames) == 0 {
 		database.Exec(`UPDATE documents SET processed = 1 WHERE id = ?`, docID)
 		return nil
@@ -69,6 +73,7 @@ func ProcessDocument(ctx context.Context, database *db.DB, llmClient llm.Client,
 	if err != nil {
 		return fmt.Errorf("embed entities: %w", err)
 	}
+	log.Printf("[ontology] %s: embedded %d names", docID, len(embVecs))
 
 	// 4. Get or create engrams (dedup)
 	nameToEmbedding := make(map[string][]float32)
@@ -95,6 +100,7 @@ func ProcessDocument(ctx context.Context, database *db.DB, llmClient llm.Client,
 
 	// Mark entities extracted
 	database.Exec(`UPDATE documents SET processed = 1 WHERE id = ?`, docID)
+	log.Printf("[ontology] %s: engrams created, generating edges", docID)
 
 	// 5. Link: generate edges
 	if err := LinkDocument(ctx, database, llmClient, embedder, docID); err != nil {

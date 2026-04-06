@@ -70,7 +70,7 @@ func (db *DB) ListRecentDocuments(days int) ([]Document, error) {
 		    metadata, triaged, processed, revision, tidy_title, tidy_text, tidy_level,
 		    annotation, heat_score, heat_tier, created_at, updated_at
 		FROM documents
-		WHERE created_at >= ? AND (processed > 0 OR source_type = 'scribble')
+		WHERE created_at >= ?
 		ORDER BY created_at DESC`, cutoff)
 	if err != nil {
 		return nil, err

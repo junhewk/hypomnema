@@ -29,8 +29,8 @@ func Open(path string, cryptoKey []byte) (*DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
-	sqlDB.SetMaxOpenConns(1) // SQLite: single writer
-	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetMaxOpenConns(4) // WAL mode allows concurrent readers
+	sqlDB.SetMaxIdleConns(2)
 
 	if _, err := sqlDB.Exec(schema); err != nil {
 		sqlDB.Close()
