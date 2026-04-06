@@ -27,7 +27,7 @@ Hypomnema extracts concepts from your research material, deduplicates them, link
 
 ## Features
 
-- **Zero-friction input** — scribbles, PDF/DOCX/Markdown upload, URL scraping, RSS/YouTube feeds
+- **Zero-friction input** — scribbles, PDF/DOCX/Markdown upload, URL scraping (with Jina Reader fallback for JS-rendered/paywalled pages), RSS/YouTube feeds
 - **Smart PDF extraction** — layout-aware parsing via [opendataloader-pdf](https://github.com/opendataloader-project/opendataloader-pdf) with column detection and structure preservation; pypdf fallback
 - **Automatic ontology** — LLM-powered entity extraction, multi-stage deduplication (exact match, alias index, KNN, vector similarity, concept hash), typed edge generation (supports, contradicts, critiques, extends, ...)
 - **Engram articles** — LLM-synthesized wiki articles for each concept, compiled from all linked documents (inspired by [Karpathy's LLM Knowledge Base](https://x.com/karpathy/status/2039805659525644595))

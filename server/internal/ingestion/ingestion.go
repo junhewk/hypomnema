@@ -70,9 +70,20 @@ func FetchURL(ctx context.Context, rawURL string) (string, string, error) {
 		return "", "", fmt.Errorf("HTTP %d fetching %s", resp.StatusCode, rawURL)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20)) // 10MB limit
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 30<<20)) // 30MB limit
 	if err != nil {
 		return "", "", err
+	}
+
+	// Detect PDF by Content-Type or magic bytes
+	ct := resp.Header.Get("Content-Type")
+	isPDF := strings.Contains(ct, "application/pdf") || (len(body) > 4 && string(body[:5]) == "%PDF-")
+	if isPDF {
+		parsed, err := parsePDF(body)
+		if err != nil {
+			return "", "", fmt.Errorf("PDF parse: %w", err)
+		}
+		return parsed.Text, parsed.Title, nil
 	}
 
 	html := string(body)
@@ -88,7 +99,59 @@ func FetchURL(ctx context.Context, rawURL string) (string, string, error) {
 	text := strings.TrimSpace(stripHTML(html))
 
 	if len(text) < 50 {
-		return "", "", fmt.Errorf("no meaningful content extracted from %s", rawURL)
+		// Fallback to Jina Reader for JS-rendered or paywalled pages
+		jText, jTitle, err := fetchViaJinaReader(ctx, rawURL)
+		if err != nil {
+			return "", "", fmt.Errorf("no meaningful content extracted from %s (jina fallback: %w)", rawURL, err)
+		}
+		return jText, jTitle, nil
+	}
+
+	return text, title, nil
+}
+
+// fetchViaJinaReader uses r.jina.ai to extract content from JS-rendered pages.
+func fetchViaJinaReader(ctx context.Context, rawURL string) (string, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	jinaURL := "https://r.jina.ai/" + rawURL
+	req, err := http.NewRequestWithContext(ctx, "GET", jinaURL, nil)
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Accept", "text/plain")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		return "", "", fmt.Errorf("jina HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	if err != nil {
+		return "", "", err
+	}
+
+	text := strings.TrimSpace(string(body))
+	if len(text) < 50 {
+		return "", "", fmt.Errorf("jina returned no content")
+	}
+
+	// Extract title from first markdown heading if present
+	var title string
+	if strings.HasPrefix(text, "# ") {
+		if idx := strings.Index(text, "\n"); idx > 0 {
+			title = strings.TrimPrefix(text[:idx], "# ")
+		}
+	} else if strings.HasPrefix(text, "Title: ") {
+		if idx := strings.Index(text, "\n"); idx > 0 {
+			title = strings.TrimPrefix(text[:idx], "Title: ")
+		}
 	}
 
 	return text, title, nil

@@ -100,22 +100,30 @@ def _extract_article(response: httpx.Response) -> WebFetchResult:
     """Extract article content from an HTTP response."""
     html = response.text
     extracted = trafilatura.bare_extraction(html, include_tables=True, include_links=False)
-    if extracted is None:
-        raise ValueError("No extractable content")
 
-    # trafilatura >= 2.0 returns a Document object; older versions return a dict
-    if isinstance(extracted, dict):
-        text = extracted.get("text", "")
-        title = extracted.get("title")
-        author = extracted.get("author")
-        date = extracted.get("date")
-    else:
-        text = extracted.text or ""
-        title = extracted.title
-        author = extracted.author
-        date = extracted.date
+    text = ""
+    title = None
+    author = None
+    date = None
+
+    if extracted is not None:
+        # trafilatura >= 2.0 returns a Document object; older versions return a dict
+        if isinstance(extracted, dict):
+            text = extracted.get("text", "")
+            title = extracted.get("title")
+            author = extracted.get("author")
+            date = extracted.get("date")
+        else:
+            text = extracted.text or ""
+            title = extracted.title
+            author = extracted.author
+            date = extracted.date
 
     if not text:
+        # Fallback to Jina Reader for JS-rendered or paywalled pages
+        jina_result = _fetch_via_jina_reader(str(response.url))
+        if jina_result is not None:
+            return jina_result
         raise ValueError("No extractable content")
 
     meta: dict[str, object | str | None] = {}
@@ -125,6 +133,35 @@ def _extract_article(response: httpx.Response) -> WebFetchResult:
         meta["date"] = date
 
     return WebFetchResult(text=text, title=title or None, metadata=meta)
+
+
+def _fetch_via_jina_reader(url: str) -> WebFetchResult | None:
+    """Fetch content via Jina Reader API as fallback for JS-rendered pages."""
+    try:
+        with httpx.Client(timeout=30, follow_redirects=True) as client:
+            resp = client.get(
+                f"https://r.jina.ai/{url}",
+                headers={"Accept": "text/plain"},
+            )
+            resp.raise_for_status()
+    except Exception:
+        logger.debug("Jina Reader fallback failed for %s", url)
+        return None
+
+    text = resp.text.strip()
+    if len(text) < 50:
+        return None
+
+    # Extract title from first markdown heading
+    title = None
+    if text.startswith("# "):
+        idx = text.index("\n") if "\n" in text else len(text)
+        title = text[:idx].removeprefix("# ").strip()
+    elif text.startswith("Title: "):
+        idx = text.index("\n") if "\n" in text else len(text)
+        title = text[:idx].removeprefix("Title: ").strip()
+
+    return WebFetchResult(text=text, title=title, metadata={"jina_reader": True})
 
 
 def _extract_pdf(response: httpx.Response) -> WebFetchResult:

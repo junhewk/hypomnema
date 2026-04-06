@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-04-06
+
+### Fixed
+- **Go server DB blocking** — `SetMaxOpenConns(1)` caused the pipeline to block all HTTP handlers during edge generation; bumped to 4 for WAL concurrent readers
+- **Go server projections** — UMAP/clustering now recomputes after each document pipeline run, not only via manual API call
+- **Go server lint insert** — `created_at` column was missing from lint issue inserts, preventing issues from being saved
+- **Go server PDF URL fetch** — URLs pointing to PDFs were treated as HTML; now detected by Content-Type and `%PDF-` magic bytes and routed to PDF parser
+- **Go server fetch size limit** — raised from 10MB to 30MB to handle large PDFs
+
+### Added
+- **Jina Reader fallback** — when basic HTML extraction yields insufficient content (JS-rendered or paywalled pages), falls back to `r.jina.ai` for server-side rendering
+- **Go pipeline logging** — stage-level logging for queue processing, entity extraction, embedding, and edge generation
+- **Unprocessed docs in stream** — freshly fetched URL documents now appear in the Go stream immediately instead of waiting for pipeline completion
+
 ## [0.3.1] - 2026-04-06
 
 ### Fixed

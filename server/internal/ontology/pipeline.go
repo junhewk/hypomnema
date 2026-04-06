@@ -9,6 +9,7 @@ import (
 	"github.com/junhewk/hypomnema/internal/db"
 	"github.com/junhewk/hypomnema/internal/embeddings"
 	"github.com/junhewk/hypomnema/internal/llm"
+	"github.com/junhewk/hypomnema/internal/projection"
 )
 
 // churnThreshold: if more than 50% of existing engrams change, fall back to full rebuild.
@@ -107,19 +108,24 @@ func ProcessDocument(ctx context.Context, database *db.DB, llmClient llm.Client,
 		return fmt.Errorf("link document: %w", err)
 	}
 
-	// 6. Compute heat scores
+	// 6. Recompute projections (UMAP + clustering)
+	if _, err := projection.Recompute(database); err != nil {
+		log.Printf("[ontology] projection error: %v", err)
+	}
+
+	// 7. Compute heat scores
 	if err := ComputeAllHeat(database); err != nil {
 		log.Printf("[ontology] heat scoring error: %v", err)
 	}
 
-	// 7. Synthesize stale engram articles
+	// 8. Synthesize stale engram articles
 	if n, err := SynthesizeStaleArticles(ctx, database, llmClient, 5); err != nil {
 		log.Printf("[ontology] article synthesis error: %v", err)
 	} else if n > 0 {
 		log.Printf("[ontology] synthesized %d engram articles", n)
 	}
 
-	// 8. Run lint checks
+	// 9. Run lint checks
 	if _, err := RunLint(database); err != nil {
 		log.Printf("[ontology] lint error: %v", err)
 	}

@@ -71,7 +71,7 @@ func RunLint(database *db.DB) ([]LintIssue, error) {
 			continue
 		}
 		_, err := database.Exec(
-			`INSERT INTO lint_issues (id, issue_type, engram_ids, description, severity) VALUES (?, ?, ?, ?, ?)`,
+			`INSERT INTO lint_issues (id, issue_type, engram_ids, description, severity, created_at) VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
 			db.NewID(), issue.IssueType, string(idsJSON), issue.Description, issue.Severity,
 		)
 		if err != nil {
