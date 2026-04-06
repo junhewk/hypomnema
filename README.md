@@ -35,7 +35,7 @@ Hypomnema extracts concepts from your research material, deduplicates them, link
 - **Query synthesis** — search results can be synthesized into new documents that feed back into the knowledge graph
 - **Cluster overviews** — auto-generated labels and summaries for each thematic cluster in the visualization
 - **Title + TL;DR** — files and URL fetches get an LLM-generated title revision and concise summary; scribbles get full tidy rewriting
-- **3D visualization** — constellation-mode point cloud with PageRank node sizing, cluster color reveal, per-cluster spread control, node drag, hover labels (via Three.js + three-forcegraph)
+- **3D visualization** — constellation-mode point cloud with PageRank node sizing, cluster color reveal, clusters legend panel, per-cluster spread control, node drag, hover labels (via Three.js + three-forcegraph)
 - **Document revision** — scribbles are editable in-place; URLs/files/feeds get a user annotation layer. Every edit is revision-logged and re-processed incrementally (engram diff with 50% churn fallback to full rebuild). Feeds into heat scoring.
 - **Document heat scoring** — graph-derived actionability signal classifies documents as active, reference, or dormant based on temporal recency, concept co-activity, revision count, and graph centrality. No manual filing — organization emerges from the knowledge graph.
 - **Full-text + semantic search** — FTS5 for keyword search (including annotations), sqlite-vec for vector similarity, reciprocal rank fusion

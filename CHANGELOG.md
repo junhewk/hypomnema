@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-04-06
+
+### Fixed
+- **Related document link overlay** — `absolute inset-0` link in related documents section lacked a positioned parent, causing clicks anywhere on the document page (including the "Original text" expansion) to navigate to the first related document instead
+
+### Added
+- **Cluster labels in node detail panel** — clicking a node in the 3D visualization now shows the auto-generated cluster label instead of a raw cluster ID
+- **Clusters legend panel** — collapsible panel on the visualization page listing all clusters with color dot, label, and node count (both Python and Go stacks)
+
+## [0.3.0] - 2026-04-04
+
+### Added
+- **Go server** — lightweight port for resource-constrained devices (Raspberry Pi 3); chi router, embedded static SPA, pure-Go UMAP + HDBSCAN, raw HTTP LLM clients
+- **Engram articles** — LLM-synthesized wiki articles per concept, compiled from all linked documents
+- **Knowledge graph linting** — automated orphan detection, contradiction finding, missing link suggestions
+- **Cluster synthesis** — auto-generated labels and summaries for each HDBSCAN cluster
+- **Query synthesis** — search results synthesized into new documents that feed back into the knowledge graph
+
 ## [0.2.5] - 2026-03-31
 
 ### Fixed

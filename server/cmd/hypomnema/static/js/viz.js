@@ -276,6 +276,9 @@ export async function initGraph(containerSelector, projections, edges) {
     }
     document.body.appendChild(hud);
 
+    // Cluster label lookup — populated after cluster fetch
+    const clusterLabelMap = {};
+
     function showPanel(node) {
         const nodeEdges = data.links.filter(l => {
             const s = (typeof l.source === 'object') ? l.source.id : l.source;
@@ -287,7 +290,8 @@ export async function initGraph(containerSelector, projections, edges) {
         html += '<div style="font-size:13px;font-weight:500">' + (node.name || node.id) + '</div>';
         html += '<div id="hypo-panel-close" style="cursor:pointer;color:#4a4a4a;font-size:18px">&times;</div></div>';
         html += '<div style="font-size:10px;color:#6b6b6b;margin-bottom:12px">';
-        html += 'cluster ' + (node.cluster_id != null ? node.cluster_id : '-');
+        var clusterDisplay = clusterLabelMap[node.cluster_id] || ('cluster ' + (node.cluster_id != null ? node.cluster_id : '-'));
+        html += clusterDisplay;
         html += ' &middot; rank ' + Math.round((node.rank || 0) * 100) + '%</div>';
         html += '<a href="/engrams/' + node.id + '" style="display:inline-block;color:#3ecfcf;';
         html += 'font-size:11px;text-decoration:none;margin-bottom:16px;padding:4px 8px;';
@@ -592,11 +596,18 @@ export async function initGraph(containerSelector, projections, edges) {
     controls.target.set(cx, cy, cz);
     camera.position.set(cx, cy, cz + Math.max(maxR * 2.5, 3));
 
-    // Cluster labels — fetch overviews and render as sprites at centroids
+    // Cluster labels — fetch overviews, populate label map, render sprites + legend
     try {
         const clustersResp = await fetch('/api/viz/clusters');
         if (clustersResp.ok) {
             const clusters = await clustersResp.json();
+            // Populate label map for node detail panel
+            for (const cluster of (clusters || [])) {
+                if (cluster.label && cluster.cluster_id != null) {
+                    clusterLabelMap[cluster.cluster_id] = cluster.label;
+                }
+            }
+            // Render 3D sprites at centroids
             for (const cluster of (clusters || [])) {
                 if (!cluster.label) continue;
                 const labelSprite = new SpriteText(cluster.label.toUpperCase());
@@ -613,6 +624,61 @@ export async function initGraph(containerSelector, projections, edges) {
                 );
                 labelSprite.__clusterData = cluster;
                 scene.add(labelSprite);
+            }
+            // Clusters legend — collapsible panel, top left
+            if (clusters && clusters.length > 0) {
+                // Count nodes per cluster
+                const clusterNodeCounts = {};
+                data.nodes.forEach(n => {
+                    const key = n.cluster_id != null ? n.cluster_id : '__noise__';
+                    clusterNodeCounts[key] = (clusterNodeCounts[key] || 0) + 1;
+                });
+                const legend = document.createElement('div');
+                Object.assign(legend.style, {
+                    position: 'fixed', top: '16px', left: '72px',
+                    background: 'rgba(13,13,13,0.8)', border: '1px solid #1e1e1e',
+                    backdropFilter: 'blur(8px)', borderRadius: '4px',
+                    fontFamily: "'JetBrains Mono', monospace", color: '#6b6b6b',
+                    fontSize: '10px', zIndex: '9997',
+                    maxHeight: 'calc(100vh - 80px)', overflowY: 'auto',
+                    minWidth: '180px', maxWidth: '240px',
+                });
+                const header = document.createElement('div');
+                Object.assign(header.style, {
+                    padding: '8px 12px', cursor: 'pointer', userSelect: 'none',
+                    textTransform: 'uppercase', letterSpacing: '0.1em',
+                    fontSize: '10px', color: '#6b6b6b',
+                });
+                header.textContent = 'Clusters';
+                const body = document.createElement('div');
+                body.style.display = 'none';
+                body.style.padding = '0 12px 8px';
+                header.addEventListener('click', () => {
+                    body.style.display = body.style.display === 'none' ? 'block' : 'none';
+                    header.textContent = body.style.display === 'none' ? 'Clusters' : 'Clusters \u25B4';
+                });
+                // Build sorted cluster entries
+                const sortedIds = Object.keys(clusterNodeCounts)
+                    .sort((a, b) => a === '__noise__' ? 1 : b === '__noise__' ? -1 : Number(a) - Number(b));
+                for (const key of sortedIds) {
+                    const cid = key === '__noise__' ? null : Number(key);
+                    const label = clusterLabelMap[cid] || (cid != null ? 'cluster ' + cid : 'noise');
+                    const color = clusterColor(cid);
+                    const count = clusterNodeCounts[key];
+                    const row = document.createElement('div');
+                    Object.assign(row.style, {
+                        display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '3px 0',
+                    });
+                    row.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:${color};flex-shrink:0"></span>`
+                        + `<span style="color:#a0a0a0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${label}</span>`
+                        + `<span style="color:#4a4a4a;flex-shrink:0">${count}</span>`;
+                    body.appendChild(row);
+                }
+                legend.id = 'hypo-cluster-legend';
+                legend.appendChild(header);
+                legend.appendChild(body);
+                document.body.appendChild(legend);
             }
         }
     } catch (e) {
@@ -634,5 +700,6 @@ export async function initGraph(containerSelector, projections, edges) {
         hud.remove();
         panel.remove();
         document.getElementById('hypo-mobile-controls')?.remove();
+        document.getElementById('hypo-cluster-legend')?.remove();
     }};
 }

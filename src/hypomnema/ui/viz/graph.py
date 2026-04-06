@@ -38,6 +38,19 @@ async def _fetch_projections() -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
+async def _fetch_cluster_labels() -> dict[int, str]:
+    """Fetch cluster_id -> label map from cluster_overviews."""
+    db = get_db()
+    if db is None:
+        return {}
+    cursor = await db.execute(
+        "SELECT cluster_id, label FROM cluster_overviews"
+    )
+    rows = await cursor.fetchall()
+    await cursor.close()
+    return {row["cluster_id"]: row["label"] for row in rows}
+
+
 async def _fetch_edges() -> list[dict[str, Any]]:
     db = get_db()
     if db is None:
@@ -54,25 +67,29 @@ async def _fetch_edges() -> list[dict[str, Any]]:
 def _build_graph_data(
     projections: list[dict[str, Any]],
     edges: list[dict[str, Any]],
+    cluster_labels: dict[int, str] | None = None,
 ) -> dict[str, Any]:
     """Build graph data with UMAP positions, cluster colors, PageRank sizing."""
     page_ranks = compute_page_rank(edges)
     max_rank = max(page_ranks.values()) if page_ranks else 1.0
     node_ids = {p["engram_id"] for p in projections}
+    labels = cluster_labels or {}
 
     nodes = []
     for p in projections:
         eid = p["engram_id"]
         rank = page_ranks.get(eid, 0.0)
         norm_rank = rank / max_rank if max_rank > 0 else 0.0
+        cid = p["cluster_id"]
         nodes.append({
             "id": eid,
             "name": p["canonical_name"],
             "fx": float(p["x"]),
             "fy": float(p["y"]),
             "fz": float(p["z"]),
-            "color": cluster_color(p["cluster_id"]),
-            "cluster_id": p["cluster_id"],
+            "color": cluster_color(cid),
+            "cluster_id": cid,
+            "cluster_label": labels.get(cid) if cid is not None else None,
             "rank": norm_rank,
             "show_label": norm_rank >= _LABEL_RANK_THRESHOLD,
         })
@@ -269,7 +286,8 @@ _GRAPH_INIT_JS = """
     html += '<div style="font-size:13px;font-weight:500">' + (node.name || node.id) + '</div>';
     html += '<div id="hypo-panel-close" style="cursor:pointer;color:#4a4a4a;font-size:18px">&times;</div></div>';
     html += '<div style="font-size:10px;color:#6b6b6b;margin-bottom:12px">';
-    html += 'cluster ' + (node.cluster_id != null ? node.cluster_id : '-');
+    var clusterDisplay = node.cluster_label || ('cluster ' + (node.cluster_id != null ? node.cluster_id : '-'));
+    html += clusterDisplay;
     html += ' &middot; rank ' + Math.round((node.rank || 0) * 100) + '%</div>';
     html += '<a href="/engrams/' + node.id + '" style="display:inline-block;color:#7eb8da;';
     html += 'font-size:11px;text-decoration:none;margin-bottom:16px;padding:4px 8px;';
@@ -535,10 +553,10 @@ async def render_graph(
     container: ui.element,
     *,
     height: str = "100vh",
-) -> dict[str, int]:
+) -> dict[str, Any]:
     """Render the 3D graph into the given container.
 
-    Returns dict with node_count and edge_count.
+    Returns dict with node_count, edge_count, and clusters list.
     """
     projections = await _fetch_projections()
     edges = await _fetch_edges()
@@ -548,9 +566,24 @@ async def render_graph(
             ui.label("No visualization data. Process some documents first.").classes(
                 "text-muted text-xs text-center py-16"
             )
-        return {"node_count": 0, "edge_count": 0}
+        return {"node_count": 0, "edge_count": 0, "clusters": []}
 
-    graph_data = _build_graph_data(projections, edges)
+    cluster_labels = await _fetch_cluster_labels()
+    graph_data = _build_graph_data(projections, edges, cluster_labels)
+
+    # Build cluster info for legend
+    cluster_counts: dict[int | None, int] = {}
+    for n in graph_data["nodes"]:
+        cid = n["cluster_id"]
+        cluster_counts[cid] = cluster_counts.get(cid, 0) + 1
+    clusters = []
+    for cid, count in sorted(cluster_counts.items(), key=lambda x: (x[0] is None, x[0])):
+        clusters.append({
+            "cluster_id": cid,
+            "label": cluster_labels.get(cid) if cid is not None else None,
+            "color": cluster_color(cid),
+            "count": count,
+        })
 
     div_html = '<div id="hypo-graph-container" style="width:100%;height:100%;background:%%BG_COLOR%%"></div>'
     div_html = div_html.replace("%%BG_COLOR%%", _BG_COLOR)
@@ -567,4 +600,5 @@ async def render_graph(
     return {
         "node_count": len(graph_data["nodes"]),
         "edge_count": len(graph_data["links"]),
+        "clusters": clusters,
     }
