@@ -3,6 +3,7 @@ package db
 type ProjectionPoint struct {
 	EngramID      string  `json:"engram_id"`
 	CanonicalName string  `json:"canonical_name"`
+	Description   *string `json:"description"`
 	X             float64 `json:"x"`
 	Y             float64 `json:"y"`
 	Z             float64 `json:"z"`
@@ -27,7 +28,7 @@ type VizEdge struct {
 // GetProjections returns all projection points with engram names.
 func (db *DB) GetProjections() ([]ProjectionPoint, error) {
 	rows, err := db.Query(`
-		SELECT p.engram_id, e.canonical_name, p.x, p.y, p.z, p.cluster_id
+		SELECT p.engram_id, e.canonical_name, e.description, p.x, p.y, p.z, p.cluster_id
 		FROM projections p
 		JOIN engrams e ON e.id = p.engram_id
 		ORDER BY e.canonical_name`)
@@ -39,7 +40,7 @@ func (db *DB) GetProjections() ([]ProjectionPoint, error) {
 	var out []ProjectionPoint
 	for rows.Next() {
 		var p ProjectionPoint
-		if err := rows.Scan(&p.EngramID, &p.CanonicalName, &p.X, &p.Y, &p.Z, &p.ClusterID); err != nil {
+		if err := rows.Scan(&p.EngramID, &p.CanonicalName, &p.Description, &p.X, &p.Y, &p.Z, &p.ClusterID); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

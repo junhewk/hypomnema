@@ -30,7 +30,8 @@ async def _fetch_projections() -> list[dict[str, Any]]:
     if db is None:
         return []
     cursor = await db.execute(
-        "SELECT p.engram_id, e.canonical_name, p.x, p.y, p.z, p.cluster_id "
+        "SELECT p.engram_id, e.canonical_name, e.description, "
+        "p.x, p.y, p.z, p.cluster_id "
         "FROM projections p JOIN engrams e ON p.engram_id = e.id"
     )
     rows = await cursor.fetchall()
@@ -84,6 +85,7 @@ def _build_graph_data(
         nodes.append({
             "id": eid,
             "name": p["canonical_name"],
+            "description": p["description"] or "",
             "fx": float(p["x"]),
             "fy": float(p["y"]),
             "fz": float(p["z"]),
@@ -290,6 +292,10 @@ _GRAPH_INIT_JS = """
     var clusterDisplay = node.cluster_label || ('cluster ' + (node.cluster_id != null ? node.cluster_id : '-'));
     html += clusterDisplay;
     html += ' &middot; rank ' + Math.round((node.rank || 0) * 100) + '%</div>';
+    if (node.description) {
+      html += '<div style="font-size:11px;color:#a0a0a0;line-height:1.5;'
+        + 'margin-bottom:12px">' + node.description + '</div>';
+    }
     html += '<a href="/engrams/' + node.id + '" style="display:inline-block;color:#7eb8da;';
     html += 'font-size:11px;text-decoration:none;margin-bottom:16px;padding:4px 8px;';
     html += 'border:1px solid #1e1e1e;border-radius:3px">View engram</a>';
@@ -394,9 +400,9 @@ _GRAPH_INIT_JS = """
       }
       var dd = dragNode.__graphData || dragNode.__data;
       if (dd) {
-        dd.fx = dragNode.position.x;
-        dd.fy = dragNode.position.y;
-        dd.fz = dragNode.position.z;
+        dd.fx = dd.x = dragNode.position.x;
+        dd.fy = dd.y = dragNode.position.y;
+        dd.fz = dd.z = dragNode.position.z;
         updateEdges();
       }
     }
