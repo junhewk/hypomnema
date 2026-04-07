@@ -118,14 +118,21 @@ func ProcessDocument(ctx context.Context, database *db.DB, llmClient llm.Client,
 		log.Printf("[ontology] heat scoring error: %v", err)
 	}
 
-	// 8. Synthesize stale engram articles
+	// 8. Synthesize cluster overviews
+	if n, err := projection.SynthesizeClusterOverviews(ctx, database, llmClient); err != nil {
+		log.Printf("[ontology] cluster synthesis error: %v", err)
+	} else if n > 0 {
+		log.Printf("[ontology] synthesized %d cluster overviews", n)
+	}
+
+	// 9. Synthesize stale engram articles
 	if n, err := SynthesizeStaleArticles(ctx, database, llmClient, 5); err != nil {
 		log.Printf("[ontology] article synthesis error: %v", err)
 	} else if n > 0 {
 		log.Printf("[ontology] synthesized %d engram articles", n)
 	}
 
-	// 9. Run lint checks
+	// 10. Run lint checks
 	if _, err := RunLint(database); err != nil {
 		log.Printf("[ontology] lint error: %v", err)
 	}
@@ -289,9 +296,21 @@ func ReviseDocument(ctx context.Context, database *db.DB, llmClient llm.Client, 
 		log.Printf("[ontology] revise %s: edge generation error: %v", docID, err)
 	}
 
+	// Recompute projections
+	if _, err := projection.Recompute(database); err != nil {
+		log.Printf("[ontology] projection error: %v", err)
+	}
+
 	// Update heat scores
 	if err := ComputeAllHeat(database); err != nil {
 		log.Printf("[ontology] heat scoring error: %v", err)
+	}
+
+	// Synthesize cluster overviews
+	if n, err := projection.SynthesizeClusterOverviews(ctx, database, llmClient); err != nil {
+		log.Printf("[ontology] cluster synthesis error: %v", err)
+	} else if n > 0 {
+		log.Printf("[ontology] synthesized %d cluster overviews", n)
 	}
 
 	// Synthesize stale engram articles

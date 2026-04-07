@@ -216,6 +216,7 @@ _GRAPH_INIT_JS = """
       color: new THREE.Color(c, c, c), transparent: true, opacity: 0.35
     });
     var line = new THREE.Line(geo, mat);
+    line.frustumCulled = false;
     edgeLines.push({line: line, sid: sid, tid: tid});
     edgeGroup.add(line);
   });
