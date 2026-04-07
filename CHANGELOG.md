@@ -9,10 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - **Cluster label staleness** — cluster overviews now detect composition changes by comparing engram counts; only re-synthesize clusters whose membership actually changed; stale overviews for removed cluster IDs are cleaned up (both Python and Go)
+- **Cluster label backfill** — cluster synthesis was only triggered from the manual recompute endpoint; now runs automatically after every document pipeline (both `ProcessDocument` and `ReviseDocument`) so labels are always up to date
 - **Viz overlay/sidebar overlap** — clusters dropdown and controls HUD now use `position: absolute` within the graph container instead of `position: fixed` on the viewport, preventing overlap with the sidebar (both Python and Go)
+- **Edge frustum culling** — edges disappeared at certain camera angles because Three.js culled lines whose bounding sphere (computed from initial zero positions) fell outside the frustum; fixed with `line.frustumCulled = false` (both stacks)
+- **Edge drag desync** — dragging a node a second time left edges frozen because the drag handler only wrote `fx/fy/fz` while `updateEdges()` read `x/y/z`; the cooled d3 simulation no longer copies between them. Fixed by writing both (both stacks)
 - **Go cluster synthesis robustness** — added `rows.Err()` checks after scan loops, batched stale deletion into single `DELETE ... IN (...)`, deterministic synthesis order via `sort.Ints`
 
 ### Added
+- **Engram description in viz panel** — clicking a node in the 3D graph now shows the engram's description/meaning in the detail panel (both stacks)
 - **Go queue panic recovery** — `safeProcessJob` wraps pipeline processing with `recover()` so a single crashing document (e.g. HDBSCAN index bug) doesn't kill the queue goroutine
 - **Go HDBSCAN panic guard** — `runHDBSCAN` catches known index-out-of-range panics in the Boruvka MST implementation and returns an error instead of crashing
 - **Go pending document recovery** — `RecoverPending()` scans for unprocessed documents on startup and re-enqueues them
