@@ -56,7 +56,29 @@ docker compose up --build                      # single container, port 8073
 
 # Tests
 uv run pytest                                  # all backend tests
+
+# Go server — CGO required, must include sqlite_fts5 build tag
+cd server
+CGO_ENABLED=1 go build -tags sqlite_fts5 -o hypomnema ./cmd/hypomnema
+
+# Go cross-compile for Raspberry Pi 3 (arm64)
+CGO_ENABLED=1 CC=aarch64-linux-gnu-gcc \
+  GOOS=linux GOARCH=arm64 \
+  go build -tags sqlite_fts5 -o hypomnema-arm64 ./cmd/hypomnema
 ```
+
+### Deploying to Pi 3
+
+The Go server runs on a Raspberry Pi 3 (arm64) at `pi3` (Tailscale). Deployment layout:
+
+```
+pi3:/home/jk/hypomnema-go/
+  bin/hypomnema          # the binary
+  data/hypomnema.db      # SQLite database (preserved across deploys)
+```
+
+Managed by a system-level systemd service (`/etc/systemd/system/hypomnema.service`).
+Deploy steps: `scp` the arm64 binary, then `ssh pi3 sudo systemctl restart hypomnema`.
 
 ### Configuration
 

@@ -182,7 +182,15 @@ func runUMAP(data [][]float64) ([][]float64, error) {
 }
 
 // runHDBSCAN clusters 3D coordinates. Returns label array (-1 = noise).
-func runHDBSCAN(coords [][]float64) ([]int, error) {
+// Wraps the call with recover() because the HDBSCAN library has known
+// index-out-of-range panics in its Boruvka MST implementation.
+func runHDBSCAN(coords [][]float64) (labels []int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("HDBSCAN panic (recovered): %v", r)
+		}
+	}()
+
 	n := len(coords)
 	minClusterSize := hdbscanMinClusterSize
 	if minClusterSize > max(2, n/3) {

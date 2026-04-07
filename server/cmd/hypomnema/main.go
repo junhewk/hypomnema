@@ -155,6 +155,9 @@ func initFromSettings(srv *api.Server, database *db.DB) {
 		srv.Queue = queue
 		log.Println("ontology processing queue started")
 
+		// Recover any documents orphaned by a previous crash
+		queue.RecoverPending()
+
 		// Start feed scheduler
 		sched := scheduler.New(database, queue)
 		n, err := sched.LoadJobs()

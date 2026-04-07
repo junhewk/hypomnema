@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.4] - 2026-04-07
+
+### Fixed
+- **Cluster label staleness** — cluster overviews now detect composition changes by comparing engram counts; only re-synthesize clusters whose membership actually changed; stale overviews for removed cluster IDs are cleaned up (both Python and Go)
+- **Viz overlay/sidebar overlap** — clusters dropdown and controls HUD now use `position: absolute` within the graph container instead of `position: fixed` on the viewport, preventing overlap with the sidebar (both Python and Go)
+- **Go cluster synthesis robustness** — added `rows.Err()` checks after scan loops, batched stale deletion into single `DELETE ... IN (...)`, deterministic synthesis order via `sort.Ints`
+
+### Added
+- **Go queue panic recovery** — `safeProcessJob` wraps pipeline processing with `recover()` so a single crashing document (e.g. HDBSCAN index bug) doesn't kill the queue goroutine
+- **Go HDBSCAN panic guard** — `runHDBSCAN` catches known index-out-of-range panics in the Boruvka MST implementation and returns an error instead of crashing
+- **Go pending document recovery** — `RecoverPending()` scans for unprocessed documents on startup and re-enqueues them
+
 ## [0.3.3] - 2026-04-07
 
 ### Added

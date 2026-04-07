@@ -29,26 +29,60 @@ async def synthesize_cluster_overviews(
     db: aiosqlite.Connection,
     llm: LLMClient,
 ) -> int:
-    """Generate labels and summaries for all clusters. Returns count synthesized."""
-    # Get distinct cluster IDs from projections
+    """Generate labels and summaries for changed clusters. Returns count synthesized.
+
+    Detects composition changes by comparing engram counts, cleans up stale
+    overviews for cluster IDs that no longer exist, and only calls the LLM
+    for clusters whose membership actually changed.
+    """
+    # Get current cluster IDs and their engram counts
     cursor = await db.execute(
-        "SELECT DISTINCT cluster_id FROM projections WHERE cluster_id IS NOT NULL ORDER BY cluster_id"
+        "SELECT cluster_id, COUNT(*) AS cnt FROM projections "
+        "WHERE cluster_id IS NOT NULL GROUP BY cluster_id ORDER BY cluster_id"
     )
-    cluster_ids = [row["cluster_id"] for row in await cursor.fetchall()]
+    current = {row["cluster_id"]: row["cnt"] for row in await cursor.fetchall()}
     await cursor.close()
 
-    if not cluster_ids:
+    # Fetch existing overviews to diff
+    cursor = await db.execute("SELECT cluster_id, engram_count FROM cluster_overviews")
+    existing = {row["cluster_id"]: row["engram_count"] for row in await cursor.fetchall()}
+    await cursor.close()
+
+    # Remove stale overviews whose cluster IDs are gone
+    stale_ids = set(existing) - set(current)
+    if stale_ids:
+        placeholders = ",".join("?" * len(stale_ids))
+        async with immediate_transaction(db):
+            await db.execute(
+                f"DELETE FROM cluster_overviews WHERE cluster_id IN ({placeholders})",  # noqa: S608
+                tuple(stale_ids),
+            )
+
+    if not current:
+        return 0
+
+    # Only re-synthesize clusters whose engram count changed (new/removed members)
+    to_synthesize = [
+        cid for cid, cnt in current.items()
+        if existing.get(cid) != cnt
+    ]
+
+    if not to_synthesize:
+        logger.info("All %d cluster overviews up-to-date", len(current))
         return 0
 
     count = 0
-    for cid in cluster_ids:
+    for cid in to_synthesize:
         try:
             await _synthesize_one(db, llm, cid)
             count += 1
         except Exception:
             logger.exception("Failed to synthesize cluster %d", cid)
 
-    logger.info("Synthesized %d cluster overviews", count)
+    logger.info(
+        "Synthesized %d cluster overviews (%d unchanged, %d stale removed)",
+        count, len(current) - len(to_synthesize), len(stale_ids),
+    )
     return count
 
 

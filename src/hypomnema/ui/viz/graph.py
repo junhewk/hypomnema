@@ -255,7 +255,7 @@ _GRAPH_INIT_JS = """
   // Controls HUD (bottom-left)
   var hud = document.createElement('div');
   Object.assign(hud.style, {
-    position: 'fixed', bottom: '16px', left: '72px',
+    position: 'absolute', bottom: '16px', left: '16px',
     background: 'rgba(13,13,13,0.7)', border: '1px solid #1e1e1e',
     backdropFilter: 'blur(8px)', borderRadius: '4px',
     fontFamily: "'JetBrains Mono',monospace", color: '#4a4a4a',
@@ -273,7 +273,7 @@ _GRAPH_INIT_JS = """
     + data.nodes.length + '</span> nodes'
     + ' &nbsp; <span style="color:#6b6b6b">'
     + data.links.length + '</span> edges';
-  document.body.appendChild(hud);
+  el.appendChild(hud);
 
   function showPanel(node) {
     var edges = data.links.filter(function(l) {
@@ -585,7 +585,10 @@ async def render_graph(
             "count": count,
         })
 
-    div_html = '<div id="hypo-graph-container" style="width:100%;height:100%;background:%%BG_COLOR%%"></div>'
+    div_html = (
+        '<div id="hypo-graph-container" style="width:100%;height:100%;'
+        'position:relative;background:%%BG_COLOR%%"></div>'
+    )
     div_html = div_html.replace("%%BG_COLOR%%", _BG_COLOR)
 
     init_js = _GRAPH_INIT_JS.replace("%%GRAPH_DATA%%", json.dumps(graph_data, ensure_ascii=False))

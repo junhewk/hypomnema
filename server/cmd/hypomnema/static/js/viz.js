@@ -103,6 +103,7 @@ function buildGraphData(projections, edges) {
 export async function initGraph(containerSelector, projections, edges) {
     const el = document.querySelector(containerSelector);
     if (!el) return;
+    el.style.position = 'relative';
 
     const data = buildGraphData(projections, edges);
 
@@ -243,7 +244,7 @@ export async function initGraph(containerSelector, projections, edges) {
     // HUD
     const hud = document.createElement('div');
     Object.assign(hud.style, {
-        position: 'fixed', bottom: '16px', left: '72px',
+        position: 'absolute', bottom: '16px', left: '16px',
         background: 'rgba(13,13,13,0.7)', border: '1px solid #1e1e1e',
         backdropFilter: 'blur(8px)', borderRadius: '4px',
         fontFamily: "'DM Sans', sans-serif", color: '#4a4a4a',
@@ -274,7 +275,7 @@ export async function initGraph(containerSelector, projections, edges) {
             + ' &nbsp; <span style="color:#6b6b6b">'
             + data.links.length + '</span> edges';
     }
-    document.body.appendChild(hud);
+    el.appendChild(hud);
 
     // Cluster label lookup — populated after cluster fetch
     const clusterLabelMap = {};
@@ -635,7 +636,7 @@ export async function initGraph(containerSelector, projections, edges) {
                 });
                 const legend = document.createElement('div');
                 Object.assign(legend.style, {
-                    position: 'fixed', top: '16px', left: '72px',
+                    position: 'absolute', top: '16px', left: '16px',
                     background: 'rgba(13,13,13,0.8)', border: '1px solid #1e1e1e',
                     backdropFilter: 'blur(8px)', borderRadius: '4px',
                     fontFamily: "'JetBrains Mono', monospace", color: '#6b6b6b',
@@ -678,7 +679,7 @@ export async function initGraph(containerSelector, projections, edges) {
                 legend.id = 'hypo-cluster-legend';
                 legend.appendChild(header);
                 legend.appendChild(body);
-                document.body.appendChild(legend);
+                el.appendChild(legend);
             }
         }
     } catch (e) {

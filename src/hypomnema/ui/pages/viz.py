@@ -47,7 +47,7 @@ async def viz_page() -> None:
         clusters = result.get("clusters", [])
         if clusters:
             with ui.element("div").classes("absolute").style(
-                "top: 16px; left: 72px; z-index: 20; "
+                "top: 16px; left: 16px; z-index: 20; "
                 "max-height: calc(100vh - 80px); overflow-y: auto"
             ), ui.expansion("Clusters").classes("").props(
                 'dense header-class="text-xs uppercase tracking-wider"'

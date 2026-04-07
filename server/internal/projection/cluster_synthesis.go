@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/junhewk/hypomnema/internal/db"
@@ -26,30 +28,87 @@ const clusterSystemPrompt = `You are a knowledge clustering engine. Given a list
 
 Respond in JSON: {"label": "...", "summary": "..."}`
 
-// SynthesizeClusterOverviews generates labels and summaries for all clusters.
+// SynthesizeClusterOverviews generates labels and summaries for changed clusters.
+// It detects composition changes by comparing engram counts, cleans up stale
+// overviews for cluster IDs that no longer exist, and only calls the LLM for
+// clusters whose membership actually changed.
 func SynthesizeClusterOverviews(ctx context.Context, database *db.DB, llmClient llm.Client) (int, error) {
+	// Current cluster IDs and their engram counts from projections.
 	rows, err := database.Query(
-		"SELECT DISTINCT cluster_id FROM projections WHERE cluster_id IS NOT NULL ORDER BY cluster_id")
+		"SELECT cluster_id, COUNT(*) AS cnt FROM projections WHERE cluster_id IS NOT NULL GROUP BY cluster_id ORDER BY cluster_id")
 	if err != nil {
 		return 0, err
 	}
-	defer rows.Close()
-
-	var clusterIDs []int
+	current := map[int]int{} // cluster_id -> engram count
 	for rows.Next() {
-		var cid int
-		if err := rows.Scan(&cid); err != nil {
+		var cid, cnt int
+		if err := rows.Scan(&cid, &cnt); err != nil {
 			continue
 		}
-		clusterIDs = append(clusterIDs, cid)
+		current[cid] = cnt
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return 0, fmt.Errorf("scan projections: %w", err)
+	}
+	rows.Close()
+
+	// Existing overviews.
+	existingRows, err := database.Query(
+		"SELECT cluster_id, engram_count FROM cluster_overviews")
+	if err != nil {
+		return 0, err
+	}
+	existing := map[int]int{} // cluster_id -> stored engram count
+	for existingRows.Next() {
+		var cid, cnt int
+		if err := existingRows.Scan(&cid, &cnt); err != nil {
+			continue
+		}
+		existing[cid] = cnt
+	}
+	if err := existingRows.Err(); err != nil {
+		existingRows.Close()
+		return 0, fmt.Errorf("scan overviews: %w", err)
+	}
+	existingRows.Close()
+
+	// Remove stale overviews whose cluster IDs are gone.
+	var staleIDs []string
+	for cid := range existing {
+		if _, ok := current[cid]; !ok {
+			staleIDs = append(staleIDs, strconv.Itoa(cid))
+		}
+	}
+	if len(staleIDs) > 0 {
+		// Cluster IDs are integers scanned from the DB, safe to interpolate.
+		_, err := database.Exec(
+			"DELETE FROM cluster_overviews WHERE cluster_id IN (" + strings.Join(staleIDs, ",") + ")")
+		if err != nil {
+			log.Printf("[cluster-synthesis] failed to delete stale clusters: %v", err)
+		}
 	}
 
-	if len(clusterIDs) == 0 {
+	if len(current) == 0 {
 		return 0, nil
 	}
 
+	// Only re-synthesize clusters whose engram count changed.
+	var toSynthesize []int
+	for cid, cnt := range current {
+		if existing[cid] != cnt {
+			toSynthesize = append(toSynthesize, cid)
+		}
+	}
+
+	if len(toSynthesize) == 0 {
+		log.Printf("[cluster-synthesis] all %d cluster overviews up-to-date", len(current))
+		return 0, nil
+	}
+	sort.Ints(toSynthesize)
+
 	count := 0
-	for _, cid := range clusterIDs {
+	for _, cid := range toSynthesize {
 		if err := synthesizeOne(ctx, database, llmClient, cid); err != nil {
 			log.Printf("[cluster-synthesis] cluster %d: %v", cid, err)
 			continue
@@ -57,9 +116,8 @@ func SynthesizeClusterOverviews(ctx context.Context, database *db.DB, llmClient 
 		count++
 	}
 
-	if count > 0 {
-		log.Printf("[cluster-synthesis] synthesized %d cluster overviews", count)
-	}
+	log.Printf("[cluster-synthesis] synthesized %d cluster overviews (%d unchanged, %d stale removed)",
+		count, len(current)-len(toSynthesize), len(staleIDs))
 	return count, nil
 }
 

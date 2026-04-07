@@ -77,6 +77,8 @@ CGO_ENABLED=1 go build -tags sqlite_fts5 -o hypomnema ./cmd/hypomnema
 HYPOMNEMA_MODE=server HYPOMNEMA_HOST=<ip> ./hypomnema # server mode
 ```
 
+> **Note:** The `-tags sqlite_fts5` build tag is required — it enables SQLite full-text search. Omitting it will cause FTS queries to fail at runtime. `CGO_ENABLED=1` is also mandatory since the SQLite driver uses cgo.
+
 Pre-built binaries for Linux (amd64, arm64, armv7) and macOS (arm64, amd64) are available on the [Releases](https://github.com/junhewk/hypomnema/releases) page.
 
 ### Docker
