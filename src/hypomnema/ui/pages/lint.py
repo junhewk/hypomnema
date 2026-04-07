@@ -3,12 +3,33 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+import json
+from typing import TYPE_CHECKING, Any
 
 from nicegui import ui
 
 from hypomnema.ui.layout import page_layout
 from hypomnema.ui.utils import get_db
+
+if TYPE_CHECKING:
+    import aiosqlite
+
+
+async def _get_issue_by_id(
+    db: aiosqlite.Connection, issue_id: str,
+) -> dict[str, Any] | None:
+    cursor = await db.execute(
+        "SELECT * FROM lint_issues WHERE id = ? AND resolved = 0",
+        (issue_id,),
+    )
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        return None
+    issue = dict(row)
+    if isinstance(issue.get("engram_ids"), str):
+        issue["engram_ids"] = json.loads(issue["engram_ids"])
+    return issue
 
 _SEVERITY_STYLES = {
     "error": {"color": "#e06c75", "icon": "error"},
@@ -91,7 +112,7 @@ async def lint_page() -> None:
                         "text-xs"
                     ).style("color: var(--fg)")
 
-                with ui.row().classes("items-center gap-2"):
+                with ui.row().classes("items-center gap-2 flex-wrap"):
                     for eid in engram_ids[:5]:
                         ui.link(eid[:8] + "...", f"/engrams/{eid}").classes(
                             "source-badge engram-link no-underline"
@@ -100,22 +121,95 @@ async def lint_page() -> None:
                             "text-decoration: none; font-size: 9px"
                         )
 
-                    async def _resolve(iid: str = issue_id) -> None:
-                        from hypomnema.ontology.lint import resolve_lint_issue
+                    with ui.row().classes("ml-auto gap-1"):
+                        issue_type = str(issue.get("issue_type", ""))
 
-                        if db is not None:
-                            await resolve_lint_issue(db, iid)
-                            ui.notify("Issue resolved", type="positive")
-                            await _load_and_render()
+                        if issue_type == "orphan" and len(engram_ids) == 1:
+                            async def _delete_orphan(
+                                eid: str = engram_ids[0], iid: str = issue_id,
+                            ) -> None:
+                                if db is None:
+                                    return
+                                from hypomnema.db.transactions import (
+                                    immediate_transaction,
+                                )
 
-                    ui.button(
-                        "Resolve",
-                        on_click=lambda _, iid=issue_id: asyncio.ensure_future(
-                            _resolve(iid)
-                        ),
-                    ).props('flat dense color="grey-7" size="sm"').classes(
-                        "text-xs ml-auto"
-                    )
+                                async with immediate_transaction(db):
+                                    await db.execute(
+                                        "DELETE FROM document_engrams WHERE engram_id = ?", (eid,),
+                                    )
+                                    await db.execute(
+                                        "DELETE FROM edges WHERE source_engram_id = ? OR target_engram_id = ?",
+                                        (eid, eid),
+                                    )
+                                    for tbl in ("engram_aliases", "projections", "engram_embeddings"):
+                                        await db.execute(
+                                            f"DELETE FROM {tbl} WHERE engram_id = ?", (eid,),  # noqa: S608
+                                        )
+                                    await db.execute("DELETE FROM engrams WHERE id = ?", (eid,))
+                                    await db.execute(
+                                        "UPDATE lint_issues SET resolved = 1 WHERE resolved = 0 AND engram_ids LIKE ?",
+                                        (f"%{eid}%",),
+                                    )
+                                ui.notify("Orphan deleted", type="positive")
+                                await _load_and_render()
+
+                            ui.button(
+                                "Delete",
+                                icon="delete",
+                                on_click=lambda _, eid=engram_ids[0], iid=issue_id: asyncio.ensure_future(
+                                    _delete_orphan(eid, iid)
+                                ),
+                            ).props('flat dense color="red-4" size="sm"').classes("text-xs")
+
+                        elif issue_type == "missing_link" and len(engram_ids) >= 2:
+                            async def _create_edge(iid: str = issue_id) -> None:
+                                if db is None:
+                                    return
+                                from hypomnema.db.transactions import (
+                                    immediate_transaction,
+                                )
+                                from hypomnema.ontology.lint import resolve_lint_issue
+
+                                iss = await _get_issue_by_id(db, iid)
+                                if iss is None:
+                                    return
+                                ids = iss["engram_ids"]
+                                async with immediate_transaction(db):
+                                    await db.execute(
+                                        "INSERT OR IGNORE INTO edges "
+                                        "(id, source_engram_id, target_engram_id, predicate, confidence) "
+                                        "VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?)",
+                                        (ids[0], ids[1], "related_to", 0.8),
+                                    )
+                                await resolve_lint_issue(db, iid)
+                                ui.notify("Edge created", type="positive")
+                                await _load_and_render()
+
+                            ui.button(
+                                "Link",
+                                icon="add_link",
+                                on_click=lambda _, iid=issue_id: asyncio.ensure_future(
+                                    _create_edge(iid)
+                                ),
+                            ).props('flat dense color="green-7" size="sm"').classes("text-xs")
+
+                        async def _resolve(iid: str = issue_id) -> None:
+                            from hypomnema.ontology.lint import resolve_lint_issue
+
+                            if db is not None:
+                                await resolve_lint_issue(db, iid)
+                                ui.notify("Issue dismissed", type="positive")
+                                await _load_and_render()
+
+                        ui.button(
+                            "Dismiss",
+                            on_click=lambda _, iid=issue_id: asyncio.ensure_future(
+                                _resolve(iid)
+                            ),
+                        ).props('flat dense color="grey-7" size="sm"').classes(
+                            "text-xs"
+                        )
 
         # Run lint button
         async def _run_lint() -> None:

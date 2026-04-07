@@ -25,7 +25,10 @@ const articleSystemPrompt = `You are a knowledge synthesis engine. Given source 
 - Be factual — only state what the sources support
 - Use concise, clear language suitable for a personal research wiki
 - Do NOT add headings like "# Title" — the concept name is already shown
-- Keep the article between 200-800 words depending on source richness`
+- Keep the article between 200-800 words depending on source richness
+- Write the article in the same language as the majority of the source documents — do NOT translate
+- Preserve entity names, quotes, and terminology in their original language
+- For mixed-language sources, follow the dominant language of the sources`
 
 type sourceDoc struct {
 	title, text, sourceType string

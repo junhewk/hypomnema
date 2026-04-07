@@ -146,8 +146,16 @@ async function initApp() {
         // If health fails, just continue normally
     }
 
+    // Apply font size from settings
+    try {
+        const s = await api('/settings');
+        const scales = {small: 0.9, normal: 1, large: 1.1, xlarge: 1.2};
+        document.documentElement.style.setProperty('--font-size-scale', scales[s.ui_font_size] || 1);
+    } catch (e) { /* ignore */ }
+
     route();
     loadMinimap();
+    import('/js/companion.js').then(m => m.loadCompanion()).catch(() => {});
 }
 
 // ── API helpers ─────────────────────────────────────────────
@@ -1042,14 +1050,24 @@ async function renderLint() {
             for (const issue of group) {
                 const sev = SEVERITY_STYLES[issue.severity] || SEVERITY_STYLES.warning;
                 const ids = Array.isArray(issue.engram_ids) ? issue.engram_ids : JSON.parse(issue.engram_ids || '[]');
+                // Tidy action buttons based on issue type
+                let actions = `<button onclick="resolveLintIssue('${issue.id}')">Dismiss</button>`;
+                if (issue.issue_type === 'orphan' && ids.length === 1) {
+                    actions = `<button class="danger" onclick="deleteOrphanEngram('${ids[0]}','${issue.id}')">${materialIcon('delete')} Delete</button>` + actions;
+                } else if (issue.issue_type === 'missing_link' && ids.length >= 2) {
+                    actions = `<button onclick="createEdgeFromLint('${issue.id}')">${materialIcon('add_link')} Link</button>` + actions;
+                } else if (issue.issue_type === 'duplicate_candidate' && ids.length >= 2) {
+                    actions = `<button onclick="mergeFromLint('${issue.id}')">${materialIcon('merge')} Merge</button>` + actions;
+                }
+
                 html += `<div class="card" style="border-left:2px solid ${sev.color};margin-bottom:0.5rem">
                     <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.25rem">
                         <span class="material-icons" style="font-size:14px;color:${sev.color}">${sev.icon}</span>
                         <span style="font-size:11px;color:var(--fg)">${escapeHTML(issue.description)}</span>
                     </div>
-                    <div style="display:flex;align-items:center;gap:0.5rem">
+                    <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
                         ${ids.slice(0, 5).map(id => `<a href="/engrams/${id}" class="engram-link" style="font-size:9px">${id.slice(0, 8)}...</a>`).join('')}
-                        <button onclick="resolveLintIssue('${issue.id}')" style="margin-left:auto">Resolve</button>
+                        <div style="margin-left:auto;display:flex;gap:0.25rem">${actions}</div>
                     </div>
                 </div>`;
             }
@@ -1077,6 +1095,21 @@ window.synthesizeResults = async function(query, docIds) {
     }
 };
 
+window.setFontSize = async function(sizeId) {
+    try {
+        await api('/settings', {
+            method: 'PUT',
+            body: JSON.stringify({ ui_font_size: sizeId }),
+        });
+        const scales = {small: 0.9, normal: 1, large: 1.1, xlarge: 1.2};
+        document.documentElement.style.setProperty('--font-size-scale', scales[sizeId] || 1);
+        notify('Font size updated', 'positive');
+        renderSettings();
+    } catch (e) {
+        notify(`Failed: ${e.message}`, 'negative');
+    }
+};
+
 window.triggerLint = async function() {
     notify('Running lint checks...', 'info');
     try {
@@ -1091,8 +1124,47 @@ window.triggerLint = async function() {
 window.resolveLintIssue = async function(issueId) {
     try {
         await api(`/lint/issues/${issueId}/resolve`, { method: 'POST' });
-        notify('Issue resolved', 'positive');
+        notify('Issue dismissed', 'positive');
         renderLint();
+    } catch (e) {
+        notify(`Failed: ${e.message}`, 'negative');
+    }
+};
+
+window.deleteOrphanEngram = async function(engramId, issueId) {
+    try {
+        await api(`/engrams/${engramId}`, { method: 'DELETE' });
+        notify('Orphan engram deleted', 'positive');
+        renderLint();
+        import('/js/companion.js').then(m => m.loadCompanion()).catch(() => {});
+    } catch (e) {
+        notify(`Failed: ${e.message}`, 'negative');
+    }
+};
+
+window.createEdgeFromLint = async function(issueId) {
+    try {
+        await api(`/lint/issues/${issueId}/create-edge`, {
+            method: 'POST',
+            body: JSON.stringify({ predicate: 'related_to', confidence: 0.8 }),
+        });
+        notify('Edge created', 'positive');
+        renderLint();
+        import('/js/companion.js').then(m => m.loadCompanion()).catch(() => {});
+    } catch (e) {
+        notify(`Failed: ${e.message}`, 'negative');
+    }
+};
+
+window.mergeFromLint = async function(issueId) {
+    try {
+        const result = await api(`/lint/issues/${issueId}/merge`, {
+            method: 'POST',
+            body: JSON.stringify({}),
+        });
+        notify(`Merged ${result.merged_count} engrams`, 'positive');
+        renderLint();
+        import('/js/companion.js').then(m => m.loadCompanion()).catch(() => {});
     } catch (e) {
         notify(`Failed: ${e.message}`, 'negative');
     }
@@ -1115,6 +1187,19 @@ async function renderSettings() {
         const embProviders = providers.embedding_providers || [];
 
         let html = '';
+
+        // ── Font Size Section ──
+        const fontSizes = {small: 'Small (90%)', normal: 'Normal (100%)', large: 'Large (110%)', xlarge: 'X-Large (120%)'};
+        const currentSize = settings.ui_font_size || 'normal';
+        html += `<div class="section-label" style="margin-top:0;margin-bottom:0.75rem">Font Size</div>
+        <div class="card" style="cursor:default;margin-bottom:1.5rem">
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                ${Object.entries(fontSizes).map(([id, label]) => {
+                    const active = id === currentSize;
+                    return `<button style="padding:0.4rem 0.75rem;border-radius:4px;border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};background:${active ? 'var(--accent-soft)' : 'transparent'};color:var(--fg);cursor:pointer;font-size:11px" onclick="setFontSize('${id}')">${label}${active ? ' \u2713' : ''}</button>`;
+                }).join('')}
+            </div>
+        </div>`;
 
         // ── LLM Provider Section ──
         html += `<div class="section-label" style="margin-top:0">LLM Provider</div>

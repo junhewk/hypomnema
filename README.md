@@ -41,7 +41,8 @@ Hypomnema extracts concepts from your research material, deduplicates them, link
 - **Full-text + semantic search** — FTS5 for keyword search (including annotations), sqlite-vec for vector similarity, reciprocal rank fusion
 - **Multi-provider** — Claude, Gemini, OpenAI, Ollama for LLM; OpenAI or Google for embeddings. Hot-swappable at runtime.
 - **Single-file database** — everything in one portable SQLite file. No Postgres, no external services.
-- **Themeable UI** — switchable colour themes (Midnight, Graphite, Phantom) with serif/sans typography via Cormorant Garamond + DM Sans
+- **Knowledge companion** — baby dinosaur mascot in the sidebar that grows through 5 stages with your engram count; mood reflects lint health (happy/concerned/distressed); idle animations (hop, spin, roar, etc.)
+- **Themeable UI** — switchable colour themes (Midnight, Graphite, Phantom), adjustable font size (90%-120%), serif/sans typography via Cormorant Garamond + DM Sans
 - **Encrypted at rest** — API keys stored with Fernet encryption
 - **Desktop app** — native window via pywebview, built with PyInstaller for macOS/Windows/Linux
 

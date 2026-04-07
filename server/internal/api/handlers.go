@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -493,6 +495,237 @@ func (s *Server) triggerLint(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"new_issues": len(issues)})
 }
 
+func (s *Server) companionState(w http.ResponseWriter, r *http.Request) {
+	countSQL := func(sql string) int {
+		var n int
+		s.DB.QueryRow(sql).Scan(&n)
+		return n
+	}
+	engramCount := countSQL("SELECT COUNT(*) FROM engrams")
+	edgeCount := countSQL("SELECT COUNT(*) FROM edges")
+	docCount := countSQL("SELECT COUNT(*) FROM documents")
+
+	// Lint counts by severity
+	var lintErrors, lintWarnings, lintInfo int
+	rows, err := s.DB.Query("SELECT severity, COUNT(*) FROM lint_issues WHERE resolved = 0 GROUP BY severity")
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var sev string
+			var cnt int
+			rows.Scan(&sev, &cnt)
+			switch sev {
+			case "error":
+				lintErrors = cnt
+			case "warning":
+				lintWarnings = cnt
+			case "info":
+				lintInfo = cnt
+			}
+		}
+	}
+
+	// Mood
+	mood := "happy"
+	if engramCount == 0 {
+		mood = "sleeping"
+	} else if lintErrors > 0 {
+		mood = "distressed"
+	} else if lintWarnings > 0 {
+		mood = "concerned"
+	}
+
+	// Growth stage
+	stage := 0
+	switch {
+	case engramCount > 200:
+		stage = 4
+	case engramCount > 50:
+		stage = 3
+	case engramCount > 10:
+		stage = 2
+	case engramCount > 0:
+		stage = 1
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"engram_count":   engramCount,
+		"edge_count":     edgeCount,
+		"document_count": docCount,
+		"lint_errors":    lintErrors,
+		"lint_warnings":  lintWarnings,
+		"lint_info":      lintInfo,
+		"growth_stage":   stage,
+		"mood":           mood,
+		"new_milestone":  nil,
+	})
+}
+
+func (s *Server) deleteEngram(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	tx, err := s.DB.Begin()
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	defer tx.Rollback()
+
+	tx.Exec("DELETE FROM document_engrams WHERE engram_id = ?", id)
+	tx.Exec("DELETE FROM edges WHERE source_engram_id = ? OR target_engram_id = ?", id, id)
+	tx.Exec("DELETE FROM engram_aliases WHERE engram_id = ?", id)
+	tx.Exec("DELETE FROM engram_embeddings WHERE engram_id = ?", id)
+	tx.Exec("DELETE FROM projections WHERE engram_id = ?", id)
+	res, _ := tx.Exec("DELETE FROM engrams WHERE id = ?", id)
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		writeError(w, 404, "engram not found")
+		return
+	}
+	tx.Exec("UPDATE lint_issues SET resolved = 1 WHERE resolved = 0 AND engram_ids LIKE ?", "%"+id+"%")
+	if err := tx.Commit(); err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) deleteEdge(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	res, err := s.DB.Exec("DELETE FROM edges WHERE id = ?", id)
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		writeError(w, 404, "edge not found")
+		return
+	}
+	writeJSON(w, 200, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) createEdgeFromLint(w http.ResponseWriter, r *http.Request) {
+	issueID := chi.URLParam(r, "id")
+	var body struct {
+		Predicate  string  `json:"predicate"`
+		Confidence float64 `json:"confidence"`
+	}
+	body.Predicate = "related_to"
+	body.Confidence = 0.8
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, 400, "invalid JSON")
+		return
+	}
+
+	var engramIDsJSON, issueType string
+	err := s.DB.QueryRow("SELECT engram_ids, issue_type FROM lint_issues WHERE id = ? AND resolved = 0",
+		issueID).Scan(&engramIDsJSON, &issueType)
+	if err != nil {
+		writeError(w, 404, "issue not found or already resolved")
+		return
+	}
+	if issueType != "missing_link" {
+		writeError(w, 400, "action only valid for missing_link issues")
+		return
+	}
+
+	var ids []string
+	if err := json.Unmarshal([]byte(engramIDsJSON), &ids); err != nil || len(ids) < 2 {
+		writeError(w, 400, "issue must reference at least 2 engrams")
+		return
+	}
+
+	s.DB.Exec(
+		"INSERT OR IGNORE INTO edges (id, source_engram_id, target_engram_id, predicate, confidence) VALUES (?, ?, ?, ?, ?)",
+		db.NewID(), ids[0], ids[1], body.Predicate, body.Confidence,
+	)
+	ontology.ResolveLintIssue(s.DB, issueID)
+	writeJSON(w, 200, map[string]string{"status": "edge_created"})
+}
+
+// execOrFail runs tx.Exec and returns any error.
+func execOrFail(tx *sql.Tx, query string, args ...any) error {
+	_, err := tx.Exec(query, args...)
+	return err
+}
+
+func (s *Server) mergeEngramsFromLint(w http.ResponseWriter, r *http.Request) {
+	issueID := chi.URLParam(r, "id")
+	var body struct {
+		SurvivorID string `json:"survivor_id"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, 400, "invalid JSON")
+		return
+	}
+
+	var engramIDsJSON, issueType string
+	err := s.DB.QueryRow("SELECT engram_ids, issue_type FROM lint_issues WHERE id = ? AND resolved = 0",
+		issueID).Scan(&engramIDsJSON, &issueType)
+	if err != nil {
+		writeError(w, 404, "issue not found or already resolved")
+		return
+	}
+	if issueType != "duplicate_candidate" {
+		writeError(w, 400, "action only valid for duplicate_candidate issues")
+		return
+	}
+
+	var ids []string
+	if err := json.Unmarshal([]byte(engramIDsJSON), &ids); err != nil || len(ids) < 2 {
+		writeError(w, 400, "issue must reference at least 2 engrams")
+		return
+	}
+
+	survivorID := body.SurvivorID
+	if survivorID == "" {
+		survivorID = ids[0]
+	}
+
+	tx, err := s.DB.Begin()
+	if err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	defer tx.Rollback()
+
+	for _, mid := range ids {
+		if mid == survivorID {
+			continue
+		}
+		stmts := []struct {
+			q    string
+			args []any
+		}{
+			{"UPDATE OR IGNORE document_engrams SET engram_id = ? WHERE engram_id = ?", []any{survivorID, mid}},
+			{"DELETE FROM document_engrams WHERE engram_id = ?", []any{mid}},
+			{"UPDATE OR IGNORE edges SET source_engram_id = ? WHERE source_engram_id = ?", []any{survivorID, mid}},
+			{"UPDATE OR IGNORE edges SET target_engram_id = ? WHERE target_engram_id = ?", []any{survivorID, mid}},
+			{"DELETE FROM edges WHERE source_engram_id = target_engram_id", nil},
+			{"DELETE FROM edges WHERE source_engram_id = ? OR target_engram_id = ?", []any{mid, mid}},
+			{"UPDATE OR IGNORE engram_aliases SET engram_id = ? WHERE engram_id = ?", []any{survivorID, mid}},
+			{"DELETE FROM engram_aliases WHERE engram_id = ?", []any{mid}},
+			{"DELETE FROM projections WHERE engram_id = ?", []any{mid}},
+			{"DELETE FROM engram_embeddings WHERE engram_id = ?", []any{mid}},
+			{"DELETE FROM engrams WHERE id = ?", []any{mid}},
+			{"UPDATE lint_issues SET resolved = 1 WHERE resolved = 0 AND engram_ids LIKE ?", []any{"%" + mid + "%"}},
+		}
+		for _, s := range stmts {
+			if err := execOrFail(tx, s.q, s.args...); err != nil {
+				writeError(w, 500, fmt.Sprintf("merge failed: %v", err))
+				return
+			}
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		writeError(w, 500, err.Error())
+		return
+	}
+	ontology.ResolveLintIssue(s.DB, issueID)
+	writeJSON(w, 200, map[string]any{"status": "merged", "survivor_id": survivorID, "merged_count": len(ids) - 1})
+}
+
 // --- Search ---
 
 func (s *Server) searchDocuments(w http.ResponseWriter, r *http.Request) {
@@ -789,6 +1022,10 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 	anthropicKey, _ := s.DB.GetSetting("anthropic_api_key")
 	googleKey, _ := s.DB.GetSetting("google_api_key")
 	openaiKey, _ := s.DB.GetSetting("openai_api_key")
+	fontSize, _ := s.DB.GetSetting("ui_font_size")
+	if fontSize == "" {
+		fontSize = "normal"
+	}
 
 	writeJSON(w, 200, map[string]any{
 		"llm_provider":       provider,
@@ -799,6 +1036,7 @@ func (s *Server) getSettings(w http.ResponseWriter, r *http.Request) {
 		"anthropic_api_key":  db.MaskedKey(anthropicKey),
 		"google_api_key":     db.MaskedKey(googleKey),
 		"openai_api_key":     db.MaskedKey(openaiKey),
+		"ui_font_size":       fontSize,
 	})
 }
 
@@ -890,10 +1128,16 @@ func (s *Server) updateSettings(w http.ResponseWriter, r *http.Request) {
 		OpenAIKey     *string `json:"openai_api_key"`
 		OllamaBaseURL *string `json:"ollama_base_url"`
 		OpenAIBaseURL *string `json:"openai_base_url"`
+		FontSize      *string `json:"ui_font_size"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeError(w, 400, "invalid JSON")
 		return
+	}
+
+	// Font size (no restart needed)
+	if body.FontSize != nil {
+		s.DB.SetSetting("ui_font_size", *body.FontSize, false)
 	}
 
 	// Persist each non-nil field

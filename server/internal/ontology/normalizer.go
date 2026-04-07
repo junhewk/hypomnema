@@ -35,7 +35,7 @@ Return JSON: {"mapping": {"original_name": "canonical_name", ...}}
 
 Names: %v`, names)
 
-	system := "You normalize entity names. Group synonyms, pick the most precise canonical form. Return only the JSON mapping."
+	system := "You normalize entity names. Group synonyms, pick the most precise canonical form. Preserve the original language of each name — do NOT translate. For mixed-language names, keep each span in its original language. Return only the JSON mapping."
 
 	result, err := client.CompleteJSON(ctx, prompt, system)
 	if err != nil {

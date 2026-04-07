@@ -30,7 +30,8 @@ Rules:
 - Only create edges where a meaningful relationship exists
 - confidence should reflect how certain the relationship is
 - Prefer specific predicates over "related_to"
-- Omit weak or uncertain relationships (confidence < 0.3)`
+- Omit weak or uncertain relationships (confidence < 0.3)
+- Use concept names exactly as given — do NOT translate them`
 
 // LinkDocument generates edges between engrams linked to a document.
 func LinkDocument(ctx context.Context, database *db.DB, llmClient llm.Client, embedder embeddings.Embedder, docID string) error {

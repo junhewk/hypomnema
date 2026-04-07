@@ -1,10 +1,11 @@
-"""Engram endpoints: listing, detail, cluster."""
+"""Engram endpoints: listing, detail, cluster, delete."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException
+from starlette.responses import Response
 
 if TYPE_CHECKING:
     import sqlite3
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
 from hypomnema.api.deps import DB
 from hypomnema.api.schemas import DocumentOut, EngramDetail, PaginatedList
 from hypomnema.db.models import Engram
+from hypomnema.db.transactions import immediate_transaction
 from hypomnema.search.knowledge_search import get_edges_for_engram
 
 router = APIRouter(prefix="/api/engrams", tags=["engrams"])
@@ -99,3 +101,30 @@ async def get_engram_cluster(engram_id: str, db: DB) -> list[DocumentOut]:
 
     doc_rows = await _fetch_docs_for_engram(db, engram_id)
     return [DocumentOut(**dict(r)) for r in doc_rows]
+
+
+@router.delete("/{engram_id}", status_code=204)
+async def delete_engram(engram_id: str, db: DB) -> Response:
+    """Delete an engram and cascade to all related tables."""
+    cursor = await db.execute("SELECT id FROM engrams WHERE id = ?", (engram_id,))
+    row = await cursor.fetchone()
+    await cursor.close()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Engram not found")
+
+    async with immediate_transaction(db):
+        await db.execute("DELETE FROM document_engrams WHERE engram_id = ?", (engram_id,))
+        await db.execute(
+            "DELETE FROM edges WHERE source_engram_id = ? OR target_engram_id = ?",
+            (engram_id, engram_id),
+        )
+        for table in ("engram_aliases", "projections", "engram_embeddings"):
+            await db.execute(f"DELETE FROM {table} WHERE engram_id = ?", (engram_id,))  # noqa: S608
+        await db.execute("DELETE FROM engrams WHERE id = ?", (engram_id,))
+        # Auto-resolve lint issues referencing this engram
+        await db.execute(
+            "UPDATE lint_issues SET resolved = 1 WHERE resolved = 0 AND engram_ids LIKE ?",
+            (f"%{engram_id}%",),
+        )
+
+    return Response(status_code=204)

@@ -29,6 +29,7 @@ def configure(settings: Settings | None = None) -> None:
     # Mount existing API routers on /api prefix
     from hypomnema.api.auth import auth_router
     from hypomnema.api.backup import router as backup_router
+    from hypomnema.api.companion import router as companion_router
     from hypomnema.api.documents import router as documents_router
     from hypomnema.api.engrams import router as engrams_router
     from hypomnema.api.feeds import router as feeds_router
@@ -41,6 +42,7 @@ def configure(settings: Settings | None = None) -> None:
     # Routers already define their own /api/... prefixes
     app.include_router(auth_router)
     app.include_router(backup_router)
+    app.include_router(companion_router)
     app.include_router(documents_router)
     app.include_router(engrams_router)
     app.include_router(feeds_router)

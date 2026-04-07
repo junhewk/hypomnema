@@ -20,6 +20,7 @@ _DB_OVERRIDABLE = {
     "embedding_dim",
     "tidy_level",
     "ui_theme",
+    "ui_font_size",
 }
 
 
@@ -71,6 +72,7 @@ class Settings(BaseSettings):
 
     # UI
     ui_theme: str = "midnight"
+    ui_font_size: str = "normal"
 
     # Logging
     json_logs: bool = False

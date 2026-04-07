@@ -77,6 +77,23 @@ def sidebar(*, mini: bool = False) -> ui.element:
                 )
                 nav_labels.append(lbl)
 
+        # Companion (baby dino)
+        companion_container = ui.element("div").classes(
+            "flex flex-col items-center py-3 px-2"
+        )
+
+        async def _load_companion() -> None:
+            if getattr(app.state, "db", None) is None:
+                return
+            try:
+                from hypomnema.ui.components.companion import render_companion
+
+                await render_companion(companion_container)
+            except Exception:
+                pass
+
+        asyncio.ensure_future(_load_companion())
+
         # Spacer
         ui.space()
         ui.separator().classes("my-4")
@@ -155,14 +172,21 @@ def sidebar(*, mini: bool = False) -> ui.element:
     return drawer
 
 
+def _active_font_size() -> str:
+    """Return the active font size setting, or 'normal'."""
+    settings = getattr(app.state, "settings", None)
+    return getattr(settings, "ui_font_size", "normal") if settings else "normal"
+
+
 def apply_theme() -> None:
     """Inject CSS variables, font imports, and Quasar colour overrides for the active theme."""
     from hypomnema.ui.theme import FONT_IMPORTS, MOBILE_CSS, get_colors, get_theme_css
 
     theme_name = _active_theme_name()
+    font_size = _active_font_size()
 
     ui.add_head_html(FONT_IMPORTS)
-    ui.add_head_html(get_theme_css(theme_name))
+    ui.add_head_html(get_theme_css(theme_name, font_size=font_size))
     ui.add_head_html(MOBILE_CSS)
     ui.colors(**get_colors(theme_name))
 

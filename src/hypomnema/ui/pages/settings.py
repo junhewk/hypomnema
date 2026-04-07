@@ -124,6 +124,77 @@ async def settings_page() -> None:
                 ui.notify(f"Theme: {theme_options[theme_name]}", type="positive")
                 ui.navigate.to("/settings")
 
+        # ── Font Size Section ───────────────────────────────────
+        ui.label("Font Size").classes("section-label mb-3")
+
+        with ui.card().classes("w-full mb-6"):
+            from hypomnema.ui.theme import _FONT_SIZE_SCALES
+
+            current_font_size = (
+                masked_settings.get("ui_font_size")
+                or (settings.ui_font_size if settings else "normal")
+            )
+
+            _size_labels = {
+                "small": "Small",
+                "normal": "Normal",
+                "large": "Large",
+                "xlarge": "X-Large",
+            }
+
+            with ui.row().classes("gap-3 w-full flex-wrap"):
+                for size_id in _FONT_SIZE_SCALES:
+                    is_active = size_id == current_font_size
+                    scale_pct = int(_FONT_SIZE_SCALES[size_id] * 100)
+                    with ui.element("div").classes(
+                        "rounded cursor-pointer px-4 py-3"
+                    ).style(
+                        f"border: 2px solid {'var(--accent)' if is_active else 'var(--border-light)'}; "
+                        "min-width: 80px; transition: border-color 0.2s"
+                    ).on(
+                        "click",
+                        lambda _, s=size_id: asyncio.ensure_future(
+                            _apply_font_size(s)
+                        ),
+                    ):
+                        ui.label(_size_labels.get(size_id, size_id)).classes(
+                            "text-xs font-medium"
+                        )
+                        ui.label(f"{scale_pct}%").classes("text-2xs").style(
+                            "color: var(--fg-muted)"
+                        )
+                        if is_active:
+                            ui.label("active").classes("text-2xs").style(
+                                "color: var(--accent); font-size: 9px"
+                            )
+
+            async def _apply_font_size(size_id: str) -> None:
+                if db is None or fernet_key is None:
+                    ui.notify("Database not ready", type="negative")
+                    return
+                from hypomnema.config import Settings
+                from hypomnema.db.settings_store import (
+                    get_all_settings,
+                    set_setting,
+                )
+
+                await set_setting(
+                    db, "ui_font_size", size_id,
+                    fernet_key=fernet_key, encrypt_value=False,
+                )
+                db_settings = await get_all_settings(
+                    db, fernet_key=fernet_key
+                )
+                new_settings = Settings.with_db_overrides(
+                    app.state.settings, db_settings
+                )
+                app.state.settings = new_settings
+                ui.notify(
+                    f"Font size: {_size_labels.get(size_id, size_id)}",
+                    type="positive",
+                )
+                ui.navigate.to("/settings")
+
         # ── LLM Provider Section ────────────────────────────────
         ui.label("LLM Provider").classes("section-label mb-3")
 

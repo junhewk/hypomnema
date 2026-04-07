@@ -134,7 +134,7 @@ body {
     color: var(--fg) !important;
     font-family: var(--font-body) !important;
     font-weight: 400;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-size-scale, 1));
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -245,8 +245,8 @@ body {
 /* ── Utility classes ─────────────────────────────────────── */
 .text-muted { color: var(--fg-muted) !important; }
 .text-dim   { color: var(--fg-dim) !important; }
-.text-xs    { font-size: 11px !important; }
-.text-2xs   { font-size: 9px !important; }
+.text-xs    { font-size: calc(11px * var(--font-size-scale, 1)) !important; }
+.text-2xs   { font-size: calc(9px * var(--font-size-scale, 1)) !important; }
 
 /* ── Animations ──────────────────────────────────────────── */
 @keyframes fade-up {
@@ -306,10 +306,19 @@ def get_colors(name: str) -> dict[str, str]:
     return colors
 
 
-def get_theme_css(name: str) -> str:
+_FONT_SIZE_SCALES: dict[str, float] = {
+    "small": 0.9,
+    "normal": 1.0,
+    "large": 1.1,
+    "xlarge": 1.2,
+}
+
+
+def get_theme_css(name: str, font_size: str = "normal") -> str:
     """Generate the full <style> block for a given theme."""
     theme = get_theme(name)
     css_vars = theme["css_vars"]
+    scale = _FONT_SIZE_SCALES.get(font_size, 1.0)
     root_lines = "\n".join(f"    --{k}: {v};" for k, v in css_vars.items())
     return (
         "<style>\n"
@@ -317,6 +326,7 @@ def get_theme_css(name: str) -> str:
         f"{root_lines}\n"
         "    --font-display: 'Cormorant Garamond', 'Georgia', serif;\n"
         "    --font-body: 'DM Sans', -apple-system, 'Segoe UI', sans-serif;\n"
+        f"    --font-size-scale: {scale};\n"
         "}\n"
         f"{_CSS_RULES}\n"
         "</style>"

@@ -131,9 +131,45 @@ func (db *DB) DeleteDocument(id string) error {
 		return err
 	}
 
-	// Clean up orphaned engrams (no document links left)
+	// Clean up orphaned engrams (no document links, no edges)
 	if _, err := tx.Exec(`
-		DELETE FROM engrams WHERE id NOT IN (SELECT DISTINCT engram_id FROM document_engrams)`); err != nil {
+		DELETE FROM engram_aliases WHERE engram_id IN (
+			SELECT e.id FROM engrams e
+			LEFT JOIN document_engrams de ON e.id = de.engram_id
+			LEFT JOIN edges es ON e.id = es.source_engram_id
+			LEFT JOIN edges et ON e.id = et.target_engram_id
+			WHERE de.document_id IS NULL AND es.id IS NULL AND et.id IS NULL
+		)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM projections WHERE engram_id IN (
+			SELECT e.id FROM engrams e
+			LEFT JOIN document_engrams de ON e.id = de.engram_id
+			LEFT JOIN edges es ON e.id = es.source_engram_id
+			LEFT JOIN edges et ON e.id = et.target_engram_id
+			WHERE de.document_id IS NULL AND es.id IS NULL AND et.id IS NULL
+		)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM engram_embeddings WHERE engram_id IN (
+			SELECT e.id FROM engrams e
+			LEFT JOIN document_engrams de ON e.id = de.engram_id
+			LEFT JOIN edges es ON e.id = es.source_engram_id
+			LEFT JOIN edges et ON e.id = et.target_engram_id
+			WHERE de.document_id IS NULL AND es.id IS NULL AND et.id IS NULL
+		)`); err != nil {
+		// vec table may not exist yet
+	}
+	if _, err := tx.Exec(`
+		DELETE FROM engrams WHERE id IN (
+			SELECT e.id FROM engrams e
+			LEFT JOIN document_engrams de ON e.id = de.engram_id
+			LEFT JOIN edges es ON e.id = es.source_engram_id
+			LEFT JOIN edges et ON e.id = et.target_engram_id
+			WHERE de.document_id IS NULL AND es.id IS NULL AND et.id IS NULL
+		)`); err != nil {
 		return err
 	}
 

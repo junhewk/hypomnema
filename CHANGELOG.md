@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2026-04-07
+
+### Added
+- **Knowledge companion** — baby dinosaur dot-character in the sidebar that grows through 5 stages (egg → hatchling → baby → juvenile → grown) based on engram count; mood reflects lint health; idle animations (hop, spin, roar, blink, etc.) fire randomly every 8-15 seconds (both Python and Go stacks)
+- **Lint tidy actions** — actionable buttons on lint issues: Delete orphan engrams, Create edge for missing links, Merge duplicate candidates, Delete contradictory edges (both stacks, API + UI)
+- **Companion stats API** — `GET /api/companion/state` returns engram/edge/doc counts, mood, growth stage, and milestone tracking
+- **Font size adjustment** — 4-level font size setting (Small 90%, Normal, Large 110%, X-Large 120%) via CSS `--font-size-scale` variable, configurable in Settings page (both stacks)
+
+### Fixed
+- **Go document delete FK constraint** — orphan engram cleanup now properly cascades to `engram_aliases`, `projections`, and `engram_embeddings` before deleting from `engrams`
+- **Self-loop edges after merge** — merging engrams now deletes self-referencing edges (`source = target`) in both stacks
+- **Go merge handler error checking** — `tx.Exec` calls now check errors and abort on failure instead of silently continuing
+- **Go lint tidy handlers** — `readJSON` and `json.Unmarshal` errors now properly checked
+- **Python companion milestone writes** — wrapped in `immediate_transaction` to match project's write serialization pattern
+- **Go LLM prompts** — added language preservation instructions to extraction, linking, normalization, and synthesis prompts to prevent unwanted translation
+
 ## [0.3.2] - 2026-04-06
 
 ### Fixed

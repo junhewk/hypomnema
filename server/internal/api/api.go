@@ -110,17 +110,24 @@ func NewRouter(s *Server, staticFS fs.FS) http.Handler {
 		r.Get("/engrams/{id}", s.getEngram)
 		r.Get("/engrams/{id}/cluster", s.getEngramCluster)
 		r.Post("/engrams/{id}/article/regenerate", s.regenerateArticle)
+		r.Delete("/engrams/{id}", s.deleteEngram)
 
 		// Search
 		r.Get("/search/documents", s.searchDocuments)
 		r.Get("/search/knowledge", s.searchKnowledge)
 		r.Post("/search/synthesize", s.synthesizeSearch)
 
+		// Companion
+		r.Get("/companion/state", s.companionState)
+
 		// Lint
 		r.Get("/lint/issues", s.listLintIssues)
 		r.Get("/lint/count", s.lintIssueCount)
 		r.Post("/lint/issues/{id}/resolve", s.resolveLintIssue)
 		r.Post("/lint/run", s.triggerLint)
+		r.Delete("/lint/edges/{id}", s.deleteEdge)
+		r.Post("/lint/issues/{id}/create-edge", s.createEdgeFromLint)
+		r.Post("/lint/issues/{id}/merge", s.mergeEngramsFromLint)
 
 		// Feeds
 		r.Get("/feeds", s.listFeeds)

@@ -18,6 +18,7 @@
     /* Fonts */
     --font-display: 'Cormorant Garamond', 'Georgia', serif;
     --font-body: 'DM Sans', -apple-system, 'Segoe UI', sans-serif;
+    --font-size-scale: 1;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -27,7 +28,7 @@ body {
     background: var(--bg);
     color: var(--fg);
     font-weight: 400;
-    font-size: 14px;
+    font-size: calc(14px * var(--font-size-scale, 1));
     line-height: 1.6;
     display: flex;
     min-height: 100vh;
@@ -64,8 +65,8 @@ body {
 /* Utility classes */
 .text-muted { color: var(--fg-muted) !important; }
 .text-dim { color: var(--fg-dim) !important; }
-.text-xs { font-size: 11px !important; }
-.text-2xs { font-size: 9px !important; }
+.text-xs { font-size: calc(11px * var(--font-size-scale, 1)) !important; }
+.text-2xs { font-size: calc(9px * var(--font-size-scale, 1)) !important; }
 
 /* ── Sidebar ─────────────────────────────────────────────── */
 #sidebar {
@@ -662,3 +663,73 @@ button.warning { color: #d4b06a; }
 }
 
 html, body { overflow-x: hidden; max-width: 100vw; }
+
+/* ── Companion (baby dino) ── */
+
+#companion {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.75rem 0.5rem 0.25rem;
+}
+
+#companion .companion-dino {
+    width: 48px;
+    height: 48px;
+    transition: transform 0.3s ease;
+}
+
+#sidebar.mini #companion .companion-dino {
+    width: 32px;
+    height: 32px;
+}
+
+#sidebar.mini #companion .companion-stats {
+    display: none;
+}
+
+.companion-stats {
+    font-size: 8px;
+    color: var(--fg-dim);
+    font-family: var(--font-body);
+    letter-spacing: 0.02em;
+    margin-top: 4px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+/* Base mood animations */
+.companion-mood-sleeping { animation: companion-breathe 4s ease-in-out infinite; }
+.companion-mood-happy { animation: companion-pulse 3s ease-in-out infinite; }
+.companion-mood-concerned { animation: companion-sway 4s ease-in-out infinite; }
+.companion-mood-distressed { animation: companion-shake 2s ease-in-out infinite; }
+
+@keyframes companion-breathe { 0%,100% { opacity: 0.6; } 50% { opacity: 0.85; } }
+@keyframes companion-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+@keyframes companion-sway { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-1.5deg); } 75% { transform: rotate(1.5deg); } }
+@keyframes companion-shake { 0%,100% { transform: rotate(0); } 20% { transform: rotate(-2deg); } 40% { transform: rotate(2deg); } 60% { transform: rotate(-1.5deg); } 80% { transform: rotate(1deg); } }
+
+/* Idle actions — applied via JS class toggle */
+.action-rock { animation: dino-rock 0.8s ease-in-out !important; }
+.action-blink .dino-eye { animation: dino-blink 0.3s ease-in-out; }
+.action-look-around .dino-eye { animation: dino-look 0.6s ease-in-out; }
+.action-hop { animation: dino-hop 0.5s ease-out !important; }
+.action-nod { animation: dino-nod 0.4s ease-in-out !important; }
+.action-tail-wag .dino-tail { animation: dino-tail-wag 0.6s ease-in-out; }
+.action-stomp .dino-legs { animation: dino-stomp 0.5s ease-in-out; }
+.action-roar { animation: dino-roar 0.6s ease-in-out !important; }
+.action-spin { animation: dino-spin 0.7s ease-in-out !important; }
+.action-shiver { animation: dino-shiver 0.5s ease-in-out !important; }
+.action-peek { animation: dino-peek 0.6s ease-in-out !important; }
+
+@keyframes dino-rock { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+@keyframes dino-blink { 0%,100% { ry: inherit; } 40%,60% { ry: 0.3; } }
+@keyframes dino-look { 0%,100% { transform: translateX(0); } 30% { transform: translateX(-1.5px); } 70% { transform: translateX(1.5px); } }
+@keyframes dino-hop { 0%,100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+@keyframes dino-nod { 0%,100% { transform: translateY(0); } 50% { transform: translateY(2px); } }
+@keyframes dino-tail-wag { 0%,100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+@keyframes dino-stomp { 0%,100% { transform: translateY(0); } 25% { transform: translateY(1.5px); } 50% { transform: translateY(-1px); } 75% { transform: translateY(1px); } }
+@keyframes dino-roar { 0%,100% { transform: scale(1); } 50% { transform: scale(1.12); } }
+@keyframes dino-spin { 0% { transform: rotate(0); } 100% { transform: rotate(360deg); } }
+@keyframes dino-shiver { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-1.5px); } 40% { transform: translateX(1.5px); } 60% { transform: translateX(-1px); } 80% { transform: translateX(1px); } }
+@keyframes dino-peek { 0%,100% { transform: translateY(0); } 50% { transform: translateY(4px); } }
