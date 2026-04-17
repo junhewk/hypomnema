@@ -6,6 +6,19 @@ const $ = (sel) => document.querySelector(sel);
 const $$ = (sel) => document.querySelectorAll(sel);
 const page = () => $('#page-content');
 
+function bindAutogrowTextarea(el) {
+    if (!el || el.dataset.autogrowBound === 'true') return;
+    const resize = () => {
+        el.style.height = 'auto';
+        el.style.height = `${el.scrollHeight}px`;
+    };
+    el.dataset.autogrowBound = 'true';
+    el.style.boxSizing = 'border-box';
+    el.style.overflowY = 'hidden';
+    el.addEventListener('input', resize);
+    resize();
+}
+
 // ── Provider / model constants (matching Python utils.py) ──
 
 const LLM_PROVIDERS = {
@@ -532,6 +545,8 @@ async function renderStream() {
         </div>
         <div id="doc-list"><span class="spinner"></span> Loading...</div>`;
 
+    bindAutogrowTextarea($('#scribble-input'));
+
     // Drag-and-drop
     const zone = $('#drop-zone');
     zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
@@ -615,6 +630,7 @@ window.submitScribble = async function() {
             notify('Scribble saved', 'positive');
         }
         input.value = '';
+        input.style.height = 'auto';
         await renderStream();
     } catch (e) {
         notify(`Failed: ${e.message}`, 'negative');
@@ -862,6 +878,7 @@ window.enterEditMode = function(docId, isScribble) {
                 <button style="color:#56c9a0" onclick="saveEdit('${docId}', true)">${materialIcon('save')} Save</button>
                 <button onclick="renderDocument('${docId}')">${materialIcon('close')} Cancel</button>
             </div>`;
+        bindAutogrowTextarea($('#edit-text'));
     } else {
         // Show original content read-only, then annotation textarea
         const tidyText = doc.tidy_text || '';
@@ -882,6 +899,7 @@ window.enterEditMode = function(docId, isScribble) {
                     <button onclick="renderDocument('${docId}')">${materialIcon('close')} Cancel</button>
                 </div>
             </div>`;
+        bindAutogrowTextarea($('#edit-annotation'));
     }
 };
 
