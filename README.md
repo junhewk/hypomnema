@@ -27,7 +27,7 @@ Hypomnema extracts concepts from your research material, deduplicates them, link
 
 ## Features
 
-- **Zero-friction input** — scribbles, PDF/DOCX/Markdown upload, URL scraping (with Jina Reader fallback for JS-rendered/paywalled pages), RSS/YouTube feeds
+- **Zero-friction input** — scribbles, PDF/DOCX/Markdown upload, URL scraping with main-content extraction (`go-trafilatura` on the Go stack, Jina Reader fallback for JS-rendered/paywalled pages), RSS/YouTube feeds
 - **Smart PDF extraction** — layout-aware parsing via [opendataloader-pdf](https://github.com/opendataloader-project/opendataloader-pdf) with column detection and structure preservation; pypdf fallback
 - **Automatic ontology** — LLM-powered entity extraction, multi-stage deduplication (exact match, alias index, KNN, vector similarity, concept hash), typed edge generation (supports, contradicts, critiques, extends, ...)
 - **Engram articles** — LLM-synthesized wiki articles for each concept, compiled from all linked documents (inspired by [Karpathy's LLM Knowledge Base](https://x.com/karpathy/status/2039805659525644595))
@@ -119,7 +119,7 @@ LLM provider and API keys can also be configured at runtime via the Settings UI.
 
 ### Go stack
 
-- **Server** — [chi](https://github.com/go-chi/chi) HTTP router with embedded static SPA frontend
+- **Server** — [chi](https://github.com/go-chi/chi) HTTP router with embedded static SPA frontend and `go-trafilatura` for article-body extraction from fetched web pages
 - **Database** — Same SQLite schema via [go-sqlite3](https://github.com/mattn/go-sqlite3) + [sqlite-vec](https://github.com/asg017/sqlite-vec-go-bindings)
 - **Projection** — Pure-Go UMAP ([umap-go](https://github.com/nozzle/umap-go)) + HDBSCAN clustering
 - **LLM/Embeddings** — Raw HTTP clients for Claude, Gemini, OpenAI, Ollama (no SDKs)

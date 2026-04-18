@@ -18,6 +18,7 @@ import (
 	"unicode"
 
 	"github.com/dslipak/pdf"
+	trafilatura "github.com/goto-opensource/go-trafilatura"
 	"github.com/junhewk/hypomnema/internal/db"
 	"github.com/mmcdole/gofeed"
 )
@@ -93,21 +94,20 @@ func FetchURL(ctx context.Context, rawURL string) (string, string, error) {
 		return "", "", fmt.Errorf("page is protected by anti-bot challenge (Cloudflare/etc.) and cannot be fetched")
 	}
 
-	// Extract title from <title> tag
-	title := extractHTMLTitle(html)
-	// Extract readable text (basic: strip HTML tags)
-	text := strings.TrimSpace(stripHTML(html))
-
-	if len(text) < 50 {
-		// Fallback to Jina Reader for JS-rendered or paywalled pages
-		jText, jTitle, err := fetchViaJinaReader(ctx, rawURL)
-		if err != nil {
-			return "", "", fmt.Errorf("no meaningful content extracted from %s (jina fallback: %w)", rawURL, err)
-		}
-		return jText, jTitle, nil
+	text, title, err := extractReadableHTML(rawURL, html)
+	if err == nil && len(text) >= 50 {
+		return text, title, nil
 	}
 
-	return text, title, nil
+	// Fallback to Jina Reader for JS-rendered or paywalled pages
+	jText, jTitle, jErr := fetchViaJinaReader(ctx, rawURL)
+	if jErr != nil {
+		if err != nil {
+			return "", "", fmt.Errorf("no meaningful content extracted from %s (main extractor: %w; jina fallback: %w)", rawURL, err, jErr)
+		}
+		return "", "", fmt.Errorf("no meaningful content extracted from %s (jina fallback: %w)", rawURL, jErr)
+	}
+	return jText, jTitle, nil
 }
 
 // fetchViaJinaReader uses r.jina.ai to extract content from JS-rendered pages.
@@ -215,10 +215,10 @@ func PollFeed(ctx context.Context, feed db.FeedSource) ([]FetchedItem, error) {
 // ---------------------------------------------------------------------------
 
 var (
-	pageNumberRe       = regexp.MustCompile(`(?i)^(?:page\s+)?\d+(?:\s*(?:/|of)\s*\d+)?$`)
-	sentenceEndRe      = regexp.MustCompile(`[.!?][""')\]]?$`)
-	backmatterHeadRe   = regexp.MustCompile(`(?i)^(?:references|bibliography|appendix(?:\b|[\s:.\-])|appendices(?:\b|[\s:.\-])|acknowledg(?:e)?ments?)`)
-	listOrHeadingRe    = regexp.MustCompile(`(?i)^(?:` +
+	pageNumberRe     = regexp.MustCompile(`(?i)^(?:page\s+)?\d+(?:\s*(?:/|of)\s*\d+)?$`)
+	sentenceEndRe    = regexp.MustCompile(`[.!?][""')\]]?$`)
+	backmatterHeadRe = regexp.MustCompile(`(?i)^(?:references|bibliography|appendix(?:\b|[\s:.\-])|appendices(?:\b|[\s:.\-])|acknowledg(?:e)?ments?)`)
+	listOrHeadingRe  = regexp.MustCompile(`(?i)^(?:` +
 		`[-*+•]\s+` +
 		`|\d+[.)]\s+` +
 		`|\d+(?:\.\d+)+\s+` +
@@ -682,7 +682,6 @@ func parseTranscriptXML(xmlData string) (string, error) {
 	return strings.Join(parts, " "), nil
 }
 
-
 func extractHTMLTitle(html string) string {
 	start := strings.Index(html, "<title>")
 	if start == -1 {
@@ -697,6 +696,41 @@ func extractHTMLTitle(html string) string {
 		return ""
 	}
 	return strings.TrimSpace(html[start : start+end])
+}
+
+func extractReadableHTML(rawURL, html string) (string, string, error) {
+	opts := trafilatura.Options{
+		Config:          readableHTMLConfig(),
+		EnableFallback:  true,
+		Focus:           trafilatura.FavorPrecision,
+		ExcludeComments: true,
+		HtmlDateMode:    trafilatura.Disabled,
+	}
+
+	if parsedURL, err := url.Parse(rawURL); err == nil {
+		opts.OriginalURL = parsedURL
+	}
+
+	result, err := trafilatura.Extract(strings.NewReader(html), opts)
+	if err != nil {
+		return "", extractHTMLTitle(html), err
+	}
+
+	text := strings.TrimSpace(result.ContentText)
+	title := strings.TrimSpace(result.Metadata.Title)
+	if title == "" {
+		title = extractHTMLTitle(html)
+	}
+	if text == "" {
+		return "", title, fmt.Errorf("no readable content extracted")
+	}
+	return text, title, nil
+}
+
+func readableHTMLConfig() *trafilatura.Config {
+	cfg := trafilatura.DefaultConfig()
+	cfg.MinExtractedSize = 50
+	return cfg
 }
 
 func stripHTML(html string) string {
