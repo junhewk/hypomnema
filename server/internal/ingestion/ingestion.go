@@ -54,6 +54,14 @@ func FetchURL(ctx context.Context, rawURL string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
+	if _, err := extractYouTubeVideoID(rawURL); err == nil {
+		item, err := fetchYouTubeItem(ctx, rawURL)
+		if err != nil {
+			return "", "", err
+		}
+		return item.Text, item.Title, nil
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "GET", rawURL, nil)
 	if err != nil {
 		return "", "", err
@@ -551,13 +559,22 @@ func extractYouTubeVideoID(rawURL string) (string, error) {
 
 // captionTrackRe extracts the captions JSON from ytInitialPlayerResponse.
 var captionTrackRe = regexp.MustCompile(`"captionTracks"\s*:\s*(\[.*?\])`)
+var innertubeAPIKeyRe = regexp.MustCompile(`"INNERTUBE_API_KEY"\s*:\s*"([A-Za-z0-9_-]+)"`)
 
 // pollYouTube fetches a YouTube video transcript by scraping the captions URL
 // from the video page's embedded player response, then fetching the timedtext XML.
 func pollYouTube(ctx context.Context, videoURL string) ([]FetchedItem, error) {
-	videoID, err := extractYouTubeVideoID(videoURL)
+	item, err := fetchYouTubeItem(ctx, videoURL)
 	if err != nil {
 		return nil, err
+	}
+	return []FetchedItem{item}, nil
+}
+
+func fetchYouTubeItem(ctx context.Context, videoURL string) (FetchedItem, error) {
+	videoID, err := extractYouTubeVideoID(videoURL)
+	if err != nil {
+		return FetchedItem{}, err
 	}
 
 	canonical := "https://www.youtube.com/watch?v=" + url.QueryEscape(videoID)
@@ -568,21 +585,27 @@ func pollYouTube(ctx context.Context, videoURL string) ([]FetchedItem, error) {
 
 	req, err := http.NewRequestWithContext(ctx2, "GET", canonical, nil)
 	if err != nil {
-		return nil, err
+		return FetchedItem{}, err
 	}
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Hypomnema/1.0)")
 	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetching YouTube page: %w", err)
+		return FetchedItem{}, fmt.Errorf("fetching YouTube page: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return FetchedItem{}, fmt.Errorf("YouTube HTTP %d", resp.StatusCode)
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
 	if err != nil {
-		return nil, err
+		return FetchedItem{}, err
 	}
 	pageHTML := string(body)
+	if isChallengePage(pageHTML) {
+		return FetchedItem{}, fmt.Errorf("YouTube page is protected by anti-bot challenge")
+	}
 
 	title := extractHTMLTitle(pageHTML)
 	if title == "" {
@@ -590,45 +613,37 @@ func pollYouTube(ctx context.Context, videoURL string) ([]FetchedItem, error) {
 	}
 
 	// Try to extract transcript from captions
-	transcript, err := extractYouTubeTranscript(ctx, pageHTML)
+	transcript, err := extractYouTubeTranscript(ctx, videoID, pageHTML)
 	if err != nil {
 		// Fall back to page text if transcript unavailable
 		transcript = stripHTML(pageHTML)
 	}
 
-	return []FetchedItem{{
+	return FetchedItem{
 		Title:     title,
 		Text:      transcript,
 		SourceURI: canonical,
-	}}, nil
+	}, nil
 }
 
-// extractYouTubeTranscript parses the captionTracks from the page HTML,
-// fetches the first available transcript URL, and extracts text from the XML.
-func extractYouTubeTranscript(ctx context.Context, pageHTML string) (string, error) {
-	// Find captionTracks JSON in ytInitialPlayerResponse
-	match := captionTrackRe.FindStringSubmatch(pageHTML)
-	if len(match) < 2 {
-		return "", fmt.Errorf("no caption tracks found")
-	}
-
-	// Parse the JSON array to get the base URL
-	type captionTrack struct {
-		BaseURL string `json:"baseUrl"`
-	}
-	var tracks []captionTrack
-	if err := json.Unmarshal([]byte(match[1]), &tracks); err != nil {
-		return "", fmt.Errorf("parsing caption tracks: %w", err)
+// extractYouTubeTranscript fetches the first available transcript URL and
+// extracts text from the XML.
+func extractYouTubeTranscript(ctx context.Context, videoID, pageHTML string) (string, error) {
+	tracks, err := fetchYouTubeCaptionTracks(ctx, videoID, pageHTML)
+	if err != nil {
+		return "", err
 	}
 	if len(tracks) == 0 || tracks[0].BaseURL == "" {
 		return "", fmt.Errorf("no caption track URLs found")
 	}
 
+	transcriptURL := strings.ReplaceAll(tracks[0].BaseURL, "&fmt=srv3", "")
+
 	// Fetch the transcript XML
 	ctx2, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx2, "GET", tracks[0].BaseURL, nil)
+	req, err := http.NewRequestWithContext(ctx2, "GET", transcriptURL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -637,6 +652,9 @@ func extractYouTubeTranscript(ctx context.Context, pageHTML string) (string, err
 		return "", fmt.Errorf("fetching transcript: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("transcript HTTP %d", resp.StatusCode)
+	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
@@ -645,6 +663,97 @@ func extractYouTubeTranscript(ctx context.Context, pageHTML string) (string, err
 
 	// Parse XML transcript: <transcript><text start="..." dur="...">text</text>...</transcript>
 	return parseTranscriptXML(string(body))
+}
+
+type youtubeCaptionTrack struct {
+	BaseURL string `json:"baseUrl"`
+}
+
+func fetchYouTubeCaptionTracks(ctx context.Context, videoID, pageHTML string) ([]youtubeCaptionTrack, error) {
+	if tracks, err := fetchYouTubeCaptionTracksViaInnertube(ctx, videoID, pageHTML); err == nil && len(tracks) > 0 {
+		return tracks, nil
+	}
+	return fetchYouTubeCaptionTracksFromPage(pageHTML)
+}
+
+func fetchYouTubeCaptionTracksViaInnertube(ctx context.Context, videoID, pageHTML string) ([]youtubeCaptionTrack, error) {
+	apiKeyMatch := innertubeAPIKeyRe.FindStringSubmatch(pageHTML)
+	if len(apiKeyMatch) < 2 {
+		return nil, fmt.Errorf("no innertube API key found")
+	}
+	apiURL := "https://www.youtube.com/youtubei/v1/player?key=" + apiKeyMatch[1]
+
+	payload := map[string]any{
+		"context": map[string]any{
+			"client": map[string]any{
+				"clientName":    "ANDROID",
+				"clientVersion": "20.10.38",
+			},
+		},
+		"videoId": videoID,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshaling innertube request: %w", err)
+	}
+
+	ctx2, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx2, "POST", apiURL, strings.NewReader(string(body)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Hypomnema/1.0)")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetching innertube player data: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("innertube HTTP %d", resp.StatusCode)
+	}
+
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, err
+	}
+
+	var data struct {
+		Captions struct {
+			PlayerCaptionsTracklistRenderer struct {
+				CaptionTracks []youtubeCaptionTrack `json:"captionTracks"`
+			} `json:"playerCaptionsTracklistRenderer"`
+		} `json:"captions"`
+	}
+	if err := json.Unmarshal(respBody, &data); err != nil {
+		return nil, fmt.Errorf("parsing innertube player data: %w", err)
+	}
+
+	tracks := data.Captions.PlayerCaptionsTracklistRenderer.CaptionTracks
+	if len(tracks) == 0 {
+		return nil, fmt.Errorf("no innertube caption tracks found")
+	}
+	return tracks, nil
+}
+
+func fetchYouTubeCaptionTracksFromPage(pageHTML string) ([]youtubeCaptionTrack, error) {
+	match := captionTrackRe.FindStringSubmatch(pageHTML)
+	if len(match) < 2 {
+		return nil, fmt.Errorf("no caption tracks found")
+	}
+
+	var tracks []youtubeCaptionTrack
+	if err := json.Unmarshal([]byte(match[1]), &tracks); err != nil {
+		return nil, fmt.Errorf("parsing caption tracks: %w", err)
+	}
+	if len(tracks) == 0 {
+		return nil, fmt.Errorf("no caption track URLs found")
+	}
+	return tracks, nil
 }
 
 // parseTranscriptXML extracts text content from YouTube's timedtext XML format.

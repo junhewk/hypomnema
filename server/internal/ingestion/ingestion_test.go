@@ -1,9 +1,18 @@
 package ingestion
 
 import (
+	"context"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
+}
 
 func TestExtractReadableHTMLPrefersMainContent(t *testing.T) {
 	html := `<!doctype html>
@@ -45,5 +54,55 @@ func TestExtractReadableHTMLPrefersMainContent(t *testing.T) {
 	}
 	if strings.Contains(text, "Home Pricing Docs Login") {
 		t.Fatalf("navigation boilerplate leaked into extracted text: %q", text)
+	}
+}
+
+func TestFetchURLUsesYouTubeTranscriptPath(t *testing.T) {
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.String() {
+		case "https://www.youtube.com/watch?v=005JLRt3gXI":
+			body := `<html><head><title>Why do AI models hallucinate? - YouTube</title></head><body><script>var ytcfg = {"INNERTUBE_API_KEY":"test-key"};</script></body></html>`
+			return &http.Response{
+				StatusCode: 200,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Request:    req,
+			}, nil
+		case "https://www.youtube.com/youtubei/v1/player?key=test-key":
+			body := `{"captions":{"playerCaptionsTracklistRenderer":{"captionTracks":[{"baseUrl":"https://example.com/api/captions&fmt=srv3"}]}}}`
+			return &http.Response{
+				StatusCode: 200,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Request:    req,
+			}, nil
+		case "https://example.com/api/captions":
+			body := `<transcript><text>Hello &amp; welcome</text><text>Transcript line two</text></transcript>`
+			return &http.Response{
+				StatusCode: 200,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Request:    req,
+			}, nil
+		default:
+			t.Fatalf("unexpected request: %s", req.URL.String())
+			return nil, nil
+		}
+	})
+	defer func() {
+		http.DefaultTransport = originalTransport
+	}()
+
+	text, title, err := FetchURL(context.Background(), "https://m.youtube.com/watch?v=005JLRt3gXI")
+	if err != nil {
+		t.Fatalf("FetchURL returned error: %v", err)
+	}
+
+	if title != "Why do AI models hallucinate? - YouTube" {
+		t.Fatalf("unexpected title: %q", title)
+	}
+	if text != "Hello & welcome Transcript line two" {
+		t.Fatalf("unexpected transcript text: %q", text)
 	}
 }
